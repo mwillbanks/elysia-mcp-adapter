@@ -17,6 +17,8 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: bun ci
+      - run: bun ci --cwd website
+      - run: bun run --cwd website typecheck
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
