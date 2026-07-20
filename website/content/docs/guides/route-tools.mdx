@@ -1,0 +1,77 @@
+---
+title: Route-backed Tools
+description: Control discovery, naming, schema inference, and invocation for HTTP routes.
+icon: Route
+---
+
+Eligible HTTP routes become MCP tools by default. The adapter inspects Elysia route metadata, builds JSON Schema inputs, and invokes every tool through the normal HTTP lifecycle.
+
+## Eligibility and naming
+
+By default, `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes are eligible. A route name is resolved from `detail.operationId` when present, then from the configured `operationNameResolver`.
+
+```ts
+mcp({
+  methods: ['GET', 'POST'],
+  operationNameResolver: ({ method, path, detail }) =>
+    typeof detail?.operationId === 'string'
+      ? detail.operationId
+      : `${method.toLowerCase()}.${path}`
+})
+```
+
+Use `mcp: false` or `mcp: { expose: false }` on a route to keep it out of the registry.
+
+## Select routes deliberately
+
+```ts
+mcp({
+  allowedRoutes: [
+    '/users/*',
+    { method: 'GET', path: '/orders/:id' },
+    /^\/public\//
+  ],
+  excludedRoutes: ['/admin/*']
+})
+```
+
+An `allowedRoutes` array takes priority over `excludedRoutes`. The MCP endpoint itself and common OpenAPI, Swagger, and Scalar paths are excluded internally. Hidden routes stay excluded unless `includeHiddenRoutes` is enabled.
+
+## Input schema modes
+
+The default `envelope` mode preserves the origin of every value:
+
+```json
+{
+  "params": { "id": "user_123" },
+  "query": { "includeTeams": true },
+  "body": { "displayName": "Ada" }
+}
+```
+
+`inputMode: 'flatten'` merges compatible route inputs into one object. It is convenient for small APIs but can collide when params, query, and body reuse property names.
+
+## Override inferred schemas
+
+```ts
+mcp: {
+  inputSchema: {
+    type: 'object',
+    properties: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id']
+      }
+    },
+    required: ['params']
+  },
+  outputSchema: {
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id']
+  }
+}
+```
+
+Route-level overrides win over inferred schemas. Use `mapJsonSchema` for a final, centralized transformation when a client has schema compatibility requirements.

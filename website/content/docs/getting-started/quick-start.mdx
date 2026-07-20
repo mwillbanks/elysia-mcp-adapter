@@ -1,0 +1,89 @@
+---
+title: Quick Start
+description: Expose a typed Elysia route as an MCP tool in a few minutes.
+icon: Zap
+---
+
+## Create a route-backed tool
+
+```ts
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { Elysia, t } from 'elysia'
+
+const app = new Elysia()
+  .use(
+    mcp({
+      server: {
+        name: 'users-api',
+        version: '1.0.0',
+        title: 'Users API'
+      }
+    })
+  )
+  .get(
+    '/users/:id',
+    ({ params }) => ({ id: params.id, displayName: 'Ada' }),
+    {
+      params: t.Object({ id: t.String() }),
+      response: t.Object({
+        id: t.String(),
+        displayName: t.String()
+      }),
+      detail: {
+        operationId: 'users.get',
+        summary: 'Get a user'
+      }
+    }
+  )
+  .listen(3000)
+```
+
+The route is discoverable as the `users.get` tool because `detail.operationId` supplies a stable name. Its input uses the default envelope shape:
+
+```json
+{
+  "params": { "id": "user_123" }
+}
+```
+
+## Call it over MCP
+
+Send JSON-RPC to the default endpoint:
+
+```bash
+curl http://localhost:3000/mcp \
+  --header 'content-type: application/json' \
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "users.get",
+      "arguments": { "params": { "id": "user_123" } }
+    }
+  }'
+```
+
+The adapter constructs `GET /users/user_123`, calls `app.handle()` with the internal request, and marshals the Elysia response into MCP content.
+
+## Make exposure explicit
+
+Use route-level `mcp` metadata when you want to override discovery:
+
+```ts
+.get('/orders/:id', getOrder, {
+  params: t.Object({ id: t.String() }),
+  mcp: {
+    expose: true,
+    name: 'orders.get',
+    title: 'Get an order',
+    description: 'Fetch an order by identifier.',
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true
+    }
+  }
+})
+```
+
+Next, learn how naming, filtering, schemas, and inputs work in [Route-backed tools](/docs/guides/route-tools).

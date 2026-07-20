@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-labelledby="title description">
+  <title id="title">Elysia MCP Adapter</title>
+  <desc id="description">A luminous gateway connecting Elysia routes to Model Context Protocol nodes.</desc>
+  <defs>
+    <linearGradient id="frame" x1="18" y1="18" x2="142" y2="142" gradientUnits="userSpaceOnUse"><stop stop-color="#fb7185"/><stop offset=".48" stop-color="#8b5cf6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+    <linearGradient id="signal" x1="42" y1="48" x2="122" y2="112" gradientUnits="userSpaceOnUse"><stop stop-color="#fda4af"/><stop offset=".52" stop-color="#c4b5fd"/><stop offset="1" stop-color="#67e8f9"/></linearGradient>
+    <radialGradient id="core" cx="0" cy="0" r="1" gradientTransform="translate(80 80) rotate(90) scale(70)" gradientUnits="userSpaceOnUse"><stop stop-color="#312e81" stop-opacity=".72"/><stop offset="1" stop-color="#09090b" stop-opacity="0"/></radialGradient>
+    <filter id="glow" x="-45%" y="-45%" width="190%" height="190%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <path d="M80 8 139 42v76l-59 34-59-34V42Z" fill="#09090b" stroke="url(#frame)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M80 15 132 45v70l-52 30-52-30V45Z" fill="url(#core)"/>
+  <g fill="none" stroke="url(#signal)" stroke-linecap="round" stroke-linejoin="round"><path d="M38 55h18l10 11" stroke-width="5"/><path d="M38 105h18l10-11" stroke-width="5"/><path d="M94 66l10-11h18" stroke-width="5"/><path d="M94 94l10 11h18" stroke-width="5"/><path d="M58 80h42" stroke-width="7"/></g>
+  <g fill="#09090b" stroke="url(#frame)" stroke-width="4"><circle cx="35" cy="55" r="7"/><circle cx="35" cy="105" r="7"/><circle cx="125" cy="55" r="7"/><circle cx="125" cy="105" r="7"/></g>
+  <path d="M92 54H72c-8 0-14 6-14 14v24c0 8 6 14 14 14h20" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" filter="url(#glow)"/>
+  <circle cx="80" cy="80" r="8" fill="#fff" filter="url(#glow)"/>
+</svg>

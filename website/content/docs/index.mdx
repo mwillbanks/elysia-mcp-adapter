@@ -1,0 +1,43 @@
+---
+title: Overview
+description: A thin, secure bridge from Elysia HTTP routes to Model Context Protocol.
+icon: Waypoints
+---
+
+`@mwillbanks/elysia-mcp-adapter` adds a Model Context Protocol HTTP endpoint to an Elysia application. Existing routes can become MCP tools, while explicit registration methods cover MCP-only tools, resources, resource templates, and prompts.
+
+## Preserve the Elysia lifecycle
+
+Route-backed calls are converted into an internal `Request` and sent through `app.handle()`. This keeps the behavior that already protects and shapes your HTTP API:
+
+- request parsing and TypeBox validation
+- local hooks, guards, and authentication plugins
+- error handlers and response mapping
+- route-specific status codes and headers
+
+The adapter never calls an Elysia route handler directly.
+
+## A focused MCP surface
+
+| Primitive | Route-backed | Standalone | Default exposure |
+| --- | --- | --- | --- |
+| Tools | Yes | `.mcpTool()` | Eligible HTTP routes become tools |
+| Resources | Yes | `.mcpResource()` | Explicit opt-in |
+| Resource templates | Yes | `.mcpResource()` | Explicit opt-in |
+| Prompts | Yes | `.mcpPrompt()` | Explicit opt-in |
+
+The transport lives at `POST /mcp` by default and implements the core JSON-RPC methods for initialization, discovery, tool calls, resource reads, and prompt retrieval.
+
+## Design principles
+
+1. **Elysia is the application framework.** The adapter adds protocol translation, not a parallel runtime.
+2. **JSON Schema stays JSON Schema.** Route schemas are sanitized for transport without a TypeBox-to-Zod translation layer.
+3. **Exposure is deliberate.** Tools are convenient by default; resources, prompts, headers, browser origins, and binary output require explicit configuration.
+4. **Protocol abstractions stay thin.** No full MCP framework dependency is required.
+
+## Next steps
+
+- [Install the package](/docs/getting-started/installation)
+- [Expose your first route](/docs/getting-started/quick-start)
+- [Understand route-backed tools](/docs/guides/route-tools)
+- [Harden the endpoint](/docs/guides/security)

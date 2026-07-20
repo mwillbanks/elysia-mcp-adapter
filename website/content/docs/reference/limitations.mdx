@@ -1,0 +1,31 @@
+---
+title: Current Limitations
+description: Know the deliberate boundaries of the current adapter.
+icon: TriangleAlert
+---
+
+The adapter intentionally keeps its dependency surface and transport behavior small.
+
+## Not implemented
+
+- stateful MCP sessions
+- resumable SSE streams
+- server-initiated requests
+- inferred multipart or file uploads
+- automatic model-controlled credential or filesystem access
+
+## Transport scope
+
+GET SSE provides a minimal connected event and closes. DELETE can acknowledge a session deletion request, but no server-side session state is retained.
+
+## Route discovery
+
+Route inspection uses Elysia's current public `app.routes` and router history shapes. That compatibility boundary is isolated in `src/route-inspector.ts` so future Elysia changes do not spread through the adapter.
+
+## Framework dependency
+
+The package does not depend on the official MCP TypeScript SDK. It implements the required JSON-RPC surface directly to keep transport abstractions thin and avoid translating TypeBox schemas through Zod.
+
+## Output constraints
+
+Text and structured output default to 256 KiB limits. Binary output fails unless explicitly set to base64. These limits are safeguards, not streaming controls.

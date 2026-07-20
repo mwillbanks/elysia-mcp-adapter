@@ -1,0 +1,86 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+:root {
+  --fd-layout-width: 92rem;
+  --color-fd-primary: oklch(0.49 0.22 292);
+  --color-fd-primary-foreground: oklch(0.99 0.01 300);
+}
+
+.dark {
+  --color-fd-primary: oklch(0.76 0.16 294);
+  --color-fd-primary-foreground: oklch(0.16 0.035 292);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+body {
+  font-family: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  background-image:
+    radial-gradient(circle at 10% -12%, rgb(244 63 94 / 0.08), transparent 31rem),
+    radial-gradient(circle at 86% 4%, rgb(139 92 246 / 0.09), transparent 29rem),
+    radial-gradient(circle at 52% 15%, rgb(34 211 238 / 0.045), transparent 24rem);
+}
+.home-shell {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-fd-border) 35%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-fd-border) 24%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 4rem 4rem;
+  background-position: center top;
+}
+.hero-glow {
+  position: absolute;
+  top: 1rem;
+  left: 17%;
+  width: min(64vw, 56rem);
+  height: 28rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    100deg,
+    rgb(244 63 94 / 0.11),
+    rgb(139 92 246 / 0.14),
+    rgb(34 211 238 / 0.08)
+  );
+  filter: blur(96px);
+  pointer-events: none;
+}
+.hero-gradient {
+  color: transparent;
+  background-image: linear-gradient(100deg, #f43f5e 2%, #8b5cf6 53%, #06b6d4 96%);
+  background-clip: text;
+}
+.feature-card + .feature-card {
+  border-top: 1px solid var(--color-fd-border);
+}
+@media (min-width: 48rem) {
+  .feature-card + .feature-card {
+    border-top: 0;
+    border-left: 1px solid var(--color-fd-border);
+  }
+}
+.code-window {
+  transform: perspective(1200px) rotateY(-2deg) rotateX(1deg);
+}
+.journey-card {
+  min-height: 18rem;
+}
+:where(#nd-page) {
+  --fd-page-width: 55rem;
+}
+:where(#nd-page) article {
+  font-size: 1rem;
+  line-height: 1.8;
+}
+:where(#nd-page) h2 {
+  letter-spacing: -0.025em;
+}

@@ -1,0 +1,49 @@
+---
+title: Method API
+description: Fluent method signatures and handler return shapes.
+icon: Braces
+---
+
+The plugin augments an Elysia instance with three chainable runtime methods.
+
+## `mcpTool`
+
+```ts
+app.mcpTool<Input>(
+  name: string,
+  handler: (input: Input, context: McpInvocationContext) => unknown,
+  options?: McpToolOptions
+)
+```
+
+Options include title, description, input and output JSON Schema, tool annotations, icons, and custom marshaling limits.
+
+## `mcpResource`
+
+```ts
+app.mcpResource(
+  uriOrTemplate: string,
+  handler: (context: McpResourceInvocationContext) => unknown,
+  options?: McpResourceOptions
+)
+```
+
+A URI containing `{variables}` becomes a resource template. The handler context includes the requested URI, parsed template variables, the inbound MCP request, optional metadata, and an abort signal when available.
+
+## `mcpPrompt`
+
+```ts
+app.mcpPrompt<Args extends Record<string, unknown>>(
+  name: string,
+  handler: (args: Args, context: McpPromptInvocationContext) => unknown,
+  options?: McpPromptOptions
+)
+```
+
+Prompt options include title, description, argument descriptors, an argument JSON Schema, and icons.
+
+## Handler normalization
+
+Tool handlers may return plain values or full `McpToolResult` objects. Resource handlers may return a plain value, one resource content item, a list, or a full read result. Prompt handlers may return a string, messages, or a complete prompt result.
+
+All public option, registry, invocation, content, result, and JSON-RPC types are exported from the package root.

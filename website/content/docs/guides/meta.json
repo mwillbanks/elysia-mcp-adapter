@@ -1,0 +1,5 @@
+{
+  "title": "Guides",
+  "icon": "Route",
+  "pages": ["route-tools", "standalone-primitives", "resources-and-prompts", "security"]
+}

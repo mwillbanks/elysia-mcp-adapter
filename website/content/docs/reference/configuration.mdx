@@ -1,0 +1,65 @@
+---
+title: Configuration
+description: Complete plugin option reference with production-oriented defaults.
+icon: Settings2
+---
+
+```ts
+mcp({
+  server: {
+    name: 'example-api',
+    version: '1.0.0',
+    title: 'Example API',
+    instructions: 'Prefer read-only tools unless mutation is requested.'
+  },
+  path: '/mcp',
+  allowedRoutes: '*',
+  excludedRoutes: ['/admin/*'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  defaultRouteKind: 'tool',
+  onNameCollision: 'error',
+  inputMode: 'envelope',
+  includeHiddenRoutes: false,
+  headers: {
+    passThroughFromMcpRequest: ['authorization', 'cookie', 'x-api-key'],
+    allowFromToolInput: []
+  },
+  marshal: {
+    maxTextBytes: 262144,
+    maxStructuredBytes: 262144,
+    includeHttpMetadata: true,
+    binary: 'error'
+  },
+  transport: {
+    validateOrigin: true,
+    allowedOrigins: [],
+    enableGetSse: false,
+    enableDeleteSession: false,
+    protocolVersion: '2025-11-25'
+  },
+  diagnostics: {
+    failOnMissingSchema: false
+  }
+})
+```
+
+## Core options
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `path` | `/mcp` | HTTP path for the MCP transport |
+| `allowedRoutes` | `'*'` | Route matchers eligible for discovery |
+| `excludedRoutes` | `[]` | Additional matchers excluded from discovery |
+| `methods` | GET, POST, PUT, PATCH, DELETE | Eligible HTTP methods |
+| `defaultRouteKind` | `'tool'` | Default route-backed MCP primitive |
+| `onNameCollision` | `'error'` | Error or suffix duplicate registry names |
+| `inputMode` | `'envelope'` | Preserve or flatten params, query, body, and headers |
+| `includeHiddenRoutes` | `false` | Include routes hidden by Elysia metadata |
+
+## Schema diagnostics
+
+Set `diagnostics.failOnMissingSchema` to `true` when every exposed route must provide an inferable input schema. `mapJsonSchema(schema, context)` can normalize schemas for a specific MCP client after route inference or explicit schema selection.
+
+## Per-route marshaling
+
+A route-level `mcp.marshal` object overrides the plugin defaults for that route. This lets a deliberate binary or large-text tool opt in without broadening every tool.
