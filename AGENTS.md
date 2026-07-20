@@ -39,7 +39,6 @@ Commits are validated by husky: `commit-msg` runs commitlint (Conventional Commi
 - `src/schema/*`: JSON Schema normalization, composition, and validation.
 - `src/invoke/*`: Internal Elysia request construction and response marshaling.
 - `src/transport/json-rpc.ts`: MCP JSON-RPC over HTTP transport.
-- `docs/plan/initial.md`: Initial implementation plan.
 
 ## Compatibility targets
 
@@ -82,7 +81,6 @@ Do not bypass those layers by invoking the route handler directly.
 ## Release checklist
 
 - Update `README.md` when changing public APIs.
-- Update `docs/plan/initial.md` only if intentionally revising the implementation plan history.
 - Keep package name as `@mwillbanks/elysia-mcp-adapter`.
 - Keep the package ESM-only unless there is a specific compatibility requirement.
 - Do not add a dependency on a full MCP framework unless it remains a thin transport adapter.
