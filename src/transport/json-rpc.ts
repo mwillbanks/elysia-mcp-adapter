@@ -25,7 +25,8 @@ import {
   hasTasksCapability,
   setTaskController,
   TaskController,
-  TaskProtocolError
+  TaskProtocolError,
+  type TaskSubscription
 } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
 import { findResourceReader, getMcpRegistry } from '../registry.js'
@@ -385,8 +386,24 @@ async function callTool(
       execution: {
         method: 'tools/call',
         params,
-        invoke: async () =>
-          (await tool.invoke(args, invocation)) as unknown as Record<string, unknown>
+        invoke: async (signal) => {
+          const executionSignal = signal ?? request.signal
+          const executionRequest =
+            executionSignal === request.signal
+              ? request
+              : new Request(request.url, {
+                  method: request.method,
+                  headers: request.headers,
+                  signal: executionSignal
+                })
+          setTaskController(executionRequest, controller)
+          return (await tool.invoke(args, {
+            ...invocation,
+            request: executionRequest,
+            signal: executionSignal,
+            task: controller
+          })) as unknown as Record<string, unknown>
+        }
       }
     },
     taskRequestContext(request, params, context)
@@ -677,7 +694,11 @@ function taskRequestContext(
     signal: request.signal,
     meta: isRecord(params._meta) ? params._meta : undefined,
     principalKey: principal
-      ? `${principal.issuer ?? ''}\u0000${principal.subject ?? ''}\u0000${principal.clientId ?? ''}`
+      ? JSON.stringify([
+          principal.issuer ?? null,
+          principal.subject ?? null,
+          principal.clientId ?? null
+        ])
       : undefined
   }
 }
@@ -718,66 +739,94 @@ async function handleTaskSubscription(
     }
     const subscriptionId = payload.id
     const encoder = new TextEncoder()
-    let subscription: { close(): void | Promise<void>; done?: Promise<void> } | undefined
     let closed = false
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
+    let accepted: Set<string> | undefined
+    let subscription: TaskSubscription | undefined
+    const queuedTasks: DetailedTask[] = []
     const event = (message: unknown) =>
       encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
+    const enqueueTask = (task: DetailedTask) => {
+      if (closed) return
+      if (accepted && !accepted.has(task.taskId)) {
+        closed = true
+        streamController?.error(new Error(`Task provider emitted unaccepted task "${task.taskId}"`))
+        void safelyCloseTaskSubscription(subscription)
+        return
+      }
+      if (!streamController) {
+        queuedTasks.push(task)
+        return
+      }
+      streamController.enqueue(
+        event({
+          jsonrpc: JSON_RPC_VERSION,
+          method: 'notifications/tasks',
+          params: {
+            ...task,
+            _meta: {
+              'io.modelcontextprotocol/subscriptionId': subscriptionId
+            }
+          }
+        })
+      )
+    }
+    subscription = await controller.listen(
+      taskIds,
+      enqueueTask,
+      taskRequestContext(request, params, context)
+    )
+    let acceptedTaskIds: string[]
+    try {
+      acceptedTaskIds = acceptedSubscriptionTaskIds(subscription, taskIds)
+    } catch (error) {
+      await safelyCloseTaskSubscription(subscription)
+      throw error
+    }
+    accepted = new Set(acceptedTaskIds)
+    if (queuedTasks.some((task) => !accepted.has(task.taskId))) {
+      await safelyCloseTaskSubscription(subscription)
+      throw new Error('Task provider emitted a notification for an unaccepted task')
+    }
     const body = new ReadableStream<Uint8Array>({
       async start(stream) {
+        streamController = stream
         stream.enqueue(
           event({
             jsonrpc: JSON_RPC_VERSION,
             method: 'notifications/subscriptions/acknowledged',
             params: {
-              notifications: { taskIds },
+              notifications: { taskIds: acceptedTaskIds },
               _meta: {
                 'io.modelcontextprotocol/subscriptionId': subscriptionId
               }
             }
           })
         )
-        subscription = await controller.listen(
-          taskIds,
-          (task: DetailedTask) => {
-            if (closed) return
-            stream.enqueue(
-              event({
-                jsonrpc: JSON_RPC_VERSION,
-                method: 'notifications/tasks',
-                params: {
-                  ...task,
-                  _meta: {
-                    'io.modelcontextprotocol/subscriptionId': subscriptionId
-                  }
+        for (const task of queuedTasks) enqueueTask(task)
+        queuedTasks.length = 0
+        if (!subscription || subscription.done) {
+          await subscription?.done
+          if (closed) return
+          closed = true
+          stream.enqueue(
+            event({
+              jsonrpc: JSON_RPC_VERSION,
+              id: payload.id,
+              result: {
+                resultType: 'complete',
+                _meta: {
+                  'io.modelcontextprotocol/subscriptionId': subscriptionId
                 }
-              })
-            )
-          },
-          taskRequestContext(request, params, context)
-        )
-        if (subscription?.done) {
-          await subscription.done
-          if (!closed) {
-            closed = true
-            stream.enqueue(
-              event({
-                jsonrpc: JSON_RPC_VERSION,
-                id: payload.id,
-                result: {
-                  resultType: 'complete',
-                  _meta: {
-                    'io.modelcontextprotocol/subscriptionId': subscriptionId
-                  }
-                }
-              })
-            )
-            stream.close()
-          }
+              }
+            })
+          )
+          stream.close()
         }
       },
       async cancel() {
         closed = true
-        await subscription?.close()
+        await safelyCloseTaskSubscription(subscription)
       }
     })
     void app
@@ -792,6 +841,29 @@ async function handleTaskSubscription(
   } catch (error) {
     return jsonResponse(normalizeDispatchError(payload.id ?? null, error), errorStatus(error))
   }
+}
+
+async function safelyCloseTaskSubscription(
+  subscription: TaskSubscription | undefined
+): Promise<void> {
+  try {
+    await subscription?.close()
+  } catch {
+    // Cleanup failures cannot change an established protocol response or stream error.
+  }
+}
+
+function acceptedSubscriptionTaskIds(
+  subscription: TaskSubscription | undefined,
+  requestedTaskIds: readonly string[]
+): string[] {
+  if (!subscription) return []
+  const accepted = subscription.acceptedTaskIds ?? requestedTaskIds
+  const requested = new Set(requestedTaskIds)
+  if (!accepted.every((taskId) => typeof taskId === 'string' && requested.has(taskId))) {
+    throw new Error('Task provider accepted an unrequested subscription task')
+  }
+  return [...new Set(accepted)]
 }
 
 function validateAppReferences(

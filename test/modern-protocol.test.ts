@@ -94,6 +94,36 @@ describe('modern request envelope validation', () => {
     const response = await modernRpc(app, 'tools/call', { name }, { 'mcp-name': encoded })
     expect(response.status).toBe(200)
 
+    const replacementCharacter = '\uFFFD'
+    const replacementApp = new Elysia()
+      .use(mcp({ allowedRoutes: [] }))
+      .mcpTool(replacementCharacter, () => 'ok')
+    const replacementEncoded = `=?base64?${Buffer.from(replacementCharacter).toString('base64')}?=`
+    const replacementResponse = await modernRpc(
+      replacementApp,
+      'tools/call',
+      { name: replacementCharacter },
+      { 'mcp-name': replacementEncoded }
+    )
+    expect(replacementResponse.status).toBe(200)
+
+    const malformedUtf8 = await modernRpc(
+      app,
+      'tools/call',
+      { name },
+      { 'mcp-name': `=?base64?${Buffer.from([0xff]).toString('base64')}?=` }
+    )
+    expect(malformedUtf8.status).toBe(400)
+    expect(malformedUtf8.body.error.code).toBe(-32020)
+
+    for (const literalName of ['foo?=', '=?base64?foo']) {
+      const literalApp = new Elysia()
+        .use(mcp({ allowedRoutes: [] }))
+        .mcpTool(literalName, () => 'ok')
+      const literalResponse = await modernRpc(literalApp, 'tools/call', { name: literalName })
+      expect(literalResponse.status).toBe(200)
+    }
+
     const missingCapabilities = await app.handle(
       new Request('http://localhost/mcp', {
         method: 'POST',
@@ -172,6 +202,53 @@ describe('mirrored tool parameter headers', () => {
       expect(invalid.body.error.code).toBe(-32020)
     }
     expect(invocations).toBe(1)
+  })
+
+  test('requires canonical decimal integer header values', async () => {
+    let invocations = 0
+    const app = new Elysia().use(mcp({ allowedRoutes: [] })).mcpTool(
+      'integer.echo',
+      ({ count }: any) => {
+        invocations += 1
+        return count
+      },
+      {
+        inputSchema: {
+          type: 'object',
+          properties: {
+            count: { type: 'integer', 'x-mcp-header': 'Count' }
+          },
+          required: ['count']
+        }
+      }
+    )
+
+    const valid = await modernRpc(
+      app,
+      'tools/call',
+      { name: 'integer.echo', arguments: { count: 16 } },
+      { 'mcp-param-count': '16' }
+    )
+    expect(valid.status).toBe(200)
+    const decimalEquivalent = await modernRpc(
+      app,
+      'tools/call',
+      { name: 'integer.echo', arguments: { count: 16 } },
+      { 'mcp-param-count': '16.0' }
+    )
+    expect(decimalEquivalent.status).toBe(200)
+
+    for (const value of ['', '0x10', '016', '16.5', '+16']) {
+      const invalid = await modernRpc(
+        app,
+        'tools/call',
+        { name: 'integer.echo', arguments: { count: 16 } },
+        { 'mcp-param-count': value }
+      )
+      expect(invalid.status).toBe(400)
+      expect(invalid.body.error.code).toBe(-32020)
+    }
+    expect(invocations).toBe(2)
   })
 })
 

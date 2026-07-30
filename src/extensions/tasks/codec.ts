@@ -115,6 +115,7 @@ function assertTaskStatusPayload(value: Record<string, unknown>, label: string):
       if (!isRecord(value.inputRequests)) {
         throw new TypeError(`${label}.inputRequests must be an object`)
       }
+      assertTaskInputRequests(value.inputRequests, label)
       assertNoStatusPayload(value, ['result', 'error'])
       return
     case 'completed':
@@ -138,6 +139,28 @@ function assertTaskStatusPayload(value: Record<string, unknown>, label: string):
     case 'cancelled':
       assertNoStatusPayload(value, ['result', 'error', 'inputRequests'])
       return
+  }
+}
+
+function assertTaskInputRequests(requests: Record<string, unknown>, label: string): void {
+  for (const [key, request] of Object.entries(requests)) {
+    if (!isRecord(request)) {
+      throw new TypeError(`${label}.inputRequests.${key} must be an object`)
+    }
+    if (
+      request.method !== 'elicitation/create' &&
+      request.method !== 'sampling/createMessage' &&
+      request.method !== 'roots/list'
+    ) {
+      throw new TypeError(`${label}.inputRequests.${key}.method is invalid`)
+    }
+    if (request.method === 'roots/list') {
+      if (request.params !== undefined) {
+        throw new TypeError(`${label}.inputRequests.${key}.params is not valid for roots/list`)
+      }
+    } else if (request.params !== undefined && !isRecord(request.params)) {
+      throw new TypeError(`${label}.inputRequests.${key}.params must be an object`)
+    }
   }
 }
 

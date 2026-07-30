@@ -91,11 +91,26 @@ function normalizeExtensions(options: McpPluginOptions): NormalizedMcpPluginOpti
   const auth = options.extensions?.auth
   const apps = options.extensions?.apps
 
-  if (tasks?.defaultTtl !== undefined && tasks.defaultTtl !== null && tasks.defaultTtl <= 0) {
-    throw new TypeError('Tasks defaultTtl must be a positive number of milliseconds or null')
+  if (
+    tasks?.defaultTtl !== undefined &&
+    tasks.defaultTtl !== null &&
+    (!Number.isSafeInteger(tasks.defaultTtl) || tasks.defaultTtl < 0)
+  ) {
+    throw new TypeError(
+      'Tasks defaultTtl must be a non-negative integer number of milliseconds or null'
+    )
   }
-  if (tasks?.pollInterval !== undefined && tasks.pollInterval <= 0) {
-    throw new TypeError('Tasks pollInterval must be a positive number of milliseconds')
+  if (
+    tasks?.pollInterval !== undefined &&
+    (!Number.isSafeInteger(tasks.pollInterval) || tasks.pollInterval <= 0)
+  ) {
+    throw new TypeError('Tasks pollInterval must be a positive integer number of milliseconds')
+  }
+  if (
+    auth?.clockSkewSeconds !== undefined &&
+    (!Number.isFinite(auth.clockSkewSeconds) || auth.clockSkewSeconds < 0)
+  ) {
+    throw new TypeError('Auth clockSkewSeconds must be a finite non-negative number')
   }
 
   return {

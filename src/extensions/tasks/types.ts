@@ -186,6 +186,8 @@ export interface TaskProviderContext {
 }
 
 export interface TaskSubscription {
+  /** The subset of requested task IDs accepted by the provider. Defaults to all requested IDs. */
+  acceptedTaskIds?: readonly string[]
   close(): void | Promise<void>
   /** Resolves when the provider intentionally ends the stream gracefully. */
   done?: Promise<void>

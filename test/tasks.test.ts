@@ -100,7 +100,11 @@ class TestTaskProvider implements TaskProvider {
     return true
   }
 
-  listen(taskIds: readonly string[]): undefined {
+  listen(
+    taskIds: readonly string[],
+    _listener: (task: DetailedTask) => void | Promise<void>,
+    _context: TaskProviderContext
+  ): undefined {
     this.listenTaskIds = taskIds
     return undefined
   }
@@ -252,6 +256,28 @@ describe('tasks extension', () => {
     ).rejects.toThrow('task.createdAt')
   })
 
+  it('rejects provider identity mismatches and malformed input requests', async () => {
+    const provider = new TestTaskProvider()
+    provider.tasks.set('requested', workingTask('different'))
+    provider.tasks.set('input-required', {
+      ...workingTask('input-required'),
+      status: 'input_required',
+      inputRequests: {
+        invalid: {
+          method: 'roots/list',
+          params: {}
+        } as never
+      }
+    })
+    const controller = createTaskController({ provider })
+    const context = { request: new Request('http://localhost/mcp') }
+
+    await expect(controller.get('requested', context)).rejects.toThrow('identity contract')
+    await expect(controller.get('input-required', context)).rejects.toThrow(
+      'params is not valid for roots/list'
+    )
+  })
+
   it('dispatches get, MRTR update, and cooperative cancellation', async () => {
     const provider = new TestTaskProvider()
     const task = workingTask()
@@ -360,6 +386,21 @@ describe('tasks extension', () => {
       method: 'notifications/tasks',
       params: task
     })
+  })
+
+  it('rejects subscription notifications outside the requested task set', () => {
+    const provider = new TestTaskProvider()
+    provider.listen = (_taskIds, listener, _context) => {
+      listener(workingTask('unexpected'))
+      return undefined
+    }
+    const controller = createTaskController({ provider })
+
+    expect(() =>
+      controller.listen(['requested'], () => undefined, {
+        request: new Request('http://localhost/mcp')
+      })
+    ).toThrow('subscription contract')
   })
 
   it('records MRTR requests with provider-enforced lifetime-unique keys', async () => {

@@ -70,6 +70,11 @@ export class TaskController {
     const task = await this.provider.get(taskId, this.context(context))
     if (!task) throw createInvalidTaskParamsError(`Unknown task: ${taskId}`)
     assertTaskRecord(task, 'task')
+    if (task.taskId !== taskId) {
+      throw new Error(
+        `Task provider violated its identity contract: requested "${taskId}", received "${task.taskId}"`
+      )
+    }
     return { ...task, resultType: 'complete' }
   }
 
@@ -130,10 +135,16 @@ export class TaskController {
     context: TaskRequestContext
   ): Promise<TaskSubscription | undefined> | TaskSubscription | undefined {
     if (!this.provider.listen) return undefined
+    const requested = new Set(taskIds)
     return this.provider.listen(
       taskIds,
       (task) => {
         assertTaskRecord(task, 'task notification')
+        if (!requested.has(task.taskId)) {
+          throw new Error(
+            `Task provider violated its subscription contract: unexpected task "${task.taskId}"`
+          )
+        }
         return listener(task)
       },
       this.context(context)

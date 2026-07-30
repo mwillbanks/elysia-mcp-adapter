@@ -41,6 +41,8 @@ export function isPrincipalExpired(
   nowSeconds = Date.now() / 1000,
   clockSkewSeconds = 0
 ): boolean {
+  assertClockSkew(clockSkewSeconds)
+  assertFiniteTime(nowSeconds, 'nowSeconds')
   return (
     principal.expiresAt !== undefined &&
     (!Number.isFinite(principal.expiresAt) || principal.expiresAt <= nowSeconds - clockSkewSeconds)
@@ -92,6 +94,7 @@ export async function authorizeBearerRequest(
   request: Request,
   options: AuthorizeBearerRequestOptions
 ): Promise<McpAuthorizationResult> {
+  assertClockSkew(options.clockSkewSeconds ?? 0)
   const resource = options.resource instanceof URL ? options.resource.href : options.resource
   const resourceMetadata = protectedResourceMetadataUrl(options.resource)
   const parsed = parseBearerAuthorization(request.headers.get('authorization'))
@@ -138,7 +141,9 @@ export async function authorizeBearerRequest(
     }
   }
 
-  const nowSeconds = (options.now?.() ?? Date.now()) / 1000
+  const nowMilliseconds = options.now?.() ?? Date.now()
+  assertFiniteTime(nowMilliseconds, 'now')
+  const nowSeconds = nowMilliseconds / 1000
   const trustedIssuers = options.authorizationServers?.map((issuer) =>
     issuer instanceof URL ? issuer.href : issuer
   )
@@ -183,5 +188,17 @@ export async function authorizeBearerRequest(
       scopes: principal.scopes,
       attributes: principal.claims ?? Object.freeze({})
     })
+  }
+}
+
+function assertClockSkew(value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError('clockSkewSeconds must be a finite non-negative number')
+  }
+}
+
+function assertFiniteTime(value: number, label: string): void {
+  if (!Number.isFinite(value)) {
+    throw new TypeError(`${label} must return a finite timestamp`)
   }
 }

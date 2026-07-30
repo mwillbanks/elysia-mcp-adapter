@@ -345,6 +345,35 @@ describe('integrated Tasks', () => {
     expect(polled.body.result.result.structuredContent.guarded).toBe(true)
   })
 
+  test('propagates provider cancellation signals into task execution', async () => {
+    const provider = new IntegrationTaskProvider()
+    provider.executionSignal = AbortSignal.abort()
+    let contextAborted = false
+    let requestAborted = false
+    const app = new Elysia()
+      .use(mcp({ allowedRoutes: [], extensions: { tasks: { provider } } }))
+      .mcpTool(
+        'cancel-aware',
+        (_input, context) => {
+          contextAborted = context.signal?.aborted === true
+          requestAborted = context.request.signal.aborted
+          return { cancelled: contextAborted && requestAborted }
+        },
+        { taskExecution: 'required' }
+      )
+
+    await modernRpc(app, 'tools/call', {
+      name: 'cancel-aware',
+      _meta: {
+        'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+      }
+    })
+    await provider.execution
+
+    expect(contextAborted).toBe(true)
+    expect(requestAborted).toBe(true)
+  })
+
   test('requires per-request capability and rejects Tasks on legacy', async () => {
     const provider = new IntegrationTaskProvider()
     const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
@@ -353,6 +382,37 @@ describe('integrated Tasks', () => {
     const legacy = await rpc(app, 'tasks/get', { taskId: 'missing' })
     expect(legacy.status).toBe(404)
     expect(legacy.body.error.code).toBe(-32601)
+  })
+
+  test('requires task IDs in modern routing headers', async () => {
+    const app = new Elysia().use(
+      mcp({ extensions: { tasks: { provider: new IntegrationTaskProvider() } } })
+    )
+    const response = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2026-07-28',
+          'mcp-method': 'tasks/get'
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tasks/get',
+          params: {
+            taskId: 'task-1',
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+            }
+          }
+        })
+      })
+    )
+
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as any).error.code).toBe(-32020)
   })
 
   test('acknowledges subscriptions before complete task snapshots and cleans up', async () => {
@@ -400,6 +460,70 @@ describe('integrated Tasks', () => {
     expect(second).not.toContain('"task":')
     await reader.cancel()
     expect(provider.subscriptionClosed).toBe(true)
+  })
+
+  test('acknowledges only provider-accepted task subscriptions', async () => {
+    const provider = new IntegrationTaskProvider()
+    provider.acceptedTaskIds = ['accepted']
+    const now = new Date().toISOString()
+    provider.tasks.set('accepted', {
+      taskId: 'accepted',
+      status: 'working',
+      createdAt: now,
+      lastUpdatedAt: now,
+      ttlMs: 60_000
+    })
+    const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
+    const response = await taskSubscriptionRequest(app, ['accepted', 'declined'])
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing subscription body')
+    const first = new TextDecoder().decode((await reader.read()).value)
+    expect(first).toContain('"taskIds":["accepted"]')
+    await reader.cancel()
+  })
+
+  test('rejects notifications outside the accepted subscription subset', async () => {
+    const provider = new IntegrationTaskProvider()
+    provider.acceptedTaskIds = ['accepted']
+    const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
+    const response = await taskSubscriptionRequest(app, ['accepted', 'declined'])
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing subscription body')
+    const first = new TextDecoder().decode((await reader.read()).value)
+    expect(first).toContain('"taskIds":["accepted"]')
+
+    provider.subscriptionListener?.({
+      ...workingIntegrationTask('declined'),
+      taskId: 'declined'
+    })
+    await expect(reader.read()).rejects.toThrow('unaccepted task')
+    expect(provider.subscriptionClosed).toBe(true)
+  })
+
+  test('contains provider cleanup failures after a subscription contract error', async () => {
+    const provider = new IntegrationTaskProvider()
+    provider.acceptedTaskIds = ['accepted']
+    provider.rejectSubscriptionClose = true
+    const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
+    const response = await taskSubscriptionRequest(app, ['accepted', 'declined'])
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing subscription body')
+    await reader.read()
+
+    provider.subscriptionListener?.(workingIntegrationTask('declined'))
+    await expect(reader.read()).rejects.toThrow('unaccepted task')
+  })
+
+  test('completes subscriptions gracefully when the provider cannot listen', async () => {
+    const provider = new IntegrationTaskProvider()
+    Object.defineProperty(provider, 'listen', { value: undefined })
+    const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
+    const response = await taskSubscriptionRequest(app, ['unavailable'])
+    const body = await response.text()
+
+    expect(body).toContain('"notifications/subscriptions/acknowledged"')
+    expect(body).toContain('"taskIds":[]')
+    expect(body).toContain('"resultType":"complete"')
   })
 
   test('binds provider operations to the verifier-derived principal key', async () => {
@@ -452,6 +576,59 @@ describe('integrated Tasks', () => {
       },
       { authorization: 'Bearer bob' }
     )
+    expect(denied.body.error.code).toBe(-32602)
+  })
+
+  test('uses collision-safe verifier-derived principal keys', async () => {
+    const provider = new IntegrationTaskProvider()
+    const resource = 'https://api.example.com/mcp'
+    const app = new Elysia()
+      .use(
+        mcp({
+          allowedRoutes: [],
+          extensions: {
+            tasks: { provider },
+            auth: {
+              resource,
+              authorizationServers: ['https://auth.example.com'],
+              verifyAccessToken: async (token) => ({
+                tokenType: 'access_token' as const,
+                subject: token === 'principal-a' ? 'x' : 'x\u0000y',
+                clientId: token === 'principal-a' ? 'y\u0000z' : 'z',
+                issuer: 'https://auth.example.com',
+                audience: resource,
+                scopes: [],
+                expiresAt: Math.floor(Date.now() / 1000) + 60
+              })
+            }
+          }
+        })
+      )
+      .mcpTool('collision-safe-task', () => ({ ok: true }), { taskExecution: 'required' })
+
+    const created = await modernRpc(
+      app,
+      'tools/call',
+      {
+        name: 'collision-safe-task',
+        _meta: {
+          'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+        }
+      },
+      { authorization: 'Bearer principal-a' }
+    )
+    const denied = await modernRpc(
+      app,
+      'tasks/get',
+      {
+        taskId: created.body.result.taskId,
+        _meta: {
+          'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+        }
+      },
+      { authorization: 'Bearer principal-b' }
+    )
+
     expect(denied.body.error.code).toBe(-32602)
   })
 })
@@ -511,7 +688,11 @@ class IntegrationTaskProvider implements TaskProvider {
   readonly tasks = new Map<string, DetailedTask>()
   readonly owners = new Map<string, string | undefined>()
   execution: Promise<void> = Promise.resolve()
+  executionSignal?: AbortSignal
   subscriptionClosed = false
+  acceptedTaskIds?: readonly string[]
+  subscriptionListener?: (task: DetailedTask) => void | Promise<void>
+  rejectSubscriptionClose = false
 
   async create(
     _request: TaskDurableCreateRequest,
@@ -529,7 +710,7 @@ class IntegrationTaskProvider implements TaskProvider {
     }
     this.tasks.set(task.taskId, task)
     this.owners.set(task.taskId, context.principalKey)
-    this.execution = scheduler.invoke().then((result) => {
+    this.execution = scheduler.invoke(this.executionSignal).then((result) => {
       this.tasks.set(task.taskId, {
         ...task,
         status: 'completed',
@@ -562,16 +743,55 @@ class IntegrationTaskProvider implements TaskProvider {
   }
 
   listen(taskIds: readonly string[], listener: (task: DetailedTask) => void) {
+    this.subscriptionListener = listener
     for (const taskId of taskIds) {
       const task = this.tasks.get(taskId)
       if (task) listener(task)
     }
     return {
-      close: () => {
+      acceptedTaskIds: this.acceptedTaskIds,
+      close: async () => {
         this.subscriptionClosed = true
+        if (this.rejectSubscriptionClose) throw new Error('cleanup failed')
       }
     }
   }
+}
+
+function workingIntegrationTask(taskId: string): DetailedTask {
+  const now = new Date().toISOString()
+  return {
+    taskId,
+    status: 'working',
+    createdAt: now,
+    lastUpdatedAt: now,
+    ttlMs: 60_000
+  }
+}
+
+function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[]) {
+  return app.handle(
+    new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'subscriptions/listen'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'subscriptions/listen',
+        params: {
+          notifications: { taskIds },
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+          }
+        }
+      })
+    })
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

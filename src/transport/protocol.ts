@@ -160,6 +160,13 @@ function methodName(payload: JsonRpcRequest): string | undefined {
   if (payload.method === 'resources/read') {
     return typeof params.uri === 'string' ? params.uri : undefined
   }
+  if (
+    payload.method === 'tasks/get' ||
+    payload.method === 'tasks/update' ||
+    payload.method === 'tasks/cancel'
+  ) {
+    return typeof params.taskId === 'string' ? params.taskId : undefined
+  }
   return undefined
 }
 
@@ -172,7 +179,7 @@ export function decodeMcpHeaderValue(value: string, headerName: string): string 
   ) {
     throw new McpProtocolError(-32020, `${headerName} contains invalid characters`, 400)
   }
-  if (!value.startsWith('=?base64?') && !value.endsWith('?=')) return value
+  if (!(value.startsWith('=?base64?') && value.endsWith('?='))) return value
 
   const match = BASE64_SENTINEL.exec(value)
   if (!match) {
@@ -183,8 +190,12 @@ export function decodeMcpHeaderValue(value: string, headerName: string): string 
     throw new McpProtocolError(-32020, `${headerName} contains malformed base64`, 400)
   }
   const decoded = Buffer.from(encoded, 'base64')
-  if (decoded.toString('base64') !== encoded || decoded.toString('utf8').includes('\uFFFD')) {
+  if (decoded.toString('base64') !== encoded) {
     throw new McpProtocolError(-32020, `${headerName} contains malformed base64`, 400)
   }
-  return decoded.toString('utf8')
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(decoded)
+  } catch {
+    throw new McpProtocolError(-32020, `${headerName} contains malformed base64`, 400)
+  }
 }

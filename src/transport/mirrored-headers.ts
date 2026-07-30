@@ -9,6 +9,7 @@ interface MirroredHeader {
 }
 
 const HTTP_FIELD_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u
 
 export function assertMirroredToolHeaders(
   request: Request,
@@ -124,6 +125,7 @@ function matchesBodyValue(header: string, body: unknown, type: MirroredHeader['t
     return typeof body === 'boolean' && header === (body ? 'true' : 'false')
   }
   if (typeof body !== 'number' || !Number.isSafeInteger(body)) return false
+  if (!JSON_NUMBER.test(header)) return false
   const parsed = Number(header)
   return Number.isSafeInteger(parsed) && parsed === body
 }

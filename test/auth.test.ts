@@ -5,6 +5,7 @@ import {
   buildBearerChallenge,
   buildProtectedResourceMetadata,
   filterAuthorizedScopes,
+  isPrincipalExpired,
   MCP_CLIENT_CREDENTIALS_EXTENSION,
   MCP_ENTERPRISE_MANAGED_AUTH_EXTENSION,
   missingRequiredScopes,
@@ -144,6 +145,48 @@ describe('resource-server enforcement', () => {
     expect(missingRequiredScopes(['tools:read', 'tools:write'], ['tools:read'])).toEqual([
       'tools:write'
     ])
+  })
+
+  test('rejects invalid clock skew in direct authorization helpers', async () => {
+    for (const clockSkewSeconds of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      expect(() => isPrincipalExpired({ expiresAt: 100 }, 0, clockSkewSeconds)).toThrow(
+        'clockSkewSeconds'
+      )
+      await expect(
+        authorizeBearerRequest(
+          new Request(resource, { headers: { Authorization: 'Bearer opaque' } }),
+          {
+            resource,
+            verifier: async () => {
+              throw new Error('must not run')
+            },
+            clockSkewSeconds
+          }
+        )
+      ).rejects.toThrow('clockSkewSeconds')
+    }
+  })
+
+  test('rejects invalid verifier clock values', async () => {
+    expect(() => isPrincipalExpired({ expiresAt: 100 }, Number.NaN)).toThrow('nowSeconds')
+    for (const now of [() => Number.NaN, () => Number.NEGATIVE_INFINITY]) {
+      await expect(
+        authorizeBearerRequest(
+          new Request(resource, { headers: { Authorization: 'Bearer opaque' } }),
+          {
+            resource,
+            verifier: async () => ({
+              tokenType: 'access_token',
+              subject: 'user',
+              audience: resource,
+              scopes: [],
+              expiresAt: 1
+            }),
+            now
+          }
+        )
+      ).rejects.toThrow('finite timestamp')
+    }
   })
 
   test('preserves the exact token through verifier and request context', async () => {
