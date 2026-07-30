@@ -107,15 +107,51 @@ const app = new Elysia()
 
 Routes become tools by default. Resources and prompts require explicit route metadata or the standalone methods above.
 
+## MCP extensions
+
+Tasks, OAuth resource-server enforcement, enterprise authorization profiles, and Apps are opt-in:
+
+```ts
+app.use(
+  mcp({
+    transport: {
+      protocolVersions: ['2026-07-28', '2025-11-25']
+    },
+    extensions: {
+      tasks: {
+        version: 'current',
+        provider
+      },
+      auth: {
+        version: 'current',
+        resource: 'https://api.example.com/mcp',
+        authorizationServers: ['https://auth.example.com'],
+        verifyAccessToken
+      },
+      apps: {
+        version: 'current'
+      }
+    }
+  })
+)
+```
+
+Omitting an extension version selects `current`; `draft` and supported dated versions select immutable implementations recorded in the exported `MCP_EXTENSION_SUPPORT` manifest. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
+
+The Apps examples under `examples/` build one self-contained HTML document with Bun standalone HTML mode. They contain no Vite pipeline or runtime assets.
+
+Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
+
 ## Documentation
 
 The full guides and API reference live at **[mwillbanks.github.io/elysia-mcp-adapter](https://mwillbanks.github.io/elysia-mcp-adapter/)**:
 
 - [Installation and quick start](https://mwillbanks.github.io/elysia-mcp-adapter/docs/getting-started/quick-start/)
-- [Route-backed tools](https://mwillbanks.github.io/elysia-mcp-adapter/docs/guides/route-tools/)
-- [Resources and prompts](https://mwillbanks.github.io/elysia-mcp-adapter/docs/guides/resources-and-prompts/)
-- [Configuration reference](https://mwillbanks.github.io/elysia-mcp-adapter/docs/reference/configuration/)
-- [Security model](https://mwillbanks.github.io/elysia-mcp-adapter/docs/guides/security/)
+- [Route-backed tools](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/route-backed-tools/)
+- [Resources and prompts](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/resources-and-prompts/)
+- [Configuration reference](https://mwillbanks.github.io/elysia-mcp-adapter/docs/getting-started/configuration/)
+- [Security model](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/security/)
+- [MCP extensions](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/)
 
 ## Development
 

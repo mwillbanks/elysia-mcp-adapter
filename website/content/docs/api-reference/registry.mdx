@@ -1,0 +1,37 @@
+---
+title: Registry
+description: Inspect the resolved MCP tools, resources, templates, and prompts for an Elysia application.
+icon: LibraryBig
+---
+
+`getMcpRegistry()` resolves route-backed and standalone primitives into the registry used by MCP discovery and invocation.
+
+## `getMcpRegistry`
+
+```ts
+function getMcpRegistry(app: Elysia): McpRegistry
+```
+
+```ts
+import { getMcpRegistry } from '@mwillbanks/elysia-mcp-adapter'
+
+const registry = getMcpRegistry(app)
+
+for (const [name, tool] of registry.tools) {
+  console.log(name, tool.description)
+}
+```
+
+The returned maps are keyed by tool name, resource URI, resource-template URI, and prompt name. Registry entries identify whether they came from a route or an explicit registration.
+
+<auto-type-table path="../../../../src/types.ts" name="McpRegistry" />
+
+## Use cases
+
+Use the registry for application diagnostics, tests, or controlled introspection. Normal MCP clients should use `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` instead of importing application internals.
+
+```ts
+expect(getMcpRegistry(app).tools.has('users.get')).toBe(true)
+```
+
+The registry is cached against the route and explicit-registration state. Treat it as a resolved runtime view, not as a mutable configuration API.

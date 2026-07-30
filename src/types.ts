@@ -1,4 +1,23 @@
 import type { Elysia, HTTPMethod, InternalRoute } from 'elysia'
+import type {
+  McpAppsProtocolVersionSelector,
+  McpAppsResourceCsp,
+  McpAppsResourceMeta,
+  McpAppsResourcePermissions,
+  McpAppsToolMeta
+} from './extensions/apps/index.js'
+import type {
+  McpAuthOptions,
+  McpAuthorizationContext,
+  McpAuthVersion
+} from './extensions/auth/index.js'
+import type { McpProtocolVersion } from './extensions/manifest.js'
+import type {
+  TaskController,
+  TaskExecutionMode,
+  TaskProvider,
+  TasksVersionInput
+} from './extensions/tasks/index.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
 
@@ -14,6 +33,33 @@ export type JsonSchema = Record<string, unknown>
 export type McpRouteKind = 'tool' | 'resource' | 'prompt'
 export type McpInputMode = 'envelope' | 'flatten'
 export type McpNameCollisionStrategy = 'error' | 'suffix'
+
+export interface McpAuthorizationOptions {
+  requiredScopes?: readonly string[]
+}
+
+export interface McpAppsOptions {
+  version?: McpAppsProtocolVersionSelector
+  includeDeprecatedResourceUri?: boolean
+}
+
+export interface McpTasksOptions {
+  version?: TasksVersionInput
+  provider: TaskProvider
+  defaultTtl?: number | null
+  pollInterval?: number
+}
+
+export interface McpExtensionOptions {
+  tasks?: McpTasksOptions
+  auth?: McpAuthOptions
+  apps?: McpAppsOptions
+}
+
+export type McpAppToolOptions = McpAppsToolMeta & { resourceUri: string }
+export type McpAppCsp = McpAppsResourceCsp
+export type McpAppPermissions = McpAppsResourcePermissions
+export type McpAppResourceMetadata = McpAppsResourceMeta & Record<string, unknown>
 
 export type McpRouteMatcher =
   | string
@@ -64,6 +110,8 @@ export interface McpRouteResourceOptions {
   description?: string
   mimeType?: string
   annotations?: McpAnnotations
+  authorization?: McpAuthorizationOptions
+  app?: McpAppResourceMetadata
   mapUriToInput?: (
     variables: Record<string, string>,
     context: McpResourceInvocationContext
@@ -91,6 +139,9 @@ export type McpRouteOptions =
       outputSchema?: unknown
       annotations?: McpToolAnnotations
       icons?: McpIcon[]
+      authorization?: McpAuthorizationOptions
+      taskExecution?: TaskExecutionMode
+      app?: McpAppToolOptions
       resource?: McpRouteResourceOptions
       prompt?: McpRoutePromptOptions
       marshal?: McpResponseMarshalOptions
@@ -118,7 +169,9 @@ export interface McpPluginOptions {
     enableGetSse?: boolean
     enableDeleteSession?: boolean
     protocolVersion?: string
+    protocolVersions?: McpProtocolVersion[]
   }
+  extensions?: McpExtensionOptions
   diagnostics?: {
     failOnMissingSchema?: boolean
   }
@@ -146,6 +199,11 @@ export interface NormalizedMcpPluginOptions
   }
   marshal: Required<McpResponseMarshalOptions>
   transport: Required<NonNullable<McpPluginOptions['transport']>>
+  extensions: {
+    tasks?: McpTasksOptions & { version: Exclude<TasksVersionInput, 'current'> }
+    auth?: McpAuthOptions & { version: Exclude<McpAuthVersion, 'current'> }
+    apps?: McpAppsOptions & { version: '2026-01-26' | 'draft' }
+  }
   diagnostics: Required<NonNullable<McpPluginOptions['diagnostics']>>
   operationNameResolver: (operation: McpRouteOperation) => string
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
@@ -187,6 +245,10 @@ export interface McpInvocationContext {
   request: Request
   signal?: AbortSignal
   meta?: Record<string, unknown>
+  protocolVersion?: McpProtocolVersion
+  clientCapabilities?: Record<string, unknown>
+  authorization?: Readonly<McpAuthorizationContext>
+  task?: TaskController
 }
 
 export interface McpResourceInvocationContext extends McpInvocationContext {
@@ -256,6 +318,9 @@ export interface McpToolDefinition {
   outputSchema?: JsonSchema
   annotations?: McpToolAnnotations
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
+  taskExecution?: TaskExecutionMode
+  app?: McpAppToolOptions
   invoke: (args: unknown, context: McpInvocationContext) => Promise<McpToolResult>
 }
 
@@ -265,6 +330,7 @@ export interface McpResourceContent {
   text?: string
   blob?: string
   annotations?: McpAnnotations
+  _meta?: Record<string, unknown>
 }
 
 export interface McpResourceReadResult {
@@ -281,6 +347,8 @@ export interface McpResourceDefinition {
   mimeType?: string
   annotations?: McpAnnotations
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
+  app?: McpAppResourceMetadata
   read: (context: McpResourceInvocationContext) => Promise<McpResourceReadResult>
 }
 
@@ -293,6 +361,8 @@ export interface McpResourceTemplateDefinition {
   mimeType?: string
   annotations?: McpAnnotations
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
+  app?: McpAppResourceMetadata
   read: (context: McpResourceInvocationContext) => Promise<McpResourceReadResult>
 }
 
@@ -322,6 +392,7 @@ export interface McpPromptDefinition {
   arguments?: McpPromptArgument[]
   argsSchema?: JsonSchema
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
   get: (
     args: Record<string, unknown>,
     context: McpPromptInvocationContext
@@ -365,6 +436,9 @@ export interface McpToolOptions {
   outputSchema?: unknown
   annotations?: McpToolAnnotations
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
+  taskExecution?: TaskExecutionMode
+  app?: McpAppToolOptions
 }
 
 export interface McpResourceOptions {
@@ -374,6 +448,8 @@ export interface McpResourceOptions {
   mimeType?: string
   annotations?: McpAnnotations
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
+  app?: McpAppResourceMetadata
 }
 
 export interface McpPromptOptions {
@@ -382,6 +458,7 @@ export interface McpPromptOptions {
   argsSchema?: unknown
   arguments?: McpPromptArgument[]
   icons?: McpIcon[]
+  authorization?: McpAuthorizationOptions
 }
 
 export interface McpAdapterState {

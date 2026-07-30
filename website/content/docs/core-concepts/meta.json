@@ -1,0 +1,11 @@
+{
+  "title": "Core Concepts",
+  "icon": "Waypoints",
+  "pages": [
+    "transportation",
+    "route-backed-tools",
+    "standalone-primitives",
+    "resources-and-prompts",
+    "security"
+  ]
+}

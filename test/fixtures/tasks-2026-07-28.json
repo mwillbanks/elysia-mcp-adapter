@@ -1,0 +1,8 @@
+{
+  "version": "2026-07-28",
+  "extension": "io.modelcontextprotocol/tasks",
+  "missingCapabilityError": -32021,
+  "createResultType": "task",
+  "operationResultType": "complete",
+  "methods": ["tools/call", "tasks/get", "tasks/update", "tasks/cancel", "subscriptions/listen"]
+}

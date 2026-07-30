@@ -22,6 +22,17 @@ describe('transport', () => {
     expect(body.result.instructions).toBe('be careful')
   })
 
+  it('reserves protocolVersion for legacy initialize', () => {
+    expect(() =>
+      mcp({
+        transport: {
+          protocolVersion: '2026-07-28',
+          protocolVersions: ['2026-07-28', '2025-11-25']
+        }
+      })
+    ).toThrow('reserved for legacy initialize')
+  })
+
   it('answers ping', async () => {
     const app = new Elysia().use(mcp({ server, transport: { validateOrigin: false } }))
     const { body } = await rpc(app, 'ping')

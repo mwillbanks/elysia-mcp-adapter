@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  background: transparent;
+  --color-surface: var(--color-background-primary, light-dark(#ffffff, #171923));
+  --color-muted: var(--color-text-secondary, light-dark(#667085, #aab2c8));
+  --color-border: var(--color-border-primary, light-dark(#e5e7eb, #34394a));
+  --color-accent: var(--color-accent-primary, #526ee8);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.task[data-done="true"] span {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}

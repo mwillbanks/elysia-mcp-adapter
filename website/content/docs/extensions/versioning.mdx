@@ -1,0 +1,21 @@
+---
+title: Versions and support manifest
+description: Select immutable extension implementations and audit their upstream provenance.
+---
+
+Every extension accepts `current`, `draft`, or a supported `YYYY-MM-DD`. Unsupported dates fail while the plugin is constructed and the error lists valid choices.
+
+The package exports `MCP_EXTENSION_SUPPORT`. Each entry records its status, inclusion date, upstream repository and revision, applicable package version, and schema hash. This makes the exact wire contract auditable without making private specification packages runtime dependencies.
+
+Aliases never advance at runtime. Updating one requires a reviewed source, fixture, test, and documentation change. The scheduled upstream watcher reports drift; it does not rewrite aliases.
+
+| Extension | `current` | `draft` |
+| --- | --- | --- |
+| Core protocol | `2026-07-28` | Not applicable |
+| Tasks | final SEP-2663, `2026-07-28` | pinned `ext-tasks` snapshot |
+| OAuth | `2026-07-28` | pinned core specification snapshot |
+| Enterprise-Managed Authorization | `2026-06-17` | Not applicable |
+| OAuth Client Credentials | newest pinned draft | newest pinned draft |
+| Apps | `2026-01-26` | `@modelcontextprotocol/ext-apps` `1.7.5` draft |
+
+For client availability, always consult the [canonical extension support matrix](https://modelcontextprotocol.io/extensions/client-matrix).

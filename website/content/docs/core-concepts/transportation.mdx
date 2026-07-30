@@ -1,0 +1,112 @@
+---
+title: Transportation
+description: Follow an MCP request through JSON-RPC, Elysia's lifecycle, and response marshaling.
+icon: Network
+---
+
+The adapter exposes MCP over HTTP at `POST /mcp` by default. It accepts JSON-RPC requests, resolves a registered primitive, and keeps route-backed calls inside Elysia by constructing an internal `Request` and passing it to `app.handle()`.
+
+## Supported JSON-RPC methods
+
+- `initialize`
+- `ping`
+- `tools/list` and `tools/call`
+- `resources/list`, `resources/templates/list`, and `resources/read`
+- `prompts/list` and `prompts/get`
+
+Notifications receive an empty `202` response. Batches are processed as JSON-RPC batches, and protocol errors are returned as JSON-RPC error objects.
+
+## Route-backed request lifecycle
+
+<Mermaid
+  title="A route-backed MCP call crosses the adapter boundary, then follows the normal Elysia lifecycle."
+  chart={`flowchart LR
+    CLIENT["MCP client"] --> RPC["POST /mcp"]
+    RPC --> REGISTRY["Decode JSON-RPC and resolve tool"]
+    REGISTRY --> INTERNAL["Build internal Request"]
+    INTERNAL --> REQUEST["Request"]
+    REQUEST --> PARSE["Parse"]
+    PARSE --> TRANSFORM["Transform"]
+    TRANSFORM --> VALIDATE["Validate"]
+    VALIDATE --> BEFORE["Before Handle and Resolve"]
+    BEFORE --> HANDLER["Route handler"]
+    HANDLER --> AFTER["After Handle"]
+    AFTER --> MAP["Map Response"]
+    MAP --> MARSHAL["Marshal MCP result"]
+    MARSHAL --> CLIENT
+    VALIDATE -. "error" .-> ERROR["Error handling"]
+    BEFORE -. "error" .-> ERROR
+    HANDLER -. "error" .-> ERROR
+    ERROR --> MAP
+  `}
+/>
+
+This architecture preserves parsers, transforms, TypeBox validation, derived context, local hooks, guards, auth plugins, error handlers, and response mapping. The adapter does not invoke a route handler directly.
+
+## Request identity and credentials
+
+The JSON-RPC request itself becomes the invocation context. For route-backed calls, configured inbound headers are copied onto the internal request. The secure defaults pass through `authorization`, `cookie`, and `x-api-key`, while tool arguments cannot set headers unless you explicitly allow them.
+
+```ts
+mcp({
+  headers: {
+    passThroughFromMcpRequest: ['authorization'],
+    allowFromToolInput: ['x-request-id']
+  }
+})
+```
+
+The internal route still sees an ordinary `Request`; existing Elysia authentication and authorization hooks run in their usual lifecycle stages.
+
+## OpenTelemetry
+
+Install Elysia's OpenTelemetry plugin and register it before the routes you want to observe:
+
+```ts
+import { opentelemetry } from '@elysiajs/opentelemetry'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { Elysia } from 'elysia'
+
+const app = new Elysia()
+  .use(opentelemetry())
+  .use(mcp())
+  .get(
+    '/reports/:id',
+    ({ params }) => ({ id: params.id }),
+    {
+      detail: { operationId: 'reports.get' }
+    }
+  )
+```
+
+No adapter-specific telemetry setup is required. Because route-backed tools call `app.handle()`, Elysia's OpenTelemetry plugin observes the internal request and groups its lifecycle spans just like an HTTP request. Name important hooks so trace waterfalls are readable, and use Elysia's `record`, `getCurrentSpan`, or `setAttributes` APIs when a route needs custom spans or attributes.
+
+<Mermaid
+  title="One trace can connect the MCP transport span to the internal Elysia route and its lifecycle spans."
+  chart={`flowchart LR
+    TRANSPORT["POST /mcp span"] --> TOOL["tools/call"]
+    TOOL --> ROUTE["Internal route request"]
+    ROUTE --> AUTH["Named auth hook"]
+    ROUTE --> VALIDATION["Validation"]
+    ROUTE --> HANDLER["Route handler"]
+    HANDLER --> CUSTOM["Custom record span"]
+    ROUTE --> RESPONSE["Response mapping"]
+  `}
+/>
+
+Export and sampling behavior remains owned by your OpenTelemetry configuration and collector.
+
+## Streaming and sessions
+
+`GET` Server-Sent Events and `DELETE` session termination are disabled by default. Enable them only when your client requires those transport methods:
+
+```ts
+mcp({
+  transport: {
+    enableGetSse: true,
+    enableDeleteSession: true
+  }
+})
+```
+
+See [Security](/docs/core-concepts/security) before exposing browser origins or forwarding additional headers.

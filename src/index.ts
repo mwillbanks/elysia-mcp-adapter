@@ -1,13 +1,30 @@
 import type { DefinitionBase, EphemeralType, MetadataBase, RouteBase, SingletonBase } from 'elysia'
 import { mcp, withMcpMethods } from './plugin.js'
 
+export * from './extensions/apps/index.js'
+export * from './extensions/auth/index.js'
+export type {
+  McpExtensionSource,
+  McpExtensionStatus,
+  McpExtensionVersionRecord,
+  McpProtocolVersion
+} from './extensions/manifest.js'
+export { MCP_EXTENSION_SUPPORT } from './extensions/manifest.js'
+export * from './extensions/tasks/index.js'
 export { defaultOperationNameResolver, sanitizeMcpName } from './naming.js'
 export { getMcpRegistry } from './registry.js'
 export type {
   JsonSchema,
   McpAdapterState,
   McpAnnotations,
+  McpAppCsp,
+  McpAppPermissions,
+  McpAppResourceMetadata,
+  McpAppsOptions,
+  McpAppToolOptions,
+  McpAuthorizationOptions,
   McpContent,
+  McpExtensionOptions,
   McpIcon,
   McpInputMode,
   McpInvocationContext,
@@ -29,6 +46,7 @@ export type {
   McpRouteOperation,
   McpRouteOptions,
   McpServerInfo,
+  McpTasksOptions,
   McpToolAnnotations,
   McpToolHandler,
   McpToolOptions,

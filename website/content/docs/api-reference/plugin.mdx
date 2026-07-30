@@ -1,0 +1,81 @@
+---
+title: Plugin
+description: Configure the MCP endpoint, route discovery, transport, headers, and response marshaling.
+icon: Plug
+---
+
+The package exposes two Elysia plugins. Use `mcp()` for the normal application setup. Use `withMcpMethods()` only when a feature plugin must register standalone primitives before the application mounts the MCP endpoint.
+
+## `mcp`
+
+```ts
+function mcp(options?: McpPluginOptions): Elysia
+```
+
+```ts
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { Elysia } from 'elysia'
+
+const app = new Elysia().use(
+  mcp({
+    server: {
+      name: 'billing-api',
+      version: '1.0.0'
+    },
+    path: '/mcp',
+    allowedRoutes: '*'
+  })
+)
+```
+
+`mcp()` installs `.mcpTool()`, `.mcpResource()`, and `.mcpPrompt()`, discovers eligible routes, and mounts the JSON-RPC transport.
+
+<auto-type-table path="../../../../src/types.ts" name="McpPluginOptions" />
+
+### Server metadata
+
+<auto-type-table path="../../../../src/types.ts" name="McpServerInfo" />
+
+### Response marshaling
+
+<auto-type-table path="../../../../src/types.ts" name="McpResponseMarshalOptions" />
+
+### Tool annotations
+
+Annotations tell MCP clients about behavioral properties. They do not replace application authorization.
+
+<auto-type-table path="../../../../src/types.ts" name="McpToolAnnotations" />
+
+### Shared metadata and icons
+
+<auto-type-table path="../../../../src/types.ts" name="McpAnnotations" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpIcon" />
+
+## `withMcpMethods`
+
+```ts
+function withMcpMethods(): Elysia
+```
+
+```ts
+new Elysia()
+  .use(withMcpMethods())
+  .mcpTool('health.read', () => ({ ok: true }))
+  .use(mcp())
+```
+
+The plugin augments the Elysia instance without mounting `/mcp`. A later `mcp()` call reuses those explicit registrations and adds the endpoint.
+
+## Naming helpers
+
+The package also exports:
+
+```ts
+function sanitizeMcpName(value: string): string
+function defaultOperationNameResolver(operation: McpRouteOperation): string
+```
+
+`sanitizeMcpName()` converts an arbitrary name into the MCP-compatible form. `defaultOperationNameResolver()` prefers `detail.operationId`, then derives a stable name from the HTTP method and path.
+
+See [Configuration](/docs/getting-started/configuration) for production defaults and [Route-backed Tools](/docs/api-reference/route-backed-tools) for the per-route contract.

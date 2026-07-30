@@ -1,0 +1,69 @@
+---
+title: Standalone Primitives
+description: Fluent method signatures, handler contracts, options, and normalized results.
+icon: Braces
+---
+
+The plugin augments an Elysia instance with three chainable methods. Each method returns the same Elysia instance for fluent composition.
+
+## `mcpTool`
+
+```ts
+app.mcpTool<Input>(
+  name: string,
+  handler: McpToolHandler<Input>,
+  options?: McpToolOptions
+): this
+```
+
+A handler may return a plain value or a complete `McpToolResult`. Plain JSON-compatible values become text and structured content automatically.
+
+<auto-type-table path="../../../../src/types.ts" name="McpToolOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpToolResult" />
+
+## `mcpResource`
+
+```ts
+app.mcpResource(
+  uriOrTemplate: string,
+  handler: McpResourceHandler,
+  options?: McpResourceOptions
+): this
+```
+
+A URI containing `{variables}` becomes a resource template. The handler context includes the requested URI, parsed variables, inbound request, optional metadata, and abort signal.
+
+<auto-type-table path="../../../../src/types.ts" name="McpResourceOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpResourceContent" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpResourceReadResult" />
+
+## `mcpPrompt`
+
+```ts
+app.mcpPrompt<Args extends Record<string, unknown>>(
+  name: string,
+  handler: McpPromptHandler<Args>,
+  options?: McpPromptOptions
+): this
+```
+
+A handler may return a string, a list of prompt messages, or a complete `McpPromptResult`.
+
+<auto-type-table path="../../../../src/types.ts" name="McpPromptOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpPromptArgument" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpPromptMessage" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpPromptResult" />
+
+## Shared invocation context
+
+Every standalone handler receives the inbound MCP request and may receive an abort signal and protocol metadata.
+
+<auto-type-table path="../../../../src/types.ts" name="McpInvocationContext" />
+
+See [Standalone Primitives](/docs/core-concepts/standalone-primitives) and [Resources and Prompts](/docs/core-concepts/resources-and-prompts) for implementation examples.

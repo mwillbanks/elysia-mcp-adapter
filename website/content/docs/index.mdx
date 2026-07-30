@@ -6,6 +6,22 @@ icon: Waypoints
 
 `@mwillbanks/elysia-mcp-adapter` adds a Model Context Protocol HTTP endpoint to an Elysia application. Existing routes can become MCP tools, while explicit registration methods cover MCP-only tools, resources, resource templates, and prompts.
 
+<Mermaid
+  title="One Elysia application serves HTTP clients and MCP clients through the same route lifecycle."
+  chart={`flowchart LR
+    HTTP["HTTP client"] --> ELYSIA["Elysia application"]
+    MCP["MCP client"] --> ADAPTER["MCP adapter"]
+    ADAPTER --> REQUEST["Internal Request"]
+    REQUEST --> ELYSIA
+    ELYSIA --> HOOKS["Hooks, guards, validation, auth"]
+    HOOKS --> ROUTES["Route handlers"]
+    ROUTES --> RESPONSE["Elysia response mapping"]
+    RESPONSE --> HTTP
+    RESPONSE --> ADAPTER
+    ADAPTER --> MCP
+  `}
+/>
+
 ## Preserve the Elysia lifecycle
 
 Route-backed calls are converted into an internal `Request` and sent through `app.handle()`. This keeps the behavior that already protects and shapes your HTTP API:
@@ -26,18 +42,19 @@ The adapter never calls an Elysia route handler directly.
 | Resource templates | Yes | `.mcpResource()` | Explicit opt-in |
 | Prompts | Yes | `.mcpPrompt()` | Explicit opt-in |
 
-The transport lives at `POST /mcp` by default and implements the core JSON-RPC methods for initialization, discovery, tool calls, resource reads, and prompt retrieval.
+The transport lives at `POST /mcp` by default and implements initialization, discovery, tool calls, resource reads, and prompt retrieval over JSON-RPC.
 
 ## Design principles
 
-1. **Elysia is the application framework.** The adapter adds protocol translation, not a parallel runtime.
+1. **Elysia remains the application framework.** The adapter translates protocols instead of introducing a parallel runtime.
 2. **JSON Schema stays JSON Schema.** Route schemas are sanitized for transport without a TypeBox-to-Zod translation layer.
 3. **Exposure is deliberate.** Tools are convenient by default; resources, prompts, headers, browser origins, and binary output require explicit configuration.
-4. **Protocol abstractions stay thin.** No full MCP framework dependency is required.
+4. **Existing integrations keep working.** OpenAPI metadata, auth plugins, hooks, guards, error handling, and OpenTelemetry remain in the Elysia lifecycle.
 
 ## Next steps
 
-- [Install the package](/docs/getting-started/installation)
 - [Expose your first route](/docs/getting-started/quick-start)
-- [Understand route-backed tools](/docs/guides/route-tools)
-- [Harden the endpoint](/docs/guides/security)
+- [Review installation and compatibility](/docs/getting-started/installation)
+- [Understand route-backed tools](/docs/core-concepts/route-backed-tools)
+- [Harden authentication and authorization](/docs/core-concepts/security)
+- [Browse the generated TypeScript API](/docs/api-reference/plugin)

@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/modelcontextprotocol/conformance",
+  "commit": "49103de6ed70804e940637bf3e9e29e4a3f54e64",
+  "includedAt": "2026-07-30",
+  "specVersion": "2026-07-28",
+  "tasksScenarios": [],
+  "localCoverage": [
+    "modern request metadata and standard headers",
+    "synchronous optional and required task selection",
+    "durable create before response",
+    "tasks get update and cancel",
+    "final and draft capability errors",
+    "MRTR elicitation sampling and roots inputs",
+    "principal-bound provider context",
+    "subscriptions listen acknowledgement and snapshots"
+  ],
+  "note": "The pinned upstream baseline contains no Tasks-specific server scenarios; local versioned fixtures remain authoritative until upstream adds them."
+}

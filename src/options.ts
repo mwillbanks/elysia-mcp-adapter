@@ -8,6 +8,9 @@ import {
   DEFAULT_PASS_THROUGH_HEADERS,
   DEFAULT_PROTOCOL_VERSION
 } from './constants.js'
+import { resolveAuthVersion } from './extensions/auth/index.js'
+import { MCP_EXTENSION_SUPPORT, resolvePinnedVersion } from './extensions/manifest.js'
+import { resolveTasksVersion } from './extensions/tasks/index.js'
 import { defaultOperationNameResolver } from './naming.js'
 import type { McpPluginOptions, NormalizedMcpPluginOptions } from './types.js'
 
@@ -26,6 +29,7 @@ export function normalizeOptions(options: McpPluginOptions = {}): NormalizedMcpP
     headers: normalizeHeaders(options),
     marshal: { ...DEFAULT_MARSHAL, ...(options.marshal ?? {}) },
     transport: normalizeTransport(options),
+    extensions: normalizeExtensions(options),
     diagnostics: {
       failOnMissingSchema: options.diagnostics?.failOnMissingSchema ?? false
     },
@@ -54,12 +58,97 @@ function normalizeHeaders(options: McpPluginOptions): NormalizedMcpPluginOptions
 }
 
 function normalizeTransport(options: McpPluginOptions): NormalizedMcpPluginOptions['transport'] {
+  const legacyProtocolVersion = options.transport?.protocolVersion ?? DEFAULT_PROTOCOL_VERSION
+  if (legacyProtocolVersion !== DEFAULT_PROTOCOL_VERSION) {
+    throw new TypeError(
+      `transport.protocolVersion is reserved for legacy initialize and must be "${DEFAULT_PROTOCOL_VERSION}"; configure modern support with transport.protocolVersions`
+    )
+  }
+
+  const protocolVersions = options.transport?.protocolVersions ?? [
+    ...MCP_EXTENSION_SUPPORT.protocol.supported
+  ]
+  for (const version of protocolVersions) {
+    if (!MCP_EXTENSION_SUPPORT.protocol.supported.includes(version)) {
+      throw new TypeError(
+        `Unsupported MCP protocol version "${version}". Supported versions: ${MCP_EXTENSION_SUPPORT.protocol.supported.join(', ')}`
+      )
+    }
+  }
+
   return {
     validateOrigin: options.transport?.validateOrigin ?? true,
     allowedOrigins: options.transport?.allowedOrigins ?? [],
     enableGetSse: options.transport?.enableGetSse ?? false,
     enableDeleteSession: options.transport?.enableDeleteSession ?? false,
-    protocolVersion: options.transport?.protocolVersion ?? DEFAULT_PROTOCOL_VERSION
+    protocolVersion: legacyProtocolVersion,
+    protocolVersions
+  }
+}
+
+function normalizeExtensions(options: McpPluginOptions): NormalizedMcpPluginOptions['extensions'] {
+  const tasks = options.extensions?.tasks
+  const auth = options.extensions?.auth
+  const apps = options.extensions?.apps
+
+  if (tasks?.defaultTtl !== undefined && tasks.defaultTtl !== null && tasks.defaultTtl <= 0) {
+    throw new TypeError('Tasks defaultTtl must be a positive number of milliseconds or null')
+  }
+  if (tasks?.pollInterval !== undefined && tasks.pollInterval <= 0) {
+    throw new TypeError('Tasks pollInterval must be a positive number of milliseconds')
+  }
+
+  return {
+    tasks: tasks
+      ? {
+          ...tasks,
+          version: resolveTasksVersion(tasks.version)
+        }
+      : undefined,
+    auth: auth
+      ? {
+          ...auth,
+          profiles: {
+            clientCredentials:
+              auth.profiles?.clientCredentials === true
+                ? true
+                : auth.profiles?.clientCredentials
+                  ? {
+                      version: resolveAuthVersion(
+                        'client-credentials',
+                        auth.profiles.clientCredentials.version
+                      ) as 'draft'
+                    }
+                  : undefined,
+            enterpriseManaged:
+              auth.profiles?.enterpriseManaged === true
+                ? true
+                : auth.profiles?.enterpriseManaged
+                  ? {
+                      version: resolveAuthVersion(
+                        'enterprise-managed',
+                        auth.profiles.enterpriseManaged.version
+                      ) as '2026-06-17'
+                    }
+                  : undefined
+          },
+          version: resolveAuthVersion('core', auth.version) as Exclude<
+            NonNullable<typeof auth.version>,
+            'current'
+          >
+        }
+      : undefined,
+    apps: apps
+      ? {
+          ...apps,
+          version: resolvePinnedVersion(
+            'apps',
+            apps.version,
+            MCP_EXTENSION_SUPPORT.apps.current,
+            MCP_EXTENSION_SUPPORT.apps.versions
+          )
+        }
+      : undefined
   }
 }
 

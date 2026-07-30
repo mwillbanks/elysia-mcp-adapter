@@ -150,14 +150,14 @@ function Home() {
             <JourneyCard
               icon={RouteIcon}
               label="02 / Shape"
-              slug="guides/route-tools"
+              slug="core-concepts/route-backed-tools"
               text="Control naming, schemas, inputs, route selection, and metadata."
               title="Route-backed tools"
             />
             <JourneyCard
               icon={Braces}
               label="03 / Extend"
-              slug="guides/resources-and-prompts"
+              slug="core-concepts/resources-and-prompts"
               text="Add standalone tools, URI resources, templates, and reusable prompts."
               title="MCP primitives"
             />

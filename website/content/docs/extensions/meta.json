@@ -1,0 +1,4 @@
+{
+  "title": "MCP Extensions",
+  "pages": ["index", "versioning", "tasks", "authorization", "apps", "security"]
+}

@@ -1,0 +1,79 @@
+---
+title: Route-backed Tools
+description: TypeScript contracts for route exposure, route matching, invocation inputs, and route operations.
+icon: Route
+---
+
+Route-backed primitives are configured through the route's `mcp` option. Tools are the default route kind; resources and prompts require explicit metadata.
+
+## Route option
+
+```ts
+type McpRouteOptions =
+  | false
+  | {
+      expose?: boolean
+      kind?: 'tool' | 'resource' | 'prompt'
+      name?: string
+      title?: string
+      description?: string
+      inputSchema?: unknown
+      outputSchema?: unknown
+      annotations?: McpToolAnnotations
+      icons?: McpIcon[]
+      resource?: McpRouteResourceOptions
+      prompt?: McpRoutePromptOptions
+      marshal?: McpResponseMarshalOptions
+    }
+```
+
+```ts
+app.post('/reports', createReport, {
+  body: t.Object({ range: t.String() }),
+  detail: { operationId: 'reports.create' },
+  mcp: {
+    expose: true,
+    annotations: { destructiveHint: false }
+  }
+})
+```
+
+`false` and `{ expose: false }` remove a route from MCP discovery. `inputSchema` and `outputSchema` override inferred Elysia schemas only for MCP.
+
+## Route matching
+
+```ts
+type McpRouteMatcher =
+  | string
+  | RegExp
+  | {
+      method?: HTTPMethod | HTTPMethod[]
+      path: string | RegExp
+    }
+```
+
+Matchers are used by `allowedRoutes` and `excludedRoutes`. String paths support the adapter's exact and wildcard matching rules; object matchers also constrain HTTP methods.
+
+## Inspected route operation
+
+`McpRouteOperation` is supplied to `operationNameResolver` and schema mapping callbacks.
+
+<auto-type-table path="../../../../src/types.ts" name="McpRouteOperation" />
+
+## Invocation input
+
+The adapter converts tool arguments into the internal Elysia request using this envelope. The default `inputMode: 'envelope'` preserves these boundaries; `flatten` merges compatible properties.
+
+<auto-type-table path="../../../../src/types.ts" name="RouteInvocationInput" />
+
+## Invocation context
+
+<auto-type-table path="../../../../src/types.ts" name="McpInvocationContext" />
+
+## Tool result
+
+A route response is normalized to this MCP result shape after Elysia response mapping completes.
+
+<auto-type-table path="../../../../src/types.ts" name="McpToolResult" />
+
+For route discovery and OpenAPI reuse, see [Route-backed Tools](/docs/core-concepts/route-backed-tools).

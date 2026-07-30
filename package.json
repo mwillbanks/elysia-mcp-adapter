@@ -8,7 +8,11 @@
   "author": "Mike Willbanks",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mwillbanks/elysia-mcp-adapter.git"
+    "url": "https://github.com/mwillbanks/elysia-mcp-adapter.git"
+  },
+  "homepage": "https://mwillbanks.github.io/elysia-mcp-adapter/",
+  "bugs": {
+    "url": "https://github.com/mwillbanks/elysia-mcp-adapter/issues"
   },
   "keywords": [
     "elysia",
@@ -42,6 +46,9 @@
     "format": "biome check --write",
     "fallow": "fallow --skip health",
     "fallow:health": "fallow health",
+    "examples:build": "bun run --cwd examples/apps-vanilla build && bun run --cwd examples/apps-react build",
+    "examples:smoke": "bun run --cwd examples/apps-vanilla smoke && bun run --cwd examples/apps-react typecheck && bun run --cwd examples/apps-react smoke",
+    "extensions:check-drift": "bun scripts/check-extension-drift.ts",
     "prepack": "bun run build",
     "prepare": "husky"
   },

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather MCP App</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="card" aria-live="polite">
+      <header>
+        <div>
+          <p class="eyebrow">MCP App</p>
+          <h1 id="location">Weather</h1>
+        </div>
+        <span id="status" class="status">Connecting</span>
+      </header>
+      <section class="reading">
+        <strong id="temperature">--°</strong>
+        <span id="conditions">Waiting for tool data</span>
+      </section>
+      <button id="refresh" type="button">Refresh forecast</button>
+    </main>
+    <script type="module" src="./app.ts"></script>
+  </body>
+</html>

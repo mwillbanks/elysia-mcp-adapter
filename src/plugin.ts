@@ -1,4 +1,8 @@
 import type { Elysia } from 'elysia'
+import {
+  buildProtectedResourceMetadata,
+  protectedResourceMetadataPaths
+} from './extensions/auth/index.js'
 import { installMcpMethods } from './methods/install.js'
 import { normalizeOptions } from './options.js'
 import { ensureMcpState } from './state.js'
@@ -16,10 +20,32 @@ export function mcp(options: McpPluginOptions = {}) {
       mcp: (_options: McpRouteOptions) => ({})
     })
 
-    return withMacro.all(
+    let configured: any = withMacro
+    const auth = normalized.extensions.auth
+    if (auth) {
+      const metadata = buildProtectedResourceMetadata({
+        resource: auth.resource,
+        authorizationServers: auth.authorizationServers,
+        ...auth.metadata,
+        scopesSupported: auth.metadata?.scopesSupported ?? auth.scopes,
+        bearerMethodsSupported: auth.metadata?.bearerMethodsSupported ?? ['header']
+      })
+      for (const path of protectedResourceMetadataPaths(auth.resource, auth.rootMetadataAlias)) {
+        configured = configured.get(path, () => metadata, {
+          mcp: false,
+          detail: {
+            hide: true,
+            tags: ['OAuth'],
+            summary: 'OAuth Protected Resource Metadata'
+          }
+        })
+      }
+    }
+
+    return configured.all(
       normalized.path,
       (context: any) =>
-        handleMcpHttpRequest(withMacro as AnyElysiaApp, context.request, normalized),
+        handleMcpHttpRequest(configured as AnyElysiaApp, context.request, normalized),
       {
         mcp: false,
         parse: 'none',

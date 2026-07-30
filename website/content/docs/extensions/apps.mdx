@@ -1,0 +1,41 @@
+---
+title: Apps
+description: Register secure ui resources and build self-contained Bun app views.
+---
+
+Enable Apps and connect a tool to a `ui://` resource:
+
+```ts
+app
+  .use(mcp({ extensions: { apps: { version: 'current' } } }))
+  .mcpTool('dashboard.open', loadDashboard, {
+    app: {
+      resourceUri: 'ui://dashboard/index.html',
+      visibility: ['model', 'app']
+    }
+  })
+  .mcpResource('ui://dashboard/index.html', () => ({
+    uri: 'ui://dashboard/index.html',
+    mimeType: 'text/html;profile=mcp-app',
+    text: dashboardHtml
+  }), {
+    mimeType: 'text/html;profile=mcp-app',
+    app: {
+      csp: { connectDomains: [], resourceDomains: [] },
+      prefersBorder: true
+    }
+  })
+```
+
+The adapter emits nested `_meta.ui.resourceUri` and, by default, the deprecated flat `ui/resourceUri` key for compatibility with the official `1.7.5` helper. Referenced resources must exist, use `ui://`, return `text/html;profile=mcp-app`, and contain a complete HTML document as text or base64. Content-level UI metadata overrides static listing metadata.
+
+Tools may be visible to the `model`, the `app`, or both. Keep meaningful text and structured tool results as fallbacks for clients without Apps support.
+
+The repository includes two Bun-only examples:
+
+- a minimal browser view with the stable handshake and a same-server tool call;
+- a React 19 view using the Apps React APIs and local shadcn component source.
+
+Both use Bun standalone HTML output. They do not use Vite, a CDN, runtime asset fetches, or externally hosted fonts. Sandboxing, CSP enforcement, permission prompts, approvals, and audit logging remain host responsibilities; the adapter validates declarations but is not an Apps host.
+
+Check the [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) for current client support. Repository tests show protocol coverage; they do not imply maintainers smoke-tested every listed client.

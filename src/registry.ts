@@ -125,6 +125,9 @@ function createExplicitTool(
     outputSchema,
     annotations: registration.options.annotations,
     icons: registration.options.icons,
+    authorization: registration.options.authorization,
+    taskExecution: registration.options.taskExecution ?? 'optional',
+    app: registration.options.app,
     invoke: async (args, context) => {
       const validation = validateJsonSchema(inputSchema, args ?? {})
       if (!validation.ok) return createValidationToolError(validation.issues)
@@ -150,6 +153,8 @@ function createExplicitResource(
     mimeType: registration.options.mimeType,
     annotations: registration.options.annotations,
     icons: registration.options.icons,
+    authorization: registration.options.authorization,
+    app: registration.options.app,
     read: async (context: any) => {
       const result = await registration.handler(context)
       return coerceResourceResult(result, context.uri, registration.options.mimeType)
@@ -184,6 +189,7 @@ function createExplicitPrompt(
     argsSchema,
     arguments: promptArguments,
     icons: registration.options.icons,
+    authorization: registration.options.authorization,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       const result = await registration.handler(args ?? {}, context)
@@ -222,6 +228,9 @@ function createRouteTool(
     outputSchema,
     annotations: routeMcp?.annotations ?? defaultAnnotationsForMethod(operation.method),
     icons: routeMcp?.icons,
+    authorization: routeMcp?.authorization,
+    taskExecution: routeMcp?.taskExecution ?? 'optional',
+    app: routeMcp?.app,
     invoke: (args, context) => invokeRouteTool(operation, args ?? {}, inputSchema, context, options)
   }
 }
@@ -247,6 +256,8 @@ function createRouteResource(
     mimeType: resource.mimeType,
     annotations: resource.annotations,
     icons: routeMcp?.icons,
+    authorization: resource.authorization ?? routeMcp?.authorization,
+    app: resource.app,
     read: (context: any) => invokeRouteResource(operation, context, options)
   }
 
@@ -279,6 +290,7 @@ function createRoutePrompt(
     argsSchema,
     arguments: routeMcp?.prompt?.arguments ?? promptArgumentsFromSchema(argsSchema),
     icons: routeMcp?.icons,
+    authorization: routeMcp?.authorization,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       return invokeRoutePrompt(operation, args ?? {}, context, options)

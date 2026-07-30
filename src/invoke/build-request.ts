@@ -1,3 +1,4 @@
+import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
 import type {
   McpInvocationContext,
@@ -62,12 +63,14 @@ export function buildInternalRequest(
 
   if (!headers.has('accept')) headers.set('accept', 'application/json')
 
-  return new Request(url, {
+  const request = new Request(url, {
     method: operation.method,
     headers,
     body: hasBody ? serializeBody(input.body, headers) : undefined,
     signal: context.signal
   })
+  if (context.task) setTaskController(request, context.task)
+  return request
 }
 
 function buildInternalUrl(

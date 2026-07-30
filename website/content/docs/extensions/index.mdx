@@ -1,0 +1,32 @@
+---
+title: MCP extensions
+description: Opt-in Tasks, Authorization, and Apps support with pinned protocol contracts.
+---
+
+The adapter supports MCP Tasks, Authorization profiles, and Apps without introducing a second server framework. Each extension is opt-in and versioned independently.
+
+```ts
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+
+app.use(mcp({
+  transport: {
+    protocolVersions: ['2026-07-28', '2025-11-25']
+  },
+  extensions: {
+    tasks: { version: 'current', provider },
+    auth: {
+      version: 'current',
+      resource: 'https://api.example.com/mcp',
+      authorizationServers: ['https://auth.example.com'],
+      verifyAccessToken
+    },
+    apps: { version: 'current' }
+  }
+}))
+```
+
+`current` is the reviewed stable implementation supported by this release. `draft` is the newest reviewed draft pinned by the support manifest. An explicit `YYYY-MM-DD` selects an immutable implementation. Omitting `version` is equivalent to `current`.
+
+Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
+
+Client implementations vary. Use the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) when deciding which capabilities to enable.

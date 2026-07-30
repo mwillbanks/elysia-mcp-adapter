@@ -1,0 +1,27 @@
+{
+  "version": "2026-01-26",
+  "tool": {
+    "name": "dashboard.open",
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://dashboard/index.html",
+        "visibility": ["model", "app"]
+      },
+      "ui/resourceUri": "ui://dashboard/index.html"
+    }
+  },
+  "resource": {
+    "uri": "ui://dashboard/index.html",
+    "mimeType": "text/html;profile=mcp-app",
+    "_meta": {
+      "ui": {
+        "prefersBorder": true,
+        "csp": {
+          "connectDomains": [],
+          "resourceDomains": []
+        }
+      }
+    }
+  },
+  "readContentPrecedence": "content"
+}

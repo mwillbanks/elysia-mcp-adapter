@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install the adapter and check the supported runtime versions.
+description: Install the adapter, confirm runtime support, and add optional Elysia integrations.
 icon: PackagePlus
 ---
 
@@ -11,19 +11,13 @@ icon: PackagePlus
 - TypeScript `>=5.8` for TypeScript projects
 - Native ESM
 
-## Install with Bun
+## Install the adapter
 
-```bash
-bun add @mwillbanks/elysia-mcp-adapter elysia
-```
-
-Or use your Node.js package manager:
-
-```bash
+```npm
 npm install @mwillbanks/elysia-mcp-adapter elysia
 ```
 
-`elysia` is a peer dependency. `@elysiajs/openapi` and `@sinclair/typebox` are supported optional peers when your application already uses them.
+`elysia` is a peer dependency. The adapter does not bring another application framework or a full MCP framework into your runtime.
 
 ## Add the plugin
 
@@ -34,10 +28,28 @@ import { Elysia } from 'elysia'
 const app = new Elysia().use(mcp())
 ```
 
-This installs three fluent methods on the Elysia instance and registers the MCP HTTP endpoint:
+This installs three fluent methods and registers the MCP HTTP endpoint:
 
 - `.mcpTool()`
 - `.mcpResource()`
 - `.mcpPrompt()`
 
-The default endpoint is `/mcp`. Continue to the [Quick Start](/docs/getting-started/quick-start) to expose a route.
+The default endpoint is `/mcp`.
+
+## Optional integrations
+
+Install only the integrations your application uses:
+
+```npm
+npm install @elysia/openapi
+```
+
+```npm
+npm install @elysiajs/bearer
+```
+
+```npm
+npm install @elysiajs/opentelemetry
+```
+
+OpenAPI route metadata and schemas are reused by the adapter. Bearer authentication hooks and OpenTelemetry instrumentation remain part of the same Elysia lifecycle. See [Route-backed Tools](/docs/core-concepts/route-backed-tools), [Security](/docs/core-concepts/security), and [Transportation](/docs/core-concepts/transportation) for complete examples.

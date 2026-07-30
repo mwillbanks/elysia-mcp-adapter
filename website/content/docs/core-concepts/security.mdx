@@ -1,0 +1,176 @@
+---
+title: Security
+description: Preserve Elysia authentication and authorization while exposing a secure MCP endpoint.
+icon: ShieldCheck
+---
+
+The MCP endpoint can reach application behavior on behalf of a model. Treat route exposure, model inputs, browser origins, and credentials as production security boundaries.
+
+## Secure defaults
+
+- Requests with an `Origin` header are rejected unless the origin is explicitly allowed.
+- Tool input cannot set internal request headers by default.
+- `authorization`, `cookie`, and `x-api-key` pass through from the inbound MCP request so existing Elysia auth hooks still run.
+- `set-cookie`, `cookie`, and `authorization` are redacted from returned HTTP metadata.
+- Binary responses fail unless `marshal.binary` is set to `base64`.
+- Common documentation endpoints, hidden routes, and the MCP endpoint itself are not silently exposed.
+
+## Authentication stays in Elysia
+
+The adapter does not implement a competing auth layer. Credentials arrive on the MCP request, configured headers flow to the internal route request, and your existing plugins, guards, and hooks authenticate and authorize that request.
+
+<Mermaid
+  title="Authentication is enforced by the same Elysia hooks for HTTP and route-backed MCP calls."
+  chart={`sequenceDiagram
+    participant Client as MCP client
+    participant Adapter as MCP adapter
+    participant Auth as Elysia auth hook
+    participant Route as Route handler
+    Client->>Adapter: tools/call with Authorization
+    Adapter->>Auth: app.handle internal Request
+    Auth->>Auth: Verify token and permissions
+    alt Authorized
+      Auth->>Route: Continue with authenticated context
+      Route-->>Adapter: Elysia Response
+      Adapter-->>Client: MCP tool result
+    else Rejected
+      Auth-->>Adapter: 401 or 403 Response
+      Adapter-->>Client: MCP error result
+    end
+  `}
+/>
+
+Register auth plugins and hooks before the protected routes. Tool annotations describe risk to clients; they are not authorization controls.
+
+## Better Auth OAuth Provider for MCP
+
+Better Auth's OAuth Provider plugin can own authorization-server discovery, token issuance, and access-token verification while the adapter remains the protected MCP resource endpoint.
+
+Create a resource-server client from the same Better Auth instance:
+
+```ts
+import { oauthProviderResourceClient } from 'better-auth/client'
+import { auth } from './auth'
+
+const oauthResource = oauthProviderResourceClient(auth)
+const resource = 'https://api.example.com'
+```
+
+Publish protected-resource metadata so MCP clients can discover the authorization server:
+
+```ts
+import { Elysia } from 'elysia'
+
+const app = new Elysia().get(
+  '/.well-known/oauth-protected-resource',
+  () =>
+    oauthResource.getProtectedResourceMetadata({
+      resource,
+      authorization_servers: ['https://auth.example.com']
+    })
+)
+```
+
+Verify bearer tokens in an Elysia hook or guard and always require the audience for this resource server:
+
+```ts
+const app = new Elysia()
+  .derive(async ({ request, status }) => {
+    const authorization = request.headers.get('authorization')
+    const accessToken = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : undefined
+
+    if (!accessToken) return status(401)
+
+    const token = await oauthResource.verifyAccessToken(accessToken, {
+      verifyOptions: { audience: resource }
+    })
+
+    if (!token) return status(401)
+    return { oauthToken: token }
+  })
+  .use(
+    mcp({
+      headers: {
+        passThroughFromMcpRequest: ['authorization']
+      }
+    })
+  )
+  .get('/account', ({ oauthToken }) => ({ subject: oauthToken.sub }))
+```
+
+Keep Better Auth's authorization-server routes mounted according to its Elysia integration. The important boundary is that the MCP client obtains an OAuth token for the API resource, sends it as `Authorization: Bearer ...` to `/mcp`, and Elysia verifies its audience and permissions before the route handler runs.
+
+## Elysia bearer
+
+Elysia's bearer plugin extracts the bearer value into route context. It does **not** validate the credential, so validate it in a hook or guard before protected handlers execute.
+
+```ts
+import { bearer } from '@elysiajs/bearer'
+import { Elysia } from 'elysia'
+
+const app = new Elysia()
+  .use(bearer())
+  .use(mcp())
+  .onBeforeHandle(async ({ bearer, status }) => {
+    if (!bearer) return status(401)
+
+    const principal = await verifyAccessToken(bearer)
+    if (!principal) return status(401)
+  })
+  .get('/me', ({ bearer }) => loadProfile(bearer), {
+    detail: { operationId: 'account.me' }
+  })
+```
+
+The default `authorization` pass-through is sufficient for route-backed tools. If you replace the defaults, retain it explicitly:
+
+```ts
+mcp({
+  headers: {
+    passThroughFromMcpRequest: ['authorization']
+  }
+})
+```
+
+## Allow browser origins
+
+```ts
+mcp({
+  transport: {
+    validateOrigin: true,
+    allowedOrigins: ['https://console.example.com']
+  }
+})
+```
+
+Do not disable origin validation just to make a browser client connect. Add the exact trusted origin instead.
+
+## Keep model-controlled headers narrow
+
+```ts
+mcp({
+  headers: {
+    passThroughFromMcpRequest: ['authorization'],
+    allowFromToolInput: ['x-request-id']
+  }
+})
+```
+
+`allowFromToolInput` gives the model control of specific headers. Never add credentials, cookies, forwarding headers, or authorization inputs unless that behavior is intentionally part of the tool contract.
+
+## Restrict production routes
+
+Prefer an allowlist for production APIs:
+
+```ts
+mcp({
+  allowedRoutes: [
+    { method: 'GET', path: '/customers/:id' },
+    { method: 'POST', path: '/reports/preview' }
+  ]
+})
+```
+
+Authenticate the MCP endpoint, authorize each route action, validate OAuth audiences, and keep destructive routes opt-in and auditable.

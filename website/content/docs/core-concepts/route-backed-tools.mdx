@@ -1,0 +1,137 @@
+---
+title: Route-backed Tools
+description: Reuse Elysia OpenAPI metadata, schemas, hooks, and handlers as MCP tools.
+icon: Route
+---
+
+Eligible HTTP routes become MCP tools by default. The adapter inspects Elysia route metadata, builds JSON Schema inputs, and invokes every tool through the normal HTTP lifecycle.
+
+## OpenAPI and MCP share the route contract
+
+Elysia's OpenAPI plugin and this adapter read the same route definition. Define validation schemas and `detail` metadata once, then expose the route through both discovery systems.
+
+<Mermaid
+  title="A single Elysia route definition feeds both OpenAPI documentation and MCP discovery."
+  chart={`flowchart LR
+    ROUTE["Elysia route"] --> SCHEMA["params, query, body, response schemas"]
+    ROUTE --> DETAIL["detail metadata"]
+    SCHEMA --> OPENAPI["@elysia/openapi"]
+    DETAIL --> OPENAPI
+    OPENAPI --> SCALAR["OpenAPI document and Scalar UI"]
+    SCHEMA --> ADAPTER["MCP adapter"]
+    DETAIL --> ADAPTER
+    MCPMETA["mcp overrides"] --> ADAPTER
+    ADAPTER --> REGISTRY["MCP tool registry"]
+  `}
+/>
+
+```ts
+import { openapi } from '@elysia/openapi'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { Elysia, t } from 'elysia'
+
+const app = new Elysia()
+  .use(openapi())
+  .use(mcp())
+  .get(
+    '/users/:id',
+    ({ params }) => ({ id: params.id, displayName: 'Ada' }),
+    {
+      params: t.Object({ id: t.String() }),
+      response: t.Object({
+        id: t.String(),
+        displayName: t.String()
+      }),
+      detail: {
+        operationId: 'users.get',
+        summary: 'Get a user',
+        description: 'Return a user by identifier.',
+        tags: ['Users']
+      },
+      mcp: {
+        annotations: {
+          readOnlyHint: true,
+          idempotentHint: true
+        }
+      }
+    }
+  )
+```
+
+The adapter uses `detail.operationId` as the default tool name and reuses `summary` and `description` for discovery metadata. Elysia route schemas become the MCP input and output JSON Schemas. Route-level `mcp` metadata can override MCP-only naming, descriptions, schemas, annotations, icons, kind, and marshaling without changing the OpenAPI document.
+
+The adapter internally excludes `/openapi`, `/swagger`, and `/scalar`, so documentation routes do not become model-callable tools.
+
+## Eligibility and naming
+
+By default, `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes are eligible. When `detail.operationId` is absent, the configured resolver produces the name.
+
+```ts
+mcp({
+  methods: ['GET', 'POST'],
+  operationNameResolver: ({ method, path, detail }) =>
+    typeof detail?.operationId === 'string'
+      ? detail.operationId
+      : `${method.toLowerCase()}.${path}`
+})
+```
+
+Use `mcp: false` or `mcp: { expose: false }` on a route to keep it out of the registry.
+
+## Select routes deliberately
+
+```ts
+mcp({
+  allowedRoutes: [
+    '/users/*',
+    { method: 'GET', path: '/orders/:id' },
+    /^\\/public\\//
+  ],
+  excludedRoutes: ['/admin/*']
+})
+```
+
+An `allowedRoutes` array takes priority over `excludedRoutes`. The MCP endpoint itself and common documentation paths are excluded internally. Hidden routes stay excluded unless `includeHiddenRoutes` is enabled.
+
+## Input schema modes
+
+The default `envelope` mode preserves the origin of every value:
+
+```json
+{
+  "params": { "id": "user_123" },
+  "query": { "includeTeams": true },
+  "body": { "displayName": "Ada" }
+}
+```
+
+`inputMode: 'flatten'` merges compatible route inputs into one object. It is convenient for small APIs but can collide when params, query, and body reuse property names.
+
+## Override inferred schemas
+
+```ts
+mcp: {
+  inputSchema: {
+    type: 'object',
+    properties: {
+      params: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id']
+      }
+    },
+    required: ['params']
+  },
+  outputSchema: {
+    type: 'object',
+    properties: { id: { type: 'string' } },
+    required: ['id']
+  }
+}
+```
+
+Route-level overrides win over inferred schemas. Use `mapJsonSchema` for a final, centralized transformation when a client has schema compatibility requirements.
+
+## Lifecycle behavior
+
+The adapter builds a real internal request and calls `app.handle()`. Route parsing, validation, hooks, guards, authentication, error handling, and response mapping therefore remain authoritative. See [Transportation](/docs/core-concepts/transportation) for the complete request flow and [Security](/docs/core-concepts/security) for authentication examples.

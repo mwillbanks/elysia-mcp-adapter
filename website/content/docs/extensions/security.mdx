@@ -1,0 +1,17 @@
+---
+title: Extension security
+description: Trust boundaries and deployment requirements for Tasks, Auth, and Apps.
+---
+
+Extensions add durable state, authorization decisions, and embedded application declarations. Treat each boundary explicitly:
+
+- The MCP client declares capabilities and presents an access token; declarations are not authorization.
+- The authorization server issues resource-bound tokens and processes enterprise identity assertions outside this adapter.
+- The adapter validates protocol headers, verifies tokens, filters discovery, enforces scopes, and binds Tasks to a normalized principal.
+- The Elysia application remains authoritative for route guards and business authorization.
+- The Tasks provider owns durable isolation, retention, cancellation, and subscription fan-out.
+- The Apps host owns iframe sandboxing, CSP enforcement, permissions, user approvals, and audit logs.
+
+Never store raw access tokens in task records or expose them to tools. Use unguessable task IDs, short bounded retention, least-privilege scopes, explicit CSP domains, and app-only tool visibility for UI-internal mutations.
+
+See the [canonical client support matrix](https://modelcontextprotocol.io/extensions/client-matrix) before depending on a client capability.

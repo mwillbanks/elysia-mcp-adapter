@@ -1,0 +1,77 @@
+---
+title: Resources and Prompts
+description: Expose addressable data and reusable prompt templates explicitly.
+icon: Library
+---
+
+HTTP routes become tools by default. Resources and prompts are explicit because they carry different discovery and invocation semantics.
+
+## Standalone resources
+
+```ts
+new Elysia()
+  .use(mcp({ allowedRoutes: [] }))
+  .mcpResource(
+    'config://runtime',
+    () => ({ environment: 'production' }),
+    {
+      name: 'runtime.config',
+      title: 'Runtime configuration',
+      mimeType: 'application/json'
+    }
+  )
+```
+
+Use URI templates for parameterized data:
+
+```ts
+.mcpResource(
+  'users://{id}/profile',
+  ({ variables }) => ({ id: variables.id, kind: 'profile' }),
+  { name: 'users.profile', mimeType: 'application/json' }
+)
+```
+
+## Route-backed resources
+
+```ts
+.get('/users/:id/profile', getProfile, {
+  params: t.Object({ id: t.String() }),
+  mcp: {
+    kind: 'resource',
+    resource: {
+      uriTemplate: 'users://{id}/profile',
+      mimeType: 'application/json'
+    }
+  }
+})
+```
+
+Template variables map to route params by default. Supply `mapUriToInput` when the route expects query or body values instead.
+
+## Prompts
+
+```ts
+new Elysia()
+  .use(mcp({ allowedRoutes: [] }))
+  .mcpPrompt(
+    'debug-http-error',
+    ({ status, body }) =>
+      `Analyze this HTTP error:\n\nStatus: ${status}\n\n${body}`,
+    {
+      argsSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'number' },
+          body: { type: 'string' }
+        },
+        required: ['status', 'body'],
+        additionalProperties: false
+      }
+    }
+  )
+```
+
+A prompt handler may return a string, a list of MCP prompt messages, or a complete prompt result. Route-backed `POST` prompts receive arguments in the internal request body by default; `GET` prompts receive query parameters.
+
+See the generated handler options and result contracts in [Standalone Primitives API](/docs/api-reference/standalone-primitives).
