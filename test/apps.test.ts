@@ -124,13 +124,26 @@ describe('MCP Apps metadata', () => {
     expect(() => getMcpAppsToolVisibility({ ui: { visibility: ['host'] } })).toThrow()
   })
 
-  it('prefers resources/read UI metadata over resources/list metadata', () => {
-    const listing = { ui: { prefersBorder: true, domain: 'https://static.example.com' } }
-    const content = { ui: { prefersBorder: false } }
+  it('treats resources/read UI metadata as a whole-value override', () => {
+    const listing = {
+      traceId: 'listing',
+      ui: {
+        csp: { connectDomains: ['https://listing.example.com'] },
+        prefersBorder: true,
+        domain: 'https://static.example.com'
+      }
+    }
+    const content = {
+      traceId: 'content',
+      ui: {
+        csp: { resourceDomains: ['https://content.example.com'] },
+        prefersBorder: false
+      }
+    }
 
     expect(resolveMcpAppsResourceMeta(listing, content)).toEqual({
-      prefersBorder: false,
-      domain: 'https://static.example.com'
+      csp: { resourceDomains: ['https://content.example.com'] },
+      prefersBorder: false
     })
     expect(resolveMcpAppsResourceMeta(listing, undefined)).toBe(listing.ui)
   })

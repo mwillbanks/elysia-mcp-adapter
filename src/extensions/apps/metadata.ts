@@ -59,11 +59,7 @@ export function resolveMcpAppsResourceMeta(
   listingMetadata: McpAppsResourceMetadata | undefined,
   contentMetadata: McpAppsResourceMetadata | undefined
 ): McpAppsResourceMeta | undefined {
-  const listing = listingMetadata?.ui
-  const content = contentMetadata?.ui
-  if (!listing) return content
-  if (!content) return listing
-  return { ...listing, ...content }
+  return contentMetadata?.ui ?? listingMetadata?.ui
 }
 
 function normalizeVisibility(value: unknown): McpAppsVisibility[] | undefined {

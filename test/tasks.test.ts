@@ -9,7 +9,8 @@ import {
   getTaskController,
   resolveTasksVersion,
   setTaskController,
-  type TaskCreateRequest,
+  type TaskDurableCreateRequest,
+  type TaskExecutionScheduler,
   type TaskInputResponses,
   TaskProtocolError,
   type TaskProvider,
@@ -37,17 +38,33 @@ function workingTask(taskId = 'task-1'): WorkingTask {
   }
 }
 
+function completedTask(taskId = 'task-1'): DetailedTask {
+  return {
+    ...workingTask(taskId),
+    status: 'completed',
+    result: { content: [{ type: 'text', text: 'done' }] }
+  }
+}
+
 class TestTaskProvider implements TaskProvider {
   readonly tasks = new Map<string, DetailedTask>()
   readonly updates: Array<{ taskId: string; responses: TaskInputResponses }> = []
   readonly cancellations: string[] = []
   readonly inputRequestKeys = new Set<string>()
-  createRequest?: TaskCreateRequest
+  createRequest?: TaskDurableCreateRequest
+  createContext?: Readonly<TaskProviderContext>
+  scheduler?: TaskExecutionScheduler
   listenTaskIds?: readonly string[]
 
-  async create(request: TaskCreateRequest, _context: TaskProviderContext): Promise<WorkingTask> {
+  async create(
+    request: TaskDurableCreateRequest,
+    context: TaskProviderContext,
+    scheduler: TaskExecutionScheduler
+  ): Promise<DetailedTask> {
     this.createRequest = request
-    const task = workingTask()
+    this.createContext = context
+    this.scheduler = scheduler
+    const task = completedTask()
     this.tasks.set(task.taskId, task)
     return task
   }
@@ -172,10 +189,67 @@ describe('tasks extension', () => {
       { request: new Request('http://localhost/mcp') }
     )
 
-    expect(result).toMatchObject({ resultType: 'task', taskId: 'task-1', status: 'working' })
+    expect(result).toMatchObject({
+      resultType: 'task',
+      taskId: 'task-1',
+      status: 'completed'
+    })
+    expect(provider.createContext).toMatchObject({ version: '2026-07-28' })
+    expect(provider.createRequest).toMatchObject({
+      mode: 'optional',
+      execution: { method: 'tools/call', params: { name: 'route-backed-job' } }
+    })
     expect(provider.createRequest?.execution.method).toBe('tools/call')
-    await provider.createRequest?.execution.invoke()
+    expect(provider.createRequest).not.toHaveProperty('execution.invoke')
+    expect(() => structuredClone(provider.createRequest)).not.toThrow()
+    expect(() => structuredClone(provider.createContext)).not.toThrow()
+    await provider.scheduler?.invoke()
     expect(invoked).toBe(true)
+  })
+
+  it('rejects malformed provider records at create and polling boundaries', async () => {
+    const malformed = {
+      taskId: 'bad-task',
+      status: 'working',
+      createdAt: 'not-a-date',
+      lastUpdatedAt: new Date().toISOString(),
+      ttl: 60_000
+    }
+    const provider: TaskProvider = {
+      async create() {
+        return malformed as any
+      },
+      async get() {
+        return malformed as any
+      },
+      async update() {
+        return true
+      },
+      async requestInput() {
+        return true
+      },
+      async cancel() {
+        return true
+      }
+    }
+    const controller = createTaskController({ provider })
+
+    await expect(
+      controller.create(
+        {
+          mode: 'required',
+          execution: {
+            method: 'tools/call',
+            params: { name: 'job' },
+            invoke: async () => ({ content: [] })
+          }
+        },
+        { request: new Request('http://localhost/mcp') }
+      )
+    ).rejects.toThrow('created task.createdAt')
+    await expect(
+      controller.get('bad-task', { request: new Request('http://localhost/mcp') })
+    ).rejects.toThrow('task.createdAt')
   })
 
   it('dispatches get, MRTR update, and cooperative cancellation', async () => {

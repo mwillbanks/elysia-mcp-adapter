@@ -26,6 +26,8 @@ Set `taskExecution` on an explicit tool or route:
 
 The provider owns cryptographically unguessable IDs, durable creation, read-after-write visibility, retrieval, partial input updates, cooperative cancellation, expiry, execution scheduling, and subscriptions. A created task must be visible through `tasks/get` before it is returned. In a distributed deployment, task records and subscription fan-out must be shared across instances.
 
+`TaskProvider.create` receives a structured-clone-safe `TaskDurableCreateRequest` and a normalized context containing only the selected Tasks version, request metadata, and verifier-derived principal key. Persist those values as the durable job descriptor. Its separate `TaskExecutionScheduler` argument is an ephemeral, same-process invocation handle that preserves the normal Elysia route lifecycle; never serialize, retain, or send that handle to a worker. External workers should consume the durable descriptor and execute through their deployment's MCP worker boundary.
+
 The provider records a resolved tool result as `completed` even when that result has `isError: true`; `failed` is reserved for a JSON-RPC execution failure. Cancellation is cooperative and may remain pending until the executor observes the durable cancellation intent.
 
 Explicit handlers receive `context.task`. Route handlers use `getMcpTaskContext(request)`; the adapter associates the controller with the internal `Request` through a private `WeakMap`, never a model-controlled header.

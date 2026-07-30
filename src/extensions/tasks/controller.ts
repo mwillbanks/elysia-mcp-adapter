@@ -1,3 +1,10 @@
+import {
+  assertTaskCreateRequest,
+  assertTaskRecord,
+  buildTaskExecutionScheduler,
+  toDurableTaskCreateRequest,
+  toDurableTaskProviderContext
+} from './codec.js'
 import { createInvalidTaskParamsError, createMissingTaskCapabilityError } from './errors.js'
 import {
   type CancelTaskResult,
@@ -36,16 +43,23 @@ export class TaskController {
   }
 
   async create(request: TaskCreateRequest, context: TaskRequestContext): Promise<CreateTaskResult> {
+    assertTaskCreateRequest(request)
     const providerContext = this.context(context)
-    const created = await this.provider.create(request, providerContext)
-    if (created.status !== 'working') {
-      throw new Error('Task provider violated its creation contract: new tasks must be working')
-    }
+    const durableRequest = toDurableTaskCreateRequest(request)
+    const scheduler = buildTaskExecutionScheduler(request.execution.invoke)
+    const created = await this.provider.create(durableRequest, providerContext, scheduler)
+    assertTaskRecord(created, 'created task')
     const durable = await this.provider.get(created.taskId, providerContext)
 
     if (!durable) {
       throw new Error(
         `Task provider violated its durability contract: "${created.taskId}" is not readable`
+      )
+    }
+    assertTaskRecord(durable, 'durable task')
+    if (durable.taskId !== created.taskId) {
+      throw new Error(
+        `Task provider violated its durability contract: "${created.taskId}" resolved to "${durable.taskId}"`
       )
     }
 
@@ -55,6 +69,7 @@ export class TaskController {
   async get(taskId: string, context: TaskRequestContext): Promise<GetTaskResult> {
     const task = await this.provider.get(taskId, this.context(context))
     if (!task) throw createInvalidTaskParamsError(`Unknown task: ${taskId}`)
+    assertTaskRecord(task, 'task')
     return { ...task, resultType: 'complete' }
   }
 
@@ -115,7 +130,14 @@ export class TaskController {
     context: TaskRequestContext
   ): Promise<TaskSubscription | undefined> | TaskSubscription | undefined {
     if (!this.provider.listen) return undefined
-    return this.provider.listen(taskIds, listener, this.context(context))
+    return this.provider.listen(
+      taskIds,
+      (task) => {
+        assertTaskRecord(task, 'task notification')
+        return listener(task)
+      },
+      this.context(context)
+    )
   }
 
   statusNotification(task: DetailedTask): {
@@ -130,7 +152,11 @@ export class TaskController {
   }
 
   private context(context: TaskRequestContext): TaskProviderContext {
-    return { ...context, version: this.version }
+    return toDurableTaskProviderContext({
+      version: this.version,
+      meta: context.meta,
+      principalKey: context.principalKey
+    })
   }
 }
 

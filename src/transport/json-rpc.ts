@@ -41,6 +41,7 @@ import type {
   McpToolDefinition,
   NormalizedMcpPluginOptions
 } from '../types.js'
+import { assertMirroredToolHeaders, assertValidMirroredHeaderSchema } from './mirrored-headers.js'
 import {
   McpProtocolError,
   type McpRequestProtocolContext,
@@ -83,6 +84,9 @@ export async function handleMcpHttpRequest(
     )
   }
 
+  const authorization = await authorizeRequest(request, options)
+  if (authorization instanceof Response) return authorization
+
   if (request.method === 'GET' || request.method === 'DELETE') {
     if (protocolHeader === MCP_EXTENSION_SUPPORT.protocol.current) {
       return jsonResponse(createErrorResponse(null, -32600, 'Modern MCP is POST-only'), 405)
@@ -93,9 +97,6 @@ export async function handleMcpHttpRequest(
   if (request.method !== 'POST') {
     return new Response(null, { status: 405, headers: { allow: 'POST, GET, DELETE' } })
   }
-
-  const authorization = await authorizeRequest(request, options)
-  if (authorization instanceof Response) return authorization
 
   let payload: unknown
   try {
@@ -192,7 +193,11 @@ async function handleJsonRpcMessage(
       authorization
     })
     return {
-      response: { jsonrpc: JSON_RPC_VERSION, id, result },
+      response: {
+        jsonrpc: JSON_RPC_VERSION,
+        id,
+        result: serializeProtocolResult(payload.method ?? '', result, protocol)
+      },
       status: 200
     }
   } catch (error) {
@@ -312,7 +317,10 @@ function listTools(
   const tools = Array.from(registry.tools.values())
     .filter((tool) => isAuthorized(tool.authorization, context.authorization))
     .filter((tool) => isToolVisible(tool, context))
-    .map((tool) => serializeTool(tool, options))
+    .map((tool) => {
+      if (context.protocol.modern) assertValidMirroredHeaderSchema(tool)
+      return serializeTool(tool, options)
+    })
   return { tools }
 }
 
@@ -327,6 +335,10 @@ async function callTool(
   if (typeof name !== 'string') throw new JsonRpcError(-32602, 'Missing tool name')
   const tool = getMcpRegistry(app, options).tools.get(name)
   if (!tool) throw new JsonRpcError(-32602, `Unknown tool: ${name}`)
+  if (context.protocol.modern) {
+    assertValidMirroredHeaderSchema(tool)
+    assertMirroredToolHeaders(request, tool, params.arguments)
+  }
   enforceAuthorization(tool.authorization, context.authorization, options)
 
   const args = 'arguments' in params ? params.arguments : {}
@@ -697,40 +709,74 @@ async function handleTaskSubscription(
     const meta = isRecord(params._meta) ? params._meta : undefined
     const controller = taskController(options)
     controller.assertClientCapability(meta)
-    const taskIds = Array.isArray(params.taskIds)
-      ? params.taskIds.filter((value): value is string => typeof value === 'string')
-      : []
-    const subscriptionId = crypto.randomUUID()
+    if (!isRecord(params.notifications) || !Array.isArray(params.notifications.taskIds)) {
+      throw new JsonRpcError(-32602, 'subscriptions/listen requires notifications.taskIds')
+    }
+    const taskIds = params.notifications.taskIds
+    if (!taskIds.every((value): value is string => typeof value === 'string')) {
+      throw new JsonRpcError(-32602, 'notifications.taskIds must contain only strings')
+    }
+    const subscriptionId = payload.id
     const encoder = new TextEncoder()
-    let subscription: { close(): void | Promise<void> } | undefined
+    let subscription: { close(): void | Promise<void>; done?: Promise<void> } | undefined
+    let closed = false
+    const event = (message: unknown) =>
+      encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
     const body = new ReadableStream<Uint8Array>({
       async start(stream) {
         stream.enqueue(
-          encoder.encode(
-            `event: message\ndata: ${JSON.stringify({
-              jsonrpc: JSON_RPC_VERSION,
-              id: payload.id,
-              result: { resultType: 'complete', subscriptionId }
-            })}\n\n`
-          )
+          event({
+            jsonrpc: JSON_RPC_VERSION,
+            method: 'notifications/subscriptions/acknowledged',
+            params: {
+              notifications: { taskIds },
+              _meta: {
+                'io.modelcontextprotocol/subscriptionId': subscriptionId
+              }
+            }
+          })
         )
         subscription = await controller.listen(
           taskIds,
           (task: DetailedTask) => {
+            if (closed) return
             stream.enqueue(
-              encoder.encode(
-                `event: message\ndata: ${JSON.stringify({
-                  jsonrpc: JSON_RPC_VERSION,
-                  method: 'notifications/tasks',
-                  params: { subscriptionId, task }
-                })}\n\n`
-              )
+              event({
+                jsonrpc: JSON_RPC_VERSION,
+                method: 'notifications/tasks',
+                params: {
+                  ...task,
+                  _meta: {
+                    'io.modelcontextprotocol/subscriptionId': subscriptionId
+                  }
+                }
+              })
             )
           },
           taskRequestContext(request, params, context)
         )
+        if (subscription?.done) {
+          await subscription.done
+          if (!closed) {
+            closed = true
+            stream.enqueue(
+              event({
+                jsonrpc: JSON_RPC_VERSION,
+                id: payload.id,
+                result: {
+                  resultType: 'complete',
+                  _meta: {
+                    'io.modelcontextprotocol/subscriptionId': subscriptionId
+                  }
+                }
+              })
+            )
+            stream.close()
+          }
+        }
       },
       async cancel() {
+        closed = true
         await subscription?.close()
       }
     })
@@ -739,6 +785,7 @@ async function handleTaskSubscription(
       headers: {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
+        'x-accel-buffering': 'no',
         connection: 'keep-alive'
       }
     })
@@ -794,8 +841,42 @@ function assertCompleteAppsHtml(content: { text?: string; blob?: string }): void
 function isToolVisible(tool: McpToolDefinition, context: DispatchContext): boolean {
   const visibility = tool.app?.visibility ?? ['model', 'app']
   if (visibility.includes('model')) return true
+  if (!context.protocol.modern) return true
   const extensions = context.protocol.clientCapabilities.extensions
-  return isRecord(extensions) && isRecord(extensions[MCP_APPS_EXTENSION_ID])
+  if (!isRecord(extensions)) return false
+  const apps = extensions[MCP_APPS_EXTENSION_ID]
+  if (!isRecord(apps)) return false
+  const mimeTypes = apps.mimeTypes
+  return Array.isArray(mimeTypes) && mimeTypes.includes(MCP_APPS_RESOURCE_MIME_TYPE)
+}
+
+function serializeProtocolResult(
+  method: string,
+  result: unknown,
+  protocol: McpRequestProtocolContext
+): unknown {
+  if (!protocol.modern || !isRecord(result)) return result
+  if (
+    method === 'tools/list' ||
+    method === 'resources/list' ||
+    method === 'resources/templates/list' ||
+    method === 'resources/read' ||
+    method === 'prompts/list'
+  ) {
+    return {
+      ...result,
+      cacheScope: 'private',
+      resultType: 'complete',
+      ttlMs: 0
+    }
+  }
+  if (method === 'tools/call') {
+    return result.resultType === 'task' ? result : { ...result, resultType: 'complete' }
+  }
+  if (method === 'prompts/get') {
+    return { ...result, resultType: 'complete' }
+  }
+  return result
 }
 
 function normalizeDispatchError(id: string | number | null, error: unknown): JsonRpcResponse {

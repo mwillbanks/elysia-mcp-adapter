@@ -28,12 +28,16 @@ export async function modernRpc(
       ? params.name
       : method === 'resources/read'
         ? params.uri
-        : method.startsWith('tasks/')
-          ? params.taskId
-          : undefined
+        : undefined
   const meta = {
     ...(typeof params._meta === 'object' && params._meta !== null ? params._meta : {}),
-    'io.modelcontextprotocol/protocolVersion': '2026-07-28'
+    'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientCapabilities':
+      typeof params._meta === 'object' &&
+      params._meta !== null &&
+      'io.modelcontextprotocol/clientCapabilities' in params._meta
+        ? params._meta['io.modelcontextprotocol/clientCapabilities']
+        : {}
   }
   const response = await app.handle(
     new Request('http://localhost/mcp', {

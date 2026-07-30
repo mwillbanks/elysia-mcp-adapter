@@ -54,6 +54,15 @@ export interface TaskInputResponses {
   [key: string]: TaskInputResponse
 }
 
+/**
+ * Serial-safe execution descriptor handed to the durable task provider.
+ * The actual invocation function stays on an explicit ephemeral scheduler.
+ */
+export interface TaskExecutionDescriptor {
+  method: string
+  params: Record<string, unknown>
+}
+
 export interface WorkingTask extends Task {
   status: 'working'
 }
@@ -99,7 +108,8 @@ export type Task20260728<TResult extends Record<string, unknown> = Record<string
 export type TaskDraft<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult>
 
-export type CreateTaskResult = WorkingTask & { resultType: 'task' }
+export type CreateTaskResult<TResult extends Record<string, unknown> = Record<string, unknown>> =
+  DetailedTask<TResult> & { resultType: 'task' }
 export type GetTaskResult<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult> & { resultType: 'complete' }
 export interface UpdateTaskResult {
@@ -133,9 +143,19 @@ export type TaskInvoke<TResult extends Record<string, unknown> = Record<string, 
   signal?: AbortSignal
 ) => Promise<TResult>
 
+export interface TaskExecutionScheduler<
+  TResult extends Record<string, unknown> = Record<string, unknown>
+> {
+  /**
+   * Ephemeral invocation handle. Providers MUST NOT persist this object; the
+   * structured-clone-safe descriptor is supplied separately in `request`.
+   */
+  invoke: TaskInvoke<TResult>
+}
+
 /**
- * A provider-owned execution descriptor. Calling `invoke` preserves the adapter's
- * normal route-backed invocation path, including Elysia hooks and validation.
+ * Adapter-side execution state. This shape never crosses the durable provider
+ * boundary; `TaskDurableCreateRequest` is the persistent representation.
  */
 export interface TaskExecution<TResult extends Record<string, unknown> = Record<string, unknown>> {
   method: string
@@ -152,12 +172,23 @@ export interface TaskCreateRequest<
   pollIntervalMs?: number
 }
 
-export interface TaskProviderContext extends TaskRequestContext {
+export interface TaskDurableCreateRequest {
+  execution: TaskExecutionDescriptor
+  mode: Exclude<TaskExecutionMode, 'synchronous'>
+  ttlMs?: number | null
+  pollIntervalMs?: number
+}
+
+export interface TaskProviderContext {
   version: TasksVersion
+  meta?: Readonly<Record<string, unknown>>
+  principalKey?: string
 }
 
 export interface TaskSubscription {
   close(): void | Promise<void>
+  /** Resolves when the provider intentionally ends the stream gracefully. */
+  done?: Promise<void>
 }
 
 export type TaskStatusListener = (task: DetailedTask) => void | Promise<void>
@@ -167,10 +198,16 @@ export type TaskStatusListener = (task: DetailedTask) => void | Promise<void>
  * is readable through `get`, including across later stateless HTTP requests.
  * It MUST assign cryptographically unguessable IDs and enforce `principalKey`
  * ownership on every operation when that key is present.
+ * `request` and `context` are safe to persist. `scheduler` is an explicitly
+ * ephemeral handle and MUST NOT be serialized, retained, or sent to a worker.
  * Implementations may use a database, queue/job service, or other shared store.
  */
 export interface TaskProvider {
-  create(request: TaskCreateRequest, context: TaskProviderContext): Promise<WorkingTask>
+  create(
+    request: TaskDurableCreateRequest,
+    context: TaskProviderContext,
+    scheduler: TaskExecutionScheduler
+  ): Promise<DetailedTask>
   get(taskId: string, context: TaskProviderContext): Promise<DetailedTask | undefined>
   update(
     taskId: string,

@@ -5,7 +5,8 @@ import {
   getMcpTaskContext,
   MCP_APPS_RESOURCE_MIME_TYPE,
   mcp,
-  type TaskCreateRequest,
+  type TaskDurableCreateRequest,
+  type TaskExecutionScheduler,
   type TaskInputResponses,
   type TaskProvider,
   type TaskProviderContext
@@ -23,8 +24,12 @@ describe('modern MCP protocol', () => {
     const app = new Elysia().use(mcp())
     const modern = await modernRpc(app, 'server/discover')
     expect(modern.status).toBe(200)
-    expect(modern.body.result.protocolVersions).toEqual(['2026-07-28', '2025-11-25'])
-    expect(modern.body.result.resultType).toBe('complete')
+    expect(modern.body.result).toMatchObject({
+      cacheScope: 'private',
+      resultType: 'complete',
+      supportedVersions: ['2026-07-28', '2025-11-25'],
+      ttlMs: 0
+    })
 
     const legacy = await rpc(app, 'initialize')
     expect(legacy.body.result.protocolVersion).toBe('2025-11-25')
@@ -179,6 +184,27 @@ describe('integrated authorization', () => {
     expect(denied.headers.get('www-authenticate')).toContain('insufficient_scope')
   })
 
+  test('protects opted-in legacy auxiliary methods', async () => {
+    const app = new Elysia().use(
+      mcp({
+        transport: { enableGetSse: true, enableDeleteSession: true },
+        extensions: {
+          auth: {
+            resource,
+            authorizationServers: ['https://auth.example.com'],
+            scopes: ['mcp'],
+            verifyAccessToken
+          }
+        }
+      })
+    )
+
+    for (const method of ['GET', 'DELETE']) {
+      const missing = await app.handle(new Request('http://localhost/mcp', { method }))
+      expect(missing.status).toBe(401)
+    }
+  })
+
   test('exposes only normalized authorization while preserving the route guard header', async () => {
     let explicitSawRawToken = false
     let routeSawAuthorization = false
@@ -255,7 +281,7 @@ describe('integrated Tasks', () => {
         'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
       }
     })
-    expect(synchronous.body.result.resultType).toBeUndefined()
+    expect(synchronous.body.result.resultType).toBe('complete')
 
     const missing = await modernRpc(app, 'tools/call', { name: 'always-task' })
     expect(missing.status).toBe(400)
@@ -353,7 +379,7 @@ describe('integrated Tasks', () => {
           id: 7,
           method: 'subscriptions/listen',
           params: {
-            taskIds: ['observed'],
+            notifications: { taskIds: ['observed'] },
             _meta: {
               'io.modelcontextprotocol/protocolVersion': '2026-07-28',
               'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
@@ -367,9 +393,11 @@ describe('integrated Tasks', () => {
     if (!reader) throw new Error('Missing subscription body')
     const first = new TextDecoder().decode((await reader.read()).value)
     const second = new TextDecoder().decode((await reader.read()).value)
-    expect(first).toContain('"subscriptionId"')
+    expect(first).toContain('"notifications/subscriptions/acknowledged"')
+    expect(first).toContain('"io.modelcontextprotocol/subscriptionId":7')
     expect(second).toContain('"notifications/tasks"')
     expect(second).toContain('"status":"working"')
+    expect(second).not.toContain('"task":')
     await reader.cancel()
     expect(provider.subscriptionClosed).toBe(true)
   })
@@ -449,7 +477,10 @@ describe('integrated Apps', () => {
               uri,
               mimeType: MCP_APPS_RESOURCE_MIME_TYPE,
               text: '<!doctype html><html><body>Weather</body></html>',
-              _meta: { ui: { prefersBorder: false } }
+              _meta: {
+                traceId: 'content-trace',
+                ui: { prefersBorder: false }
+              }
             }
           ]
         }),
@@ -467,10 +498,9 @@ describe('integrated Apps', () => {
     expect(tools.body.result.tools[0]._meta['ui/resourceUri']).toBe(uri)
 
     const read = await modernRpc(app, 'resources/read', { uri })
+    expect(read.body.result.contents[0]._meta.traceId).toBe('content-trace')
     expect(read.body.result.contents[0]._meta.ui.prefersBorder).toBe(false)
-    expect(read.body.result.contents[0]._meta.ui.csp.connectDomains).toEqual([
-      'https://api.example.com'
-    ])
+    expect(read.body.result.contents[0]._meta.ui.csp).toBeUndefined()
 
     const called = await modernRpc(app, 'tools/call', { name: 'weather.open' })
     expect(called.body.result.content[0].text).toContain('72')
@@ -483,7 +513,11 @@ class IntegrationTaskProvider implements TaskProvider {
   execution: Promise<void> = Promise.resolve()
   subscriptionClosed = false
 
-  async create(request: TaskCreateRequest, context: TaskProviderContext) {
+  async create(
+    _request: TaskDurableCreateRequest,
+    context: TaskProviderContext,
+    scheduler: TaskExecutionScheduler
+  ) {
     const now = new Date().toISOString()
     const task = {
       taskId: crypto.randomUUID(),
@@ -495,7 +529,7 @@ class IntegrationTaskProvider implements TaskProvider {
     }
     this.tasks.set(task.taskId, task)
     this.owners.set(task.taskId, context.principalKey)
-    this.execution = request.execution.invoke().then((result) => {
+    this.execution = scheduler.invoke().then((result) => {
       this.tasks.set(task.taskId, {
         ...task,
         status: 'completed',
