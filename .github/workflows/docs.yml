@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/docs.yml"
+      - "examples/**"
       - "logo.svg"
+      - "src/extensions/manifest.ts"
       - "website/**"
   pull_request:
     paths:
       - ".github/workflows/docs.yml"
+      - "examples/**"
       - "logo.svg"
+      - "src/extensions/manifest.ts"
       - "website/**"
   workflow_dispatch:
 
@@ -49,6 +53,11 @@ jobs:
         env:
           VITE_BASE_PATH: /elysia-mcp-adapter/
         run: bun run --cwd website build
+
+      - name: Verify static documentation
+        env:
+          VITE_BASE_PATH: /elysia-mcp-adapter/
+        run: bun run --cwd website verify:build
 
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'

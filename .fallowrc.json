@@ -5,13 +5,15 @@
     "examples/apps-react/build.ts",
     "examples/apps-react/index.html",
     "examples/apps-react/server.ts",
+    "examples/apps-react/server.test.ts",
     "examples/apps-vanilla/app.ts",
     "examples/apps-vanilla/index.html",
     "examples/apps-vanilla/server.ts",
+    "examples/apps-vanilla/server.test.ts",
     "scripts/check-extension-drift.ts",
     "scripts/verify-app-build.ts"
   ],
-  "ignoreDependencies": ["collections", "elysia"],
+  "ignoreDependencies": ["@mwillbanks/elysia-mcp-adapter", "collections", "elysia"],
   "rules": {
     "unused-files": "error",
     "unused-exports": "error",

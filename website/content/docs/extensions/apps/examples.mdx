@@ -1,0 +1,37 @@
+---
+title: Apps examples
+description: Bun standalone HTML examples for vanilla browser code and React with local shadcn UI.
+---
+
+Build the adapter first because both examples import its public package root.
+
+## Vanilla app
+
+The [vanilla example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-vanilla)
+uses Elysia, a model-visible weather tool, an app-only refresh tool, and minimal browser code for
+the stable view handshake and same-server calls.
+
+```bash
+bun ci --cwd examples/apps-vanilla
+bun run --cwd examples/apps-vanilla smoke
+```
+
+## React and shadcn app
+
+The [React example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-react)
+uses React 19, `@modelcontextprotocol/ext-apps@1.7.5`, its React APIs, local shadcn-style component
+source, Tailwind host variables, responsive sizing, display mode, tool input/result handling, and
+an app-only task mutation.
+
+```bash
+bun ci --cwd examples/apps-react
+bun run --cwd examples/apps-react smoke
+```
+
+Both examples use Bun standalone HTML output. They include no Vite configuration, CDN links,
+runtime asset fetches, external fonts, or unresolved local assets. Server tests verify tool and
+resource contracts; the bounded postMessage fixture exercises host messages but is not a
+production host.
+
+Client availability changes independently of this package. Consult the canonical
+[MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).

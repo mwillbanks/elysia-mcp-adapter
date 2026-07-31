@@ -1,0 +1,30 @@
+---
+title: Authorization overview
+description: Protect MCP with OAuth access tokens, scopes, and enterprise authorization profiles.
+---
+
+The Authorization extension makes the adapter an OAuth **protected resource**, not an
+authorization server. An external authorization server authenticates users or workloads, handles
+grants and enterprise federation, and issues an audience-bound access token. The adapter verifies
+that final token before parsing JSON-RPC and enforces scopes again at every primitive.
+
+<Mermaid chart={`sequenceDiagram
+  participant C as MCP client
+  participant I as Enterprise IdP
+  participant AS as Authorization server
+  participant M as Elysia MCP resource
+  C->>I: authenticate when required
+  I-->>AS: enterprise assertion or ID-JAG
+  C->>AS: OAuth grant and resource
+  AS-->>C: audience-bound access token
+  C->>M: Bearer access token
+  M->>M: verify signature, issuer, audience, expiry, scopes
+  M-->>C: MCP result or RFC Bearer challenge`} />
+
+The adapter publishes RFC 9728 Protected Resource Metadata, rejects query-string tokens and
+malformed Bearer credentials, filters unauthorized tools/resources/prompts from discovery, and
+rechecks scopes during invocation.
+
+- [Quick Start](/docs/extensions/authorization/quick-start) protects one MCP endpoint.
+- [Configuration](/docs/extensions/authorization/configuration) covers metadata, scopes, and profiles.
+- [Examples](/docs/extensions/authorization/examples) uses Better Auth with SQLite and Elysia.

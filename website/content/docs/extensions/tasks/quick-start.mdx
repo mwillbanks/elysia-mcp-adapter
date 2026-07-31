@@ -1,0 +1,37 @@
+---
+title: Tasks quick start
+description: Enable Tasks and make an Elysia MCP tool execute durably.
+---
+
+Implement the exported `TaskProvider` interface, then pass it when installing the adapter:
+
+```ts
+import { Elysia } from 'elysia'
+import { mcp, type TaskProvider } from '@mwillbanks/elysia-mcp-adapter'
+
+const provider: TaskProvider = createDurableProvider()
+
+const app = new Elysia()
+  .use(mcp({
+    allowedRoutes: [],
+    extensions: {
+      tasks: {
+        version: 'current',
+        provider,
+        defaultTtl: 86_400_000,
+        pollInterval: 1_000
+      }
+    }
+  }))
+  .mcpTool('reports.generate', generateReport, {
+    description: 'Generate a report in a durable worker',
+    taskExecution: 'required'
+  })
+```
+
+The client must declare `io.modelcontextprotocol/tasks` in its request-scoped capabilities. The
+initial `tools/call` returns a working task with `resultType: "task"`; poll it with `tasks/get` or
+open `subscriptions/listen`.
+
+Start with the tested [subprocess example](/docs/extensions/tasks/examples#subprocess-provider)
+before adapting the provider to your database and worker platform.

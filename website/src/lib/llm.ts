@@ -25,7 +25,10 @@ export function withBasePathInMarkdown(markdown: string, basePath: string): stri
 }
 
 export async function getLLMText(page: LLMPage, basePath: string): Promise<string> {
-  const processed = await page.data.getText("processed");
+  const processed = (await page.data.getText("processed")).replace(
+    "<ExtensionSupportTable />",
+    getExtensionSupportMarkdown(),
+  );
   const content = `# ${page.data.title} (${withBasePath(page.url, basePath)})\n\n${processed}`;
   return withBasePathInMarkdown(content, basePath);
 }
@@ -55,3 +58,4 @@ export async function pageMarkdownResponse(
 
   return textResponse(await getLLMText(page, basePath), "text/markdown");
 }
+import { getExtensionSupportMarkdown } from "./extension-support";

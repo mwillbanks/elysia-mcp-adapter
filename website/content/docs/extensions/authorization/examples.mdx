@@ -1,0 +1,40 @@
+---
+title: Authorization examples
+description: Tested Better Auth OAuth and enterprise SSO integrations with Bun, SQLite, and Elysia.
+---
+
+The repository's [Authorization examples](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/auth)
+use Better Auth `1.6.25`, Bun SQLite, Elysia, and the adapter's public package entry point.
+
+```bash
+bun run build
+bun ci --cwd examples/auth
+bun run --cwd examples/auth smoke
+```
+
+## OAuth Provider
+
+The [OAuth example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/auth/oauth)
+mounts Better Auth's handler in Elysia, issues JWT access tokens for the MCP resource, verifies
+them with the OAuth resource client, and maps verified claims to `McpAuthPrincipal`. Its tests
+exercise authorization-code with PKCE, client credentials, metadata, audience, expiry, and scopes.
+
+```ts
+plugins: [jwt(), oauthProvider({
+  loginPage: '/sign-in',
+  consentPage: '/consent',
+  validAudiences: [MCP_RESOURCE]
+})]
+```
+
+## Enterprise SSO and OAuth
+
+The [enterprise example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/auth/enterprise)
+uses Better Auth's SSO plugin with a SAML provider and the OAuth Provider plugin. Tests keep keys
+and certificates ephemeral. The final access token follows the same MCP verification path as any
+other OAuth token.
+
+This demonstrates the resource-server boundary and enterprise SSO integration; it does **not**
+claim that Better Auth or the adapter performs the MCP ID-JAG exchange. A production external
+authorization server must implement that exchange and JWT bearer grant. The example never uses the
+deprecated Better Auth OIDC Provider plugin.

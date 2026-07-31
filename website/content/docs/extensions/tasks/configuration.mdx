@@ -1,0 +1,42 @@
+---
+title: Tasks configuration
+description: Provider durability, execution modes, MRTR, security, and distributed operation.
+---
+
+## Extension options
+
+| Option | Meaning |
+| --- | --- |
+| `version` | `current`, `draft`, or a supported dated implementation. |
+| `provider` | Required durable `TaskProvider`. |
+| `defaultTtl` | Default retention in milliseconds, or `null`. |
+| `pollInterval` | Suggested client polling interval in milliseconds. |
+
+## Execution policy
+
+- `synchronous` always returns a normal tool result.
+- `optional` creates a task when the request declares Tasks support and otherwise runs normally.
+- `required` rejects callers without the Tasks capability.
+
+## Durable provider boundary
+
+`create` receives a structured-clone-safe `TaskDurableCreateRequest`, normalized version metadata,
+and a verifier-derived `principalKey`. Persist those values before returning and guarantee the new
+ID is immediately readable through `get`. IDs must be cryptographically unguessable.
+
+The separate `TaskExecutionScheduler` is an ephemeral same-process handle that preserves the
+existing Elysia route lifecycle. Never serialize it or put it on a queue. External workers must
+consume the durable descriptor and reconstruct an explicit Elysia/MCP worker boundary.
+
+Providers must enforce ownership on `get`, `update`, `requestInput`, `cancel`, and `listen`; persist
+cancellation intent; prevent terminal-state races; expire records; bound subscription fan-out; and
+close subscriptions on disconnect. Store no raw access tokens, cookies, or request headers.
+
+## Input requests and results
+
+Final `2026-07-28` Tasks can request elicitation, sampling, or roots input. Every input key is
+unique for the entire task lifetime. Partial responses arrive through `tasks/update`.
+
+A resolved tool result—including `isError: true`—is `completed`. Use `failed` only for a JSON-RPC
+execution failure. Cancellation is cooperative and may remain pending until the executor observes
+the durable flag or abort signal.

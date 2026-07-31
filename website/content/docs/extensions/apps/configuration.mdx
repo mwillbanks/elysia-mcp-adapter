@@ -1,0 +1,26 @@
+---
+title: Apps configuration
+description: Resource metadata, tool visibility, compatibility keys, and host security boundaries.
+---
+
+Apps resources must use `ui://`, return the exact `text/html;profile=mcp-app` MIME type, and contain
+a complete HTML document as `text` or base64 `blob`. A referenced UI resource must be registered.
+
+Tool metadata uses nested `_meta.ui.resourceUri`. By default the adapter also emits the deprecated
+flat `ui/resourceUri` key for compatibility with the official `1.7.5` helper. Tool visibility may
+include `model`, `app`, or both; use app-only visibility for mutations that should not be selected
+directly by a model.
+
+Resource `_meta.ui` can declare:
+
+- `csp.connectDomains` and `csp.resourceDomains`;
+- permissions supported by the selected Apps codec;
+- a dedicated application `domain`;
+- `prefersBorder` for host presentation.
+
+Listing metadata is static. `resources/read` may return content-specific metadata, which takes
+precedence as a whole value. A controlled generic metadata escape hatch is available, but selected
+stable or draft codecs still validate Apps fields.
+
+Keep remote origins out of CSP unless required, expose no credentials or filesystem paths, and
+never assume declaration validation replaces host sandboxing or user approval.

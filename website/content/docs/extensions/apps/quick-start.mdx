@@ -1,0 +1,34 @@
+---
+title: Apps quick start
+description: Register a model-visible tool and self-contained MCP App resource.
+---
+
+Build a complete HTML document, then connect a tool to its `ui://` resource:
+
+```ts
+import {
+  MCP_APPS_RESOURCE_MIME_TYPE,
+  mcp
+} from '@mwillbanks/elysia-mcp-adapter'
+
+const uri = 'ui://dashboard/index.html'
+
+app
+  .use(mcp({ allowedRoutes: [], extensions: { apps: {} } }))
+  .mcpTool('dashboard.open', loadDashboard, {
+    app: { resourceUri: uri, visibility: ['model', 'app'] }
+  })
+  .mcpResource(uri, () => ({
+    contents: [{ uri, mimeType: MCP_APPS_RESOURCE_MIME_TYPE, text: html }]
+  }), {
+    mimeType: MCP_APPS_RESOURCE_MIME_TYPE,
+    app: {
+      csp: { connectDomains: [], resourceDomains: [] },
+      prefersBorder: true
+    }
+  })
+```
+
+Return meaningful `content` and `structuredContent` from the launch tool so non-Apps clients can
+still complete the task. Start with the repository's dependency-free browser
+[vanilla example](/docs/extensions/apps/examples#vanilla-app).

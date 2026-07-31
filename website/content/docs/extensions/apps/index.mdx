@@ -1,0 +1,25 @@
+---
+title: Apps overview
+description: Attach interactive, sandboxed HTML views to MCP tools.
+---
+
+MCP Apps let a tool point to a self-contained `ui://` HTML resource. A compatible client host can
+open the view, deliver tool input and structured results, update host context, and allow controlled
+same-server tool calls. Normal text and structured tool output remain available as fallback for
+clients without Apps support.
+
+The adapter registers and validates Apps declarations; it is not an Apps host. The client remains
+responsible for iframe sandboxing, CSP enforcement, permissions, user approvals, display modes,
+resizing, and audit logging.
+
+<Mermaid chart={`flowchart LR
+  M["Model"] --> T["Launch tool"]
+  T --> R["ui:// HTML resource"]
+  R --> H["Client Apps host"]
+  H --> V["Sandboxed view"]
+  V -->|"app-only call"| A["Elysia MCP tool"]
+  A -->|"structured result"| V`} />
+
+- [Quick Start](/docs/extensions/apps/quick-start) registers a launch tool and resource.
+- [Configuration](/docs/extensions/apps/configuration) covers metadata, visibility, and security.
+- [Examples](/docs/extensions/apps/examples) covers the vanilla and React Bun builds.

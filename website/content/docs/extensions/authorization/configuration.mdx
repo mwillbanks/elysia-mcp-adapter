@@ -1,0 +1,43 @@
+---
+title: Authorization configuration
+description: Resource metadata, token verification, scopes, and optional authorization profiles.
+---
+
+## Extension options
+
+| Option | Meaning |
+| --- | --- |
+| `resource` | Canonical HTTPS MCP endpoint URI; localhost HTTP is allowed for development. |
+| `authorizationServers` | Trusted authorization-server issuer URLs. |
+| `verifyAccessToken` | Async verifier returning a normalized `McpAuthPrincipal`. |
+| `scopes` | Base scopes required for every MCP request and advertised by default. |
+| `metadata` | RFC 9728 protected-resource metadata fields. |
+| `rootMetadataAlias` | Explicitly expose the origin-root well-known alias. |
+| `profiles` | Advertise Client Credentials or Enterprise-Managed Authorization. |
+| `clockSkewSeconds` | Non-negative expiry tolerance. |
+
+Use `authorization.requiredScopes` on tools, resources, prompts, or route MCP metadata. Unauthorized
+primitives are removed from list results and checked again during call/read/get. Missing or invalid
+credentials return `401`; insufficient scope returns `403` with authoritative scope and
+`resource_metadata` parameters.
+
+The original `Authorization` header is preserved for internal Elysia route invocation so existing
+application guards remain authoritative. Explicit MCP handlers should use the normalized
+authorization context instead of rereading the raw header.
+
+## Client Credentials
+
+Enable `profiles.clientCredentials` only when the external authorization server preregisters
+confidential clients, supports `client_credentials`, binds tokens to the canonical resource, and
+applies least privilege and credential rotation. The profile changes discovery; it does not infer
+permissions from grant provenance.
+
+## Enterprise-Managed Authorization
+
+Enable `profiles.enterpriseManaged` only when the external authorization server implements the
+enterprise profile, advertises ID-JAG support, and exchanges an enterprise assertion through the
+required JWT bearer grant. The MCP endpoint accepts only the resulting OAuth access token. It must
+not accept SAML assertions, ID tokens, or ID-JAGs directly.
+
+The adapter does not host token endpoints, registration, login or consent pages, enterprise SSO,
+ID-JAG exchange, JWKS, token refresh/storage, or IdP provisioning.

@@ -1,9 +1,12 @@
 ---
 title: MCP extensions
-description: Opt-in Tasks, Authorization, and Apps support with pinned protocol contracts.
+description: Add durable work, OAuth authorization, and interactive application views to MCP.
 ---
 
-The adapter supports MCP Tasks, Authorization profiles, and Apps without introducing a second server framework. Each extension is opt-in and versioned independently.
+MCP Extensions add optional capabilities to the core protocol without forcing every client and
+server to implement them. This adapter implements **Tasks**, **Authorization**, and **Apps** as
+thin, opt-in protocol layers around the same Elysia application. Route-backed operations still
+pass through Elysia validation, hooks, guards, error handling, and response mapping.
 
 ```ts
 import { mcp } from '@mwillbanks/elysia-mcp-adapter'
@@ -25,7 +28,49 @@ app.use(mcp({
 }))
 ```
 
-`current` is the reviewed stable implementation supported by this release. `draft` is the newest reviewed draft pinned by the support manifest. An explicit `YYYY-MM-DD` selects an immutable implementation. Omitting `version` is equivalent to `current`.
+## Architecture
+
+<Mermaid chart={`flowchart LR
+  C["MCP client"] --> T["MCP HTTP transport"]
+  T --> D["Protocol and extension dispatcher"]
+  D --> R["Elysia registry and route lifecycle"]
+  D --> TP["Tasks provider"]
+  TP --> W["Durable worker or queue"]
+  D --> AV["Access-token verifier"]
+  AV --> AS["External authorization server"]
+  D --> UR["Apps ui:// resource"]
+  UR --> H["Sandboxed client host"]`} />
+
+## Implemented extensions and versions
+
+`current` selects the reviewed stable implementation when one exists. `draft` selects the newest
+reviewed draft pinned by this release. A supported `YYYY-MM-DD` is immutable, and omitting
+`version` means `current`. Unsupported versions fail during plugin construction.
+
+<ExtensionSupportTable />
+
+The table is generated from the package's exported `MCP_EXTENSION_SUPPORT` manifest. Every pin
+records its inclusion date, upstream revision or package version, specification path, status, and
+schema hash. Aliases move only through reviewed source, fixtures, tests, and documentation; the
+upstream watcher reports drift but never changes an alias automatically.
+
+## Tasks
+
+[Tasks](/docs/extensions/tasks) turn eligible tool calls into durable work that clients can poll,
+cancel, supply input to, and subscribe to. The application supplies the durable provider and owns
+retention, isolation, execution, and recovery.
+
+## Authorization
+
+[Authorization](/docs/extensions/authorization) makes the adapter an OAuth protected resource.
+It verifies final access tokens, publishes RFC 9728 metadata, filters discovery by scope, and
+supports the Client Credentials and Enterprise-Managed Authorization capability profiles.
+
+## Apps
+
+[Apps](/docs/extensions/apps) associate tools with self-contained `ui://` HTML resources. Apps
+can receive structured tool results and call app-only tools while preserving useful text fallback
+for clients without an Apps host.
 
 Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
 

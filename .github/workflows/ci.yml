@@ -18,11 +18,24 @@ jobs:
           bun-version: 1.3.14
       - run: bun ci
       - run: bun ci --cwd website
+      - run: bun ci --cwd examples/tasks
+      - run: bun ci --cwd examples/auth
+      - run: bun ci --cwd examples/apps-vanilla
       - run: bun ci --cwd examples/apps-react
-      - run: bun run --cwd website typecheck
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
       - run: bun run fallow
       - run: bun run build
       - run: bun run examples:smoke
+      - run: bun run --cwd website lint
+      - run: bun run --cwd website typecheck
+      - run: bun run --cwd website test
+      - run: bun run --cwd website build
+      - run: bun run --cwd website verify:build
+      - run: bun run --cwd website build
+        env:
+          VITE_BASE_PATH: /elysia-mcp-adapter/
+      - run: bun run --cwd website verify:build
+        env:
+          VITE_BASE_PATH: /elysia-mcp-adapter/

@@ -4,11 +4,13 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
+    "test": "bun test --bail",
     "typecheck": "tsc --noEmit",
-    "smoke": "bun run build && bun ../../scripts/verify-app-build.ts dist/index.html"
+    "smoke": "bun run typecheck && bun run build && bun ../../scripts/verify-app-build.ts dist/index.html && bun run test"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.5",
+    "elysia": "1.4.29",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

@@ -1,0 +1,38 @@
+---
+title: Tasks examples
+description: Tested subprocess and BullMQ providers built with Bun and Elysia.
+---
+
+Both examples import the adapter from its public package root and exercise the server through
+`app.handle(new Request(...))`. Build the root package, install the example, and run its smoke test:
+
+```bash
+bun run build
+bun ci --cwd examples/tasks
+bun run --cwd examples/tasks smoke
+```
+
+## Subprocess provider
+
+The [subprocess example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/subprocess)
+stores task descriptors and snapshots in SQLite before spawning a fixed Bun worker command. The
+child opens the same database, reconstructs the synchronous Elysia worker application, and reports
+terminal state. Tests prove the work ran in another PID, remains pollable after reopening the
+provider, and observes cancellation without interpolating model input into a shell command.
+
+```ts
+const child = Bun.spawn([process.execPath, workerPath, databasePath, taskId], {
+  stdout: 'pipe',
+  stderr: 'pipe'
+})
+```
+
+## BullMQ provider
+
+The [BullMQ example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/bullmq)
+uses a `Queue`, `Worker`, Redis task records, and pub/sub snapshots. `ioredis-mock` keeps the demo
+self-contained and validates the queue boundary, but it is not a production Redis substitute.
+
+Production deployments should use a real Redis service with separate worker connections,
+`maxRetriesPerRequest: null` for workers, a `noeviction` policy, and no ioredis `keyPrefix`. Keep
+queue payloads limited to the durable descriptor and deployment-controlled identity.

@@ -1,0 +1,44 @@
+---
+title: Authorization quick start
+description: Configure a protected MCP resource and normalize verified access tokens.
+---
+
+Use one canonical MCP resource URI in the authorization server, verifier, and adapter:
+
+```ts
+import { Elysia } from 'elysia'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+
+const resource = 'https://api.example.com/mcp'
+
+const app = new Elysia().use(mcp({
+  extensions: {
+    auth: {
+      version: 'current',
+      resource,
+      authorizationServers: ['https://auth.example.com'],
+      scopes: ['mcp'],
+      verifyAccessToken: async (token) => {
+        const payload = await verifyWithAuthorizationServer(token, resource)
+        return {
+          tokenType: 'access_token',
+          subject: payload.sub,
+          clientId: payload.client_id,
+          issuer: payload.iss,
+          audience: payload.aud,
+          expiresAt: payload.exp,
+          scopes: payload.scope.split(' '),
+          claims: { tenantId: payload.tenant_id }
+        }
+      }
+    }
+  }
+}))
+```
+
+The verifier must validate signature, token class, issuer, audience/resource, expiry, and scopes.
+The adapter independently checks the normalized result. Return only verified, non-sensitive claims;
+raw tokens and assertions must never enter `McpInvocationContext.authorization`.
+
+Protected Resource Metadata is available at
+`/.well-known/oauth-protected-resource/mcp` for the default `/mcp` endpoint.

@@ -10,7 +10,8 @@
     "lint": "biome check .",
     "preview": "vite preview",
     "test": "bun test --bail",
-    "typecheck": "fumadocs-mdx && tsc --noEmit"
+    "typecheck": "fumadocs-mdx && tsc --noEmit",
+    "verify:build": "bun scripts/verify-build.ts"
   },
   "dependencies": {
     "@orama/orama": "^3.1.18",

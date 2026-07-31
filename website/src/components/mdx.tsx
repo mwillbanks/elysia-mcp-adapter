@@ -1,10 +1,17 @@
 import { TypeTable } from "fumadocs-ui/components/type-table";
 import { Mermaid } from "./mermaid";
+import { ExtensionSupportTable } from "./extension-support-table";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
 
 export function getMDXComponents(components?: MDXComponents) {
-  return { ...defaultMdxComponents, Mermaid, TypeTable, ...components } satisfies MDXComponents;
+  return {
+    ...defaultMdxComponents,
+    ExtensionSupportTable,
+    Mermaid,
+    TypeTable,
+    ...components,
+  } satisfies MDXComponents;
 }
 
 declare global {

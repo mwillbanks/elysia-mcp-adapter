@@ -138,7 +138,11 @@ app.use(
 
 Omitting an extension version selects `current`; `draft` and supported dated versions select immutable implementations recorded in the exported `MCP_EXTENSION_SUPPORT` manifest. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
 
-The Apps examples under `examples/` build one self-contained HTML document with Bun standalone HTML mode. They contain no Vite pipeline or runtime assets.
+The repository includes tested, package-root examples for every extension:
+
+- [Tasks](./examples/tasks/) uses SQLite subprocess workers and BullMQ with `ioredis-mock`.
+- [Authorization](./examples/auth/) uses Better Auth, Bun SQLite, OAuth Provider, and SAML SSO.
+- [Apps vanilla](./examples/apps-vanilla/) and [Apps React](./examples/apps-react/) build one self-contained HTML document with Bun and no Vite or runtime assets.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
 
@@ -152,6 +156,9 @@ The full guides and API reference live at **[mwillbanks.github.io/elysia-mcp-ada
 - [Configuration reference](https://mwillbanks.github.io/elysia-mcp-adapter/docs/getting-started/configuration/)
 - [Security model](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/security/)
 - [MCP extensions](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/)
+- [Tasks guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/tasks/)
+- [Authorization guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/authorization/)
+- [Apps guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/apps/)
 
 ## Development
 

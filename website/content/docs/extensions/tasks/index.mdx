@@ -1,0 +1,34 @@
+---
+title: Tasks overview
+description: Durable MCP tool execution, polling, input requests, cancellation, and subscriptions.
+---
+
+Tasks let a client start work without holding one HTTP request open. A task begins as `working`,
+may become `input_required`, and ends as `completed`, `failed`, or `cancelled`. Clients use
+`tasks/get`, `tasks/update`, and `tasks/cancel`; `subscriptions/listen` can stream complete task
+snapshots over SSE.
+
+The adapter supplies protocol handling and preserves Elysia invocation semantics. Your
+`TaskProvider` supplies durable records, execution, ownership, expiry, cancellation, and fan-out.
+There is deliberately no production in-memory provider and no task-listing method.
+
+<Mermaid chart={`sequenceDiagram
+  participant C as MCP client
+  participant A as Elysia MCP adapter
+  participant P as TaskProvider
+  participant W as Worker
+  C->>A: tools/call with Tasks capability
+  A->>P: persist descriptor and principal key
+  P-->>A: readable working task
+  A-->>C: resultType task
+  P->>W: schedule durable work
+  W->>P: completed, failed, or cancelled snapshot
+  C->>A: tasks/get or subscriptions/listen
+  A->>P: principal-bound lookup
+  P-->>C: complete task snapshot`} />
+
+- [Quick Start](/docs/extensions/tasks/quick-start) creates one taskable Elysia tool.
+- [Configuration](/docs/extensions/tasks/configuration) defines provider and lifecycle contracts.
+- [Examples](/docs/extensions/tasks/examples) covers subprocess and BullMQ implementations.
+
+Tasks require modern MCP `2026-07-28`; legacy `2025-11-25` clients cannot call Tasks methods.

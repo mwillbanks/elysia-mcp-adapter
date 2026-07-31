@@ -1,0 +1,21 @@
+{
+  "name": "elysia-mcp-auth-examples",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --bail",
+    "smoke": "bun run oauth/smoke.ts && bun run enterprise/smoke.ts"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.6.25",
+    "@better-auth/sso": "1.6.25",
+    "better-auth": "1.6.25",
+    "elysia": "1.4.29"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.14",
+    "typescript": "5.9.3"
+  }
+}
