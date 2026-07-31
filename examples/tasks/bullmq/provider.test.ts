@@ -31,6 +31,13 @@ async function waitForTerminal(
   throw new Error(`Task ${taskId} did not finish`)
 }
 
+async function waitForActiveExecution(tasks: BullMqTaskProvider, taskId: string): Promise<void> {
+  for (let attempt = 0; attempt < 50 && !tasks.abortControllers.has(taskId); attempt += 1) {
+    await Bun.sleep(5)
+  }
+  expect(tasks.abortControllers.has(taskId)).toBe(true)
+}
+
 describe('BullMQ task provider', () => {
   test('uses a real Worker with durable hashes and an ephemeral scheduler', async () => {
     const tasks = provider()
@@ -200,5 +207,93 @@ describe('BullMQ task provider', () => {
       'input-response:confirm'
     )
     expect(JSON.parse(storedResponses ?? '{}')).toEqual({ accepted: true })
+  })
+
+  test('keeps cancellation terminal across concurrent input transitions', async () => {
+    const tasks = provider()
+    const owner = context('tenant-a:user-1')
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const task = await tasks.create(
+        {
+          mode: 'required',
+          execution: { method: 'tools/call', params: { name: `reports.race-${attempt}` } }
+        },
+        owner,
+        {
+          invoke: (signal) =>
+            new Promise((_, reject) => {
+              signal?.addEventListener('abort', () => reject(signal.reason))
+            })
+        }
+      )
+      await waitForActiveExecution(tasks, task.taskId)
+
+      const [, cancelled] = await Promise.all([
+        tasks.requestInput(
+          task.taskId,
+          'confirm',
+          { method: 'elicitation/create', params: { message: 'Continue?' } },
+          owner
+        ),
+        tasks.cancel(task.taskId, owner)
+      ])
+
+      expect(cancelled).toBe(true)
+      expect((await tasks.get(task.taskId, owner))?.status).toBe('cancelled')
+    }
+  })
+
+  test('does not let input updates or late workers overwrite cancellation', async () => {
+    const tasks = provider()
+    const owner = context('tenant-a:user-1')
+    let resolveExecution: ((result: Record<string, unknown>) => void) | undefined
+    const task = await tasks.create(
+      {
+        mode: 'required',
+        execution: { method: 'tools/call', params: { name: 'reports.late-result' } }
+      },
+      owner,
+      {
+        invoke: () =>
+          new Promise((resolve) => {
+            resolveExecution = resolve
+          })
+      }
+    )
+    await waitForActiveExecution(tasks, task.taskId)
+    expect(await tasks.cancel(task.taskId, owner)).toBe(true)
+    resolveExecution?.({ tooLate: true })
+    await tasks.executions.get(task.taskId)
+    expect((await tasks.get(task.taskId, owner))?.status).toBe('cancelled')
+
+    const inputTask = await tasks.create(
+      {
+        mode: 'required',
+        execution: { method: 'tools/call', params: { name: 'reports.update-race' } }
+      },
+      owner,
+      {
+        invoke: (signal) =>
+          new Promise((_, reject) => {
+            signal?.addEventListener('abort', () => reject(signal.reason))
+          })
+      }
+    )
+    await waitForActiveExecution(tasks, inputTask.taskId)
+    expect(
+      await tasks.requestInput(
+        inputTask.taskId,
+        'confirm',
+        { method: 'elicitation/create', params: { message: 'Continue?' } },
+        owner
+      )
+    ).toBe(true)
+    const [, cancelled] = await Promise.all([
+      tasks.update(inputTask.taskId, { confirm: { accepted: true } }, owner),
+      tasks.cancel(inputTask.taskId, owner)
+    ])
+    expect(cancelled).toBe(true)
+    expect((await tasks.get(inputTask.taskId, owner))?.status).toBe('cancelled')
   })
 })

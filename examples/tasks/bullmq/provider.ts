@@ -29,8 +29,6 @@ interface TaskHash {
   error?: string
 }
 
-const terminalStatuses = new Set<DetailedTask['status']>(['completed', 'failed', 'cancelled'])
-
 export interface BullMqTaskProviderOptions {
   connection?: RedisClient
   queueName?: string
@@ -129,24 +127,13 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     inputResponses: TaskInputResponses,
     context: TaskProviderContext
   ): Promise<boolean> {
-    const hash = await this.ownedHash(taskId, context)
-    if (!hash || terminalStatuses.has(hash.status)) return false
     const entries = Object.entries(inputResponses)
-    if (entries.some(([key]) => !hash[inputRequestField(key)])) return false
+    const arguments_ = [principal(context), new Date().toISOString(), String(entries.length)]
     for (const [key, response] of entries) {
-      await this.connection.hset(
-        this.key(taskId),
-        inputResponseField(key),
-        JSON.stringify(response)
-      )
+      arguments_.push(inputRequestField(key), inputResponseField(key), JSON.stringify(response))
     }
-    const updated = (await this.connection.hgetall(this.key(taskId))) as unknown as TaskHash
-    const pending = pendingInputRequests(updated)
-    const status = Object.keys(pending).length === 0 ? 'working' : 'input_required'
-    await this.connection.hset(this.key(taskId), {
-      status,
-      lastUpdatedAt: new Date().toISOString()
-    })
+    const transitioned = await this.evalTransition(updateInputScript, taskId, arguments_)
+    if (!transitioned) return false
     await this.publish(taskId)
     return true
   }
@@ -157,22 +144,13 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     request: TaskInputRequest,
     context: TaskProviderContext
   ): Promise<boolean> {
-    const hash = await this.ownedHash(taskId, context)
-    if (!hash || terminalStatuses.has(hash.status)) return false
-    const claimed = await this.connection.hsetnx(
-      this.key(taskId),
+    const transitioned = await this.evalTransition(requestInputScript, taskId, [
+      principal(context),
       inputRequestField(key),
-      JSON.stringify(request)
-    )
-    if (claimed !== 1) return false
-    if (!(await this.owns(taskId, context))) {
-      await this.cleanupExpired(taskId)
-      return false
-    }
-    await this.connection.hset(this.key(taskId), {
-      status: 'input_required',
-      lastUpdatedAt: new Date().toISOString()
-    })
+      JSON.stringify(request),
+      new Date().toISOString()
+    ])
+    if (!transitioned) return false
     await this.connection.lrem(this.waitingKey(), 0, taskId)
     this.abortControllers.get(taskId)?.abort(new Error('Task input required'))
     await this.executions.get(taskId)?.catch(() => undefined)
@@ -182,15 +160,16 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   }
 
   async cancel(taskId: string, context: TaskProviderContext): Promise<boolean> {
-    if (!(await this.owns(taskId, context))) return false
-    const status = (await this.connection.hget(this.key(taskId), 'status')) as
-      | DetailedTask['status']
-      | null
-    if (status && terminalStatuses.has(status)) return true
+    const transitioned = await this.evalTransition(cancelScript, taskId, [
+      principal(context),
+      new Date().toISOString()
+    ])
+    if (transitioned === 0) return false
+    if (transitioned === 2) return true
     await this.connection.lrem(this.waitingKey(), 0, taskId)
-    await this.setStatus(taskId, 'cancelled')
     this.abortControllers.get(taskId)?.abort(new Error('Task cancelled'))
     this.schedulers.delete(taskId)
+    await this.publish(taskId)
     return true
   }
 
@@ -271,39 +250,32 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   }
 
   private async completeExecution(taskId: string, result: Record<string, unknown>): Promise<void> {
-    if (await this.canFinishExecution(taskId)) await this.setStatus(taskId, 'completed', result)
+    const transitioned = await this.evalTransition(finishExecutionScript, taskId, [
+      'completed',
+      new Date().toISOString(),
+      'result',
+      JSON.stringify(result)
+    ])
+    if (transitioned) await this.publish(taskId)
   }
 
   private async failExecution(taskId: string, error: unknown): Promise<void> {
-    if (!(await this.canFinishExecution(taskId))) return
-    await this.setStatus(taskId, 'failed', undefined, {
-      code: -32603,
-      message: error instanceof Error ? error.message : String(error)
-    })
-  }
-
-  private async canFinishExecution(taskId: string): Promise<boolean> {
-    const status = await this.connection.hget(this.key(taskId), 'status')
-    return Boolean(status && status !== 'cancelled' && status !== 'input_required')
+    const transitioned = await this.evalTransition(finishExecutionScript, taskId, [
+      'failed',
+      new Date().toISOString(),
+      'error',
+      JSON.stringify({
+        code: -32603,
+        message: error instanceof Error ? error.message : String(error)
+      })
+    ])
+    if (transitioned) await this.publish(taskId)
   }
 
   private dispatchSoon(): void {
     queueMicrotask(() => {
       void this.dispatchNext().catch(() => undefined)
     })
-  }
-
-  private async owns(taskId: string, context: TaskProviderContext): Promise<boolean> {
-    return (await this.connection.hget(this.key(taskId), 'principalKey')) === principal(context)
-  }
-
-  private async ownedHash(
-    taskId: string,
-    context: TaskProviderContext
-  ): Promise<TaskHash | undefined> {
-    const hash = (await this.connection.hgetall(this.key(taskId))) as unknown as TaskHash
-    if (!hash.taskId || hash.principalKey !== principal(context)) return undefined
-    return hash
   }
 
   private armExpiry(taskId: string, ttlMs: number): void {
@@ -326,20 +298,12 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     await this.connection.del(this.key(taskId))
   }
 
-  private async setStatus(
+  private async evalTransition(
+    script: string,
     taskId: string,
-    status: DetailedTask['status'],
-    result?: Record<string, unknown>,
-    error?: Record<string, unknown>
-  ): Promise<void> {
-    const values: Record<string, string> = {
-      status,
-      lastUpdatedAt: new Date().toISOString()
-    }
-    if (result) values.result = JSON.stringify(result)
-    if (error) values.error = JSON.stringify(error)
-    await this.connection.hset(this.key(taskId), values)
-    await this.publish(taskId)
+    arguments_: readonly string[]
+  ): Promise<number> {
+    return Number(await this.connection.eval(script, 1, this.key(taskId), ...arguments_))
   }
 
   private publish(taskId: string): Promise<number> {
@@ -390,6 +354,65 @@ function toTask(hash: TaskHash): DetailedTask {
 
 const inputRequestPrefix = 'input-request:'
 const inputResponsePrefix = 'input-response:'
+
+const requestInputScript = `
+local owner = redis.call('HGET', KEYS[1], 'principalKey')
+if owner ~= ARGV[1] then return 0 end
+local status = redis.call('HGET', KEYS[1], 'status')
+if status == 'completed' or status == 'failed' or status == 'cancelled' then return 0 end
+if redis.call('HSETNX', KEYS[1], ARGV[2], ARGV[3]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], 'status', 'input_required', 'lastUpdatedAt', ARGV[4])
+return 1
+`
+
+const cancelScript = `
+local owner = redis.call('HGET', KEYS[1], 'principalKey')
+if owner ~= ARGV[1] then return 0 end
+local status = redis.call('HGET', KEYS[1], 'status')
+if not status then return 0 end
+if status == 'completed' or status == 'failed' or status == 'cancelled' then return 2 end
+redis.call('HSET', KEYS[1], 'status', 'cancelled', 'lastUpdatedAt', ARGV[2])
+return 1
+`
+
+const updateInputScript = `
+local owner = redis.call('HGET', KEYS[1], 'principalKey')
+if owner ~= ARGV[1] then return 0 end
+local status = redis.call('HGET', KEYS[1], 'status')
+if status == 'completed' or status == 'failed' or status == 'cancelled' then return 0 end
+local count = tonumber(ARGV[3])
+local argument = 4
+for _ = 1, count do
+  if redis.call('HEXISTS', KEYS[1], ARGV[argument]) == 0 then return 0 end
+  argument = argument + 3
+end
+argument = 4
+for _ = 1, count do
+  redis.call('HSET', KEYS[1], ARGV[argument + 1], ARGV[argument + 2])
+  argument = argument + 3
+end
+local fields = redis.call('HKEYS', KEYS[1])
+local pending = false
+for _, field in ipairs(fields) do
+  if string.sub(field, 1, 14) == 'input-request:' then
+    local key = string.sub(field, 15)
+    if redis.call('HEXISTS', KEYS[1], 'input-response:' .. key) == 0 then
+      pending = true
+      break
+    end
+  end
+end
+local nextStatus = 'working'
+if pending then nextStatus = 'input_required' end
+redis.call('HSET', KEYS[1], 'status', nextStatus, 'lastUpdatedAt', ARGV[2])
+return 1
+`
+
+const finishExecutionScript = `
+if redis.call('HGET', KEYS[1], 'status') ~= 'working' then return 0 end
+redis.call('HSET', KEYS[1], 'status', ARGV[1], 'lastUpdatedAt', ARGV[2], ARGV[3], ARGV[4])
+return 1
+`
 
 function inputRequestField(key: string): string {
   return `${inputRequestPrefix}${key}`
