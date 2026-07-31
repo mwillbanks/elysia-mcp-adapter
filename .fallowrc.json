@@ -15,6 +15,7 @@
   ],
   "ignorePatterns": ["website/**"],
   "ignoreDependencies": ["@mwillbanks/elysia-mcp-adapter", "collections", "elysia"],
+  "ignoreUnresolvedImports": ["./dist/index.html"],
   "rules": {
     "unused-files": "error",
     "unused-exports": "error",
