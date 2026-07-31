@@ -4,6 +4,12 @@
   "packageManager": "bun@1.3.14",
   "description": "Expose Elysia HTTP routes, prompts, and resources through a native-feeling MCP adapter.",
   "type": "module",
+  "workspaces": [
+    "examples/tasks",
+    "examples/auth",
+    "examples/apps-vanilla",
+    "examples/apps-react"
+  ],
   "license": "MIT",
   "author": "Mike Willbanks",
   "repository": {
@@ -46,6 +52,7 @@
     "format": "biome check --write",
     "fallow": "fallow --skip health",
     "fallow:health": "fallow health",
+    "examples:setup": "bun link && bun install",
     "examples:build": "bun run --cwd examples/apps-vanilla build && bun run --cwd examples/apps-react build",
     "examples:typecheck": "bun run --cwd examples/tasks typecheck && bun run --cwd examples/auth typecheck && bun run --cwd examples/apps-vanilla typecheck && bun run --cwd examples/apps-react typecheck",
     "examples:test": "bun run --cwd examples/tasks test && bun run --cwd examples/auth test && bun run --cwd examples/apps-vanilla test && bun run --cwd examples/apps-react test",

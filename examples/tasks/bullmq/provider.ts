@@ -1,5 +1,3 @@
-import { Job, Queue, Worker } from 'bullmq'
-import Redis from 'ioredis-mock'
 import type {
   DetailedTask,
   TaskDurableCreateRequest,
@@ -10,7 +8,9 @@ import type {
   TaskProviderContext,
   TaskStatusListener,
   TaskSubscription
-} from '../../../src/index.js'
+} from '@mwillbanks/elysia-mcp-adapter'
+import { Job, Queue, Worker } from 'bullmq'
+import Redis from 'ioredis-mock'
 
 type RedisClient = InstanceType<typeof Redis>
 
@@ -23,6 +23,10 @@ interface TaskHash {
   ttlMs: string
   pollIntervalMs: string
   descriptor: string
+  expiryArmed: string
+  inputRequests: string
+  inputResponses: string
+  usedInputKeys: string
   result?: string
   error?: string
 }
@@ -50,6 +54,8 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   readonly worker: MockCompatibleWorker
   readonly schedulers = new Map<string, TaskExecutionScheduler>()
   readonly abortControllers = new Map<string, AbortController>()
+  readonly executions = new Map<string, Promise<Record<string, unknown>>>()
+  readonly expiryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   readonly channel: string
   readonly prefix: string
 
@@ -90,42 +96,93 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
       lastUpdatedAt: now,
       ttlMs: request.ttlMs === undefined || request.ttlMs === null ? '' : String(request.ttlMs),
       pollIntervalMs: String(request.pollIntervalMs ?? 25),
-      descriptor: JSON.stringify(request.execution)
+      descriptor: JSON.stringify(request.execution),
+      expiryArmed: 'false',
+      inputRequests: '{}',
+      inputResponses: '{}',
+      usedInputKeys: '[]'
     }
     await this.connection.hset(this.key(taskId), hash as unknown as Record<string, string>)
-    if (request.ttlMs !== undefined && request.ttlMs !== null) {
-      await this.connection.pexpire(this.key(taskId), request.ttlMs)
-    }
+    if (request.ttlMs === 0) return toTask(hash)
     this.schedulers.set(taskId, scheduler)
     await this.connection.rpush(this.waitingKey(), taskId)
     await this.publish(taskId)
-    queueMicrotask(() => {
-      void this.dispatchNext().catch(() => undefined)
-    })
-    return (await this.get(taskId, context)) as DetailedTask
+    this.dispatchSoon()
+    return toTask(hash)
   }
 
   async get(taskId: string, context: TaskProviderContext): Promise<DetailedTask | undefined> {
     const hash = (await this.connection.hgetall(this.key(taskId))) as unknown as TaskHash
-    if (!hash.taskId || hash.principalKey !== principal(context)) return undefined
+    if (!hash.taskId) {
+      await this.cleanupExpired(taskId)
+      return undefined
+    }
+    if (hash.principalKey !== principal(context)) return undefined
+    if (hash.ttlMs !== '' && hash.expiryArmed !== 'true') {
+      const ttlMs = Number(hash.ttlMs)
+      await this.connection.hset(this.key(taskId), 'expiryArmed', 'true')
+      await this.connection.pexpire(this.key(taskId), ttlMs)
+      hash.expiryArmed = 'true'
+      if (ttlMs === 0) await this.cleanupExpired(taskId)
+      else this.armExpiry(taskId, ttlMs)
+    }
     return toTask(hash)
   }
 
   async update(
     taskId: string,
-    _inputResponses: TaskInputResponses,
+    inputResponses: TaskInputResponses,
     context: TaskProviderContext
   ): Promise<boolean> {
-    return this.owns(taskId, context)
+    const hash = await this.ownedHash(taskId, context)
+    if (!hash || terminalStatuses.has(hash.status)) return false
+    const pending = parseRecord<TaskInputRequest>(hash.inputRequests)
+    const storedResponses = parseRecord<TaskInputResponses[string]>(hash.inputResponses)
+    const entries = Object.entries(inputResponses)
+    if (entries.some(([key]) => !(key in pending) || key in storedResponses)) return false
+    for (const [key, response] of entries) {
+      storedResponses[key] = response
+      delete pending[key]
+    }
+    const status = Object.keys(pending).length === 0 ? 'working' : 'input_required'
+    await this.connection.hset(this.key(taskId), {
+      inputRequests: JSON.stringify(pending),
+      inputResponses: JSON.stringify(storedResponses),
+      status,
+      lastUpdatedAt: new Date().toISOString()
+    })
+    await this.publish(taskId)
+    if (status === 'working' && !this.abortControllers.has(taskId)) {
+      await this.connection.rpush(this.waitingKey(), taskId)
+      this.dispatchSoon()
+    }
+    return true
   }
 
   async requestInput(
     taskId: string,
-    _key: string,
-    _request: TaskInputRequest,
+    key: string,
+    request: TaskInputRequest,
     context: TaskProviderContext
   ): Promise<boolean> {
-    return this.owns(taskId, context)
+    const hash = await this.ownedHash(taskId, context)
+    if (!hash || terminalStatuses.has(hash.status)) return false
+    const usedKeys = new Set(parseArray(hash.usedInputKeys))
+    if (usedKeys.has(key)) return false
+    usedKeys.add(key)
+    const pending = parseRecord<TaskInputRequest>(hash.inputRequests)
+    pending[key] = request
+    await this.connection.hset(this.key(taskId), {
+      inputRequests: JSON.stringify(pending),
+      usedInputKeys: JSON.stringify([...usedKeys]),
+      status: 'input_required',
+      lastUpdatedAt: new Date().toISOString()
+    })
+    await this.connection.lrem(this.waitingKey(), 0, taskId)
+    this.abortControllers.get(taskId)?.abort(new Error('Task input required'))
+    await this.executions.get(taskId)?.catch(() => undefined)
+    await this.publish(taskId)
+    return true
   }
 
   async cancel(taskId: string, context: TaskProviderContext): Promise<boolean> {
@@ -173,7 +230,9 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
+    for (const timer of this.expiryTimers.values()) clearTimeout(timer)
     for (const controller of this.abortControllers.values()) controller.abort()
+    await Promise.allSettled(this.executions.values())
     await this.worker.close(true)
     await this.queue.close()
     this.connection.disconnect()
@@ -190,21 +249,15 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     this.abortControllers.set(taskId, controller)
     try {
       const result = await scheduler.invoke(controller.signal)
-      const current = await this.connection.hget(this.key(taskId), 'status')
-      if (current !== 'cancelled') await this.setStatus(taskId, 'completed', result)
+      await this.completeExecution(taskId, result)
       return result
     } catch (error) {
-      const current = await this.connection.hget(this.key(taskId), 'status')
-      if (current !== 'cancelled') {
-        await this.setStatus(taskId, 'failed', undefined, {
-          code: -32603,
-          message: error instanceof Error ? error.message : String(error)
-        })
-      }
+      await this.failExecution(taskId, error)
       throw error
     } finally {
       this.abortControllers.delete(taskId)
-      this.schedulers.delete(taskId)
+      const status = await this.connection.hget(this.key(taskId), 'status')
+      if (status !== 'input_required') this.schedulers.delete(taskId)
     }
   }
 
@@ -212,11 +265,69 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     const taskId = await this.connection.lpop(this.waitingKey())
     if (!taskId) return
     const job = new Job(this.queue, 'execute', { taskId }, { jobId: taskId, attempts: 1 }, taskId)
-    await this.worker.execute(job)
+    const execution = this.worker.execute(job)
+    this.executions.set(taskId, execution)
+    try {
+      await execution
+    } finally {
+      if (this.executions.get(taskId) === execution) this.executions.delete(taskId)
+    }
+  }
+
+  private async completeExecution(taskId: string, result: Record<string, unknown>): Promise<void> {
+    if (await this.canFinishExecution(taskId)) await this.setStatus(taskId, 'completed', result)
+  }
+
+  private async failExecution(taskId: string, error: unknown): Promise<void> {
+    if (!(await this.canFinishExecution(taskId))) return
+    await this.setStatus(taskId, 'failed', undefined, {
+      code: -32603,
+      message: error instanceof Error ? error.message : String(error)
+    })
+  }
+
+  private async canFinishExecution(taskId: string): Promise<boolean> {
+    const status = await this.connection.hget(this.key(taskId), 'status')
+    return Boolean(status && status !== 'cancelled' && status !== 'input_required')
+  }
+
+  private dispatchSoon(): void {
+    queueMicrotask(() => {
+      void this.dispatchNext().catch(() => undefined)
+    })
   }
 
   private async owns(taskId: string, context: TaskProviderContext): Promise<boolean> {
     return (await this.connection.hget(this.key(taskId), 'principalKey')) === principal(context)
+  }
+
+  private async ownedHash(
+    taskId: string,
+    context: TaskProviderContext
+  ): Promise<TaskHash | undefined> {
+    const hash = (await this.connection.hgetall(this.key(taskId))) as unknown as TaskHash
+    if (!hash.taskId || hash.principalKey !== principal(context)) return undefined
+    return hash
+  }
+
+  private armExpiry(taskId: string, ttlMs: number): void {
+    const existing = this.expiryTimers.get(taskId)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(() => {
+      void this.cleanupExpired(taskId)
+    }, ttlMs)
+    this.expiryTimers.set(taskId, timer)
+  }
+
+  private async cleanupExpired(taskId: string): Promise<void> {
+    const timer = this.expiryTimers.get(taskId)
+    if (timer) clearTimeout(timer)
+    this.expiryTimers.delete(taskId)
+    await this.connection.lrem(this.waitingKey(), 0, taskId)
+    this.abortControllers.get(taskId)?.abort(new Error('Task expired'))
+    this.abortControllers.delete(taskId)
+    this.schedulers.delete(taskId)
+    await this.connection.del(this.key(taskId))
   }
 
   private async setStatus(
@@ -271,5 +382,22 @@ function toTask(hash: TaskHash): DetailedTask {
     }
   }
   if (hash.status === 'cancelled') return { ...base, status: 'cancelled' }
+  if (hash.status === 'input_required') {
+    return {
+      ...base,
+      status: 'input_required',
+      inputRequests: parseRecord<TaskInputRequest>(hash.inputRequests)
+    }
+  }
   return { ...base, status: 'working' }
+}
+
+function parseRecord<T>(value: string | undefined): Record<string, T> {
+  if (!value) return {}
+  return JSON.parse(value) as Record<string, T>
+}
+
+function parseArray(value: string | undefined): string[] {
+  if (!value) return []
+  return JSON.parse(value) as string[]
 }

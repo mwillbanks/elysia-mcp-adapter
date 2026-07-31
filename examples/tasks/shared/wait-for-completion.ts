@@ -1,4 +1,4 @@
-import type { TaskProvider, TaskProviderContext } from '../../../src/index.js'
+import type { TaskProvider, TaskProviderContext } from '@mwillbanks/elysia-mcp-adapter'
 
 export async function waitForCompletion(
   provider: Pick<TaskProvider, 'get'>,

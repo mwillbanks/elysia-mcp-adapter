@@ -13,6 +13,7 @@
     "scripts/check-extension-drift.ts",
     "scripts/verify-app-build.ts"
   ],
+  "ignorePatterns": ["website/**"],
   "ignoreDependencies": ["@mwillbanks/elysia-mcp-adapter", "collections", "elysia"],
   "rules": {
     "unused-files": "error",

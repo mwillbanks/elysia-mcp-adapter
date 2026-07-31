@@ -7,8 +7,8 @@ Both examples import the adapter from its public package root and exercise the s
 `app.handle(new Request(...))`. Build the root package, install the example, and run its smoke test:
 
 ```bash
+bun run examples:setup
 bun run build
-bun ci --cwd examples/tasks
 bun run --cwd examples/tasks smoke
 ```
 
@@ -22,8 +22,8 @@ provider, and observes cancellation without interpolating model input into a she
 
 ```ts
 const child = Bun.spawn([process.execPath, workerPath, databasePath, taskId], {
-  stdout: 'pipe',
-  stderr: 'pipe'
+  stdout: 'ignore',
+  stderr: 'inherit'
 })
 ```
 

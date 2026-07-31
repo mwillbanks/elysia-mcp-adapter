@@ -6,11 +6,6 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@mwillbanks/elysia-mcp-adapter": ["../../src/index.ts"],
-      "elysia": ["../../node_modules/elysia"]
-    },
     "types": ["bun"]
   },
   "include": ["oauth/**/*.ts", "enterprise/**/*.ts"]

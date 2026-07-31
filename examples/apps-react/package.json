@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
     "elysia": "1.4.29",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

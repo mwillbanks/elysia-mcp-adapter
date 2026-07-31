@@ -1,5 +1,5 @@
+import { MCP_APPS_RESOURCE_MIME_TYPE, mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia } from 'elysia'
-import { MCP_APPS_RESOURCE_MIME_TYPE, mcp } from '../../src/index.js'
 
 const appUri = 'ui://tasks/index.html'
 const html = await Bun.file(new URL('./dist/index.html', import.meta.url)).text()

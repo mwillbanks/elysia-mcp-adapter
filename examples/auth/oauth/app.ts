@@ -1,11 +1,11 @@
 import { Database } from 'bun:sqlite'
 import { oauthProvider } from '@better-auth/oauth-provider'
+import { type McpAuthPrincipal, mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { betterAuth } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
 import { verifyAccessToken } from 'better-auth/oauth2'
 import { jwt } from 'better-auth/plugins'
 import { Elysia } from 'elysia'
-import { type McpAuthPrincipal, mcp } from '../../../src/index.js'
 
 export const OAUTH_BASE_URL = 'http://localhost:43101/api/auth'
 export const MCP_RESOURCE = 'http://localhost:43101/mcp'

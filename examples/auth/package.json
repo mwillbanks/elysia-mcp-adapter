@@ -11,6 +11,7 @@
   "dependencies": {
     "@better-auth/oauth-provider": "1.6.25",
     "@better-auth/sso": "1.6.25",
+    "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
     "better-auth": "1.6.25",
     "elysia": "1.4.29"
   },

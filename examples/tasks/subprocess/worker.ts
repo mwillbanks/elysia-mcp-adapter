@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia, t } from 'elysia'
-import { mcp } from '../../../src/index.js'
 
 interface StoredTask {
   descriptor: string

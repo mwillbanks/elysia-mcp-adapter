@@ -163,6 +163,7 @@ The full guides and API reference live at **[mwillbanks.github.io/elysia-mcp-ada
 ## Development
 
 ```bash
+bun link
 bun install
 bun run lint
 bun run typecheck

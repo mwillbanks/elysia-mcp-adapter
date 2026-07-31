@@ -1,5 +1,5 @@
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia } from 'elysia'
-import { mcp } from '../../../src/index.js'
 import type { SqliteSubprocessTaskProvider } from './provider.js'
 
 export function createSubprocessTaskApp(provider: SqliteSubprocessTaskProvider) {

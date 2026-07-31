@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { MCP_APPS_RESOURCE_MIME_TYPE } from '../../src/index.js'
+import { MCP_APPS_RESOURCE_MIME_TYPE } from '@mwillbanks/elysia-mcp-adapter'
 import { app } from './server.js'
 
 async function modernRpc(method: string, params: Record<string, unknown> = {}) {

@@ -23,13 +23,14 @@ Tests generate a one-day IdP certificate and private key with local `openssl` in
 
 ## Run
 
-Use Bun 1.3.14 and OpenSSL, then run from this directory:
+Use Bun 1.3.14 and OpenSSL, then run from the repository root:
 
 ```bash
-bun install --frozen-lockfile
-bun run typecheck
-bun test --bail
-bun run smoke
+bun run examples:setup
+bun run build
+bun run --cwd examples/auth typecheck
+bun run --cwd examples/auth test
+bun run --cwd examples/auth smoke
 ```
 
 For manual configuration, copy `.env.example`, generate a random Better Auth secret of at least 32 characters, and provide the IdP's PEM certificate. The examples use fixed loopback ports `43101` and `43102`; they do not start production services or persist the in-memory test database.

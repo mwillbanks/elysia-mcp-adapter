@@ -12,7 +12,8 @@ uses Elysia, a model-visible weather tool, an app-only refresh tool, and minimal
 the stable view handshake and same-server calls.
 
 ```bash
-bun ci --cwd examples/apps-vanilla
+bun run examples:setup
+bun run build
 bun run --cwd examples/apps-vanilla smoke
 ```
 
@@ -24,7 +25,8 @@ source, Tailwind host variables, responsive sizing, display mode, tool input/res
 an app-only task mutation.
 
 ```bash
-bun ci --cwd examples/apps-react
+bun run examples:setup
+bun run build
 bun run --cwd examples/apps-react smoke
 ```
 

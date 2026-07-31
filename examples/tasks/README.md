@@ -4,6 +4,11 @@ This independent Bun package demonstrates two production-shaped implementations 
 `TaskProvider` contract. Both store only the serial-safe execution descriptor and keep the injected
 execution scheduler ephemeral.
 
+Both providers persist MRTR request keys and partial responses, expose pending requests through
+`input_required`, reject lifetime key reuse, and resume their controlled executor after the final
+response. A zero TTL still permits the required initial durable read, then expires the record and
+removes any queued or process-local scheduling state.
+
 ## Subprocess + SQLite
 
 `subprocess/provider.ts` writes task state and ownership to SQLite before starting a fixed Bun worker
@@ -37,9 +42,12 @@ Neither demo persists the scheduler. A deployment that allows producers and cons
 different processes should replace that callback with a worker-side descriptor dispatcher like the
 subprocess example.
 
+Run from the repository root so Bun links the examples to the checkout's built package:
+
 ```bash
-bun install
-bun run typecheck
-bun test
-bun run smoke
+bun run examples:setup
+bun run build
+bun run --cwd examples/tasks typecheck
+bun run --cwd examples/tasks test
+bun run --cwd examples/tasks smoke
 ```
