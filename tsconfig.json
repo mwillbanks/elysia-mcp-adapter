@@ -9,11 +9,7 @@
     "exactOptionalPropertyTypes": false,
     "useUnknownInCatchVariables": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": ".",
+    "noEmit": true,
     "types": ["bun"]
   },
   "include": ["src", "test"],

@@ -45,7 +45,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean",
+    "build": "bun scripts/clean-dist.ts && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test --bail",
     "lint": "biome check",
@@ -86,8 +86,7 @@
     "elysia": "^1.4.29",
     "fallow": "^3.10.0",
     "husky": "^9.1.7",
-    "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "engines": {
     "bun": ">=1.1",

@@ -22,7 +22,7 @@ bun run lint       # biome (formatting + lint)
 bun run typecheck  # tsc --noEmit
 bun test           # bun:test suites in test/
 bun run fallow     # dead code + duplication gate
-bun run build      # tsup ESM + d.ts output
+bun run build      # TypeScript 7 ESM + d.ts output
 ```
 
 Commits are validated by husky: `commit-msg` runs commitlint (Conventional Commits) and
