@@ -5,6 +5,14 @@ task board, host-context handling, a model-visible launch tool, and an app-only 
 checked-in shadcn-style source and Tailwind CSS compile into one standalone HTML file without
 Vite, a CDN, or runtime asset fetches.
 
+From the repository root, register the checkout and install all example workspaces first:
+
+```bash
+bun run examples:setup
+```
+
+Then run these commands from `examples/apps-react`:
+
 ```bash
 bun run build
 bun run smoke

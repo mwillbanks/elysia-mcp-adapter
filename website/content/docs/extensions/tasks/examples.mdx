@@ -12,6 +12,10 @@ bun run build
 bun run --cwd examples/tasks smoke
 ```
 
+The providers persist pending MRTR requests, partial responses, and lifetime-unique keys, but do not
+replay work after input. Safe continuation requires an application-defined checkpoint that consumes
+those responses; replaying the original executor can duplicate side effects.
+
 ## Subprocess provider
 
 The [subprocess example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/subprocess)

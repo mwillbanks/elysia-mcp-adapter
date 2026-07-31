@@ -15,6 +15,7 @@ import Redis from 'ioredis-mock'
 type RedisClient = InstanceType<typeof Redis>
 
 interface TaskHash {
+  [field: string]: string | undefined
   taskId: string
   principalKey: string
   status: DetailedTask['status']
@@ -24,9 +25,6 @@ interface TaskHash {
   pollIntervalMs: string
   descriptor: string
   expiryArmed: string
-  inputRequests: string
-  inputResponses: string
-  usedInputKeys: string
   result?: string
   error?: string
 }
@@ -97,10 +95,7 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
       ttlMs: request.ttlMs === undefined || request.ttlMs === null ? '' : String(request.ttlMs),
       pollIntervalMs: String(request.pollIntervalMs ?? 25),
       descriptor: JSON.stringify(request.execution),
-      expiryArmed: 'false',
-      inputRequests: '{}',
-      inputResponses: '{}',
-      usedInputKeys: '[]'
+      expiryArmed: 'false'
     }
     await this.connection.hset(this.key(taskId), hash as unknown as Record<string, string>)
     if (request.ttlMs === 0) return toTask(hash)
@@ -136,26 +131,23 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   ): Promise<boolean> {
     const hash = await this.ownedHash(taskId, context)
     if (!hash || terminalStatuses.has(hash.status)) return false
-    const pending = parseRecord<TaskInputRequest>(hash.inputRequests)
-    const storedResponses = parseRecord<TaskInputResponses[string]>(hash.inputResponses)
     const entries = Object.entries(inputResponses)
-    if (entries.some(([key]) => !(key in pending) || key in storedResponses)) return false
+    if (entries.some(([key]) => !hash[inputRequestField(key)])) return false
     for (const [key, response] of entries) {
-      storedResponses[key] = response
-      delete pending[key]
+      await this.connection.hset(
+        this.key(taskId),
+        inputResponseField(key),
+        JSON.stringify(response)
+      )
     }
+    const updated = (await this.connection.hgetall(this.key(taskId))) as unknown as TaskHash
+    const pending = pendingInputRequests(updated)
     const status = Object.keys(pending).length === 0 ? 'working' : 'input_required'
     await this.connection.hset(this.key(taskId), {
-      inputRequests: JSON.stringify(pending),
-      inputResponses: JSON.stringify(storedResponses),
       status,
       lastUpdatedAt: new Date().toISOString()
     })
     await this.publish(taskId)
-    if (status === 'working' && !this.abortControllers.has(taskId)) {
-      await this.connection.rpush(this.waitingKey(), taskId)
-      this.dispatchSoon()
-    }
     return true
   }
 
@@ -167,20 +159,24 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
   ): Promise<boolean> {
     const hash = await this.ownedHash(taskId, context)
     if (!hash || terminalStatuses.has(hash.status)) return false
-    const usedKeys = new Set(parseArray(hash.usedInputKeys))
-    if (usedKeys.has(key)) return false
-    usedKeys.add(key)
-    const pending = parseRecord<TaskInputRequest>(hash.inputRequests)
-    pending[key] = request
+    const claimed = await this.connection.hsetnx(
+      this.key(taskId),
+      inputRequestField(key),
+      JSON.stringify(request)
+    )
+    if (claimed !== 1) return false
+    if (!(await this.owns(taskId, context))) {
+      await this.cleanupExpired(taskId)
+      return false
+    }
     await this.connection.hset(this.key(taskId), {
-      inputRequests: JSON.stringify(pending),
-      usedInputKeys: JSON.stringify([...usedKeys]),
       status: 'input_required',
       lastUpdatedAt: new Date().toISOString()
     })
     await this.connection.lrem(this.waitingKey(), 0, taskId)
     this.abortControllers.get(taskId)?.abort(new Error('Task input required'))
     await this.executions.get(taskId)?.catch(() => undefined)
+    this.schedulers.delete(taskId)
     await this.publish(taskId)
     return true
   }
@@ -386,18 +382,30 @@ function toTask(hash: TaskHash): DetailedTask {
     return {
       ...base,
       status: 'input_required',
-      inputRequests: parseRecord<TaskInputRequest>(hash.inputRequests)
+      inputRequests: pendingInputRequests(hash)
     }
   }
   return { ...base, status: 'working' }
 }
 
-function parseRecord<T>(value: string | undefined): Record<string, T> {
-  if (!value) return {}
-  return JSON.parse(value) as Record<string, T>
+const inputRequestPrefix = 'input-request:'
+const inputResponsePrefix = 'input-response:'
+
+function inputRequestField(key: string): string {
+  return `${inputRequestPrefix}${key}`
 }
 
-function parseArray(value: string | undefined): string[] {
-  if (!value) return []
-  return JSON.parse(value) as string[]
+function inputResponseField(key: string): string {
+  return `${inputResponsePrefix}${key}`
+}
+
+function pendingInputRequests(hash: TaskHash): Record<string, TaskInputRequest> {
+  const pending: Record<string, TaskInputRequest> = {}
+  for (const [field, value] of Object.entries(hash)) {
+    if (!field.startsWith(inputRequestPrefix) || !value) continue
+    const key = field.slice(inputRequestPrefix.length)
+    if (hash[inputResponseField(key)]) continue
+    pending[key] = JSON.parse(value) as TaskInputRequest
+  }
+  return pending
 }

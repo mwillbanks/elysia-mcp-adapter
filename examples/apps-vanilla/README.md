@@ -4,6 +4,14 @@ This Bun and Elysia example exposes a model-visible weather tool, an app-only re
 and one self-contained `ui://` resource. Bun produces standalone HTML without Vite, CDNs,
 runtime assets, or browser filesystem access.
 
+From the repository root, register the checkout and install all example workspaces first:
+
+```bash
+bun run examples:setup
+```
+
+Then run these commands from `examples/apps-vanilla`:
+
 ```bash
 bun run build
 bun run smoke

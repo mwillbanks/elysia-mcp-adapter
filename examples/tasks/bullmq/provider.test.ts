@@ -129,7 +129,7 @@ describe('BullMQ task provider', () => {
     )
   })
 
-  test('persists MRTR requests, partial responses, and resumes the scheduler', async () => {
+  test('atomically persists MRTR requests and partial responses without replaying execution', async () => {
     const tasks = provider()
     const owner = context('tenant-a:user-1')
     let invocations = 0
@@ -154,14 +154,25 @@ describe('BullMQ task provider', () => {
       }
     )
     await tasks.get(task.taskId, owner)
-    expect(
-      await tasks.requestInput(
+    for (let attempt = 0; attempt < 50 && !tasks.abortControllers.has(task.taskId); attempt += 1) {
+      await Bun.sleep(5)
+    }
+    expect(tasks.abortControllers.has(task.taskId)).toBe(true)
+    const duplicateClaims = await Promise.all([
+      tasks.requestInput(
         task.taskId,
         'confirm',
         { method: 'elicitation/create', params: { message: 'Continue?' } },
         owner
+      ),
+      tasks.requestInput(
+        task.taskId,
+        'confirm',
+        { method: 'elicitation/create', params: { message: 'Duplicate' } },
+        owner
       )
-    ).toBe(true)
+    ])
+    expect(duplicateClaims.sort()).toEqual([false, true])
     expect(await tasks.requestInput(task.taskId, 'roots', { method: 'roots/list' }, owner)).toBe(
       true
     )
@@ -180,16 +191,14 @@ describe('BullMQ task provider', () => {
       false
     )
 
-    const completed = await waitForTerminal(tasks, task.taskId, owner)
-    expect(completed.status).toBe('completed')
-    expect(invocations).toBeGreaterThan(0)
+    await Bun.sleep(150)
+    expect((await tasks.get(task.taskId, owner))?.status).toBe('working')
+    expect(invocations).toBe(1)
+    expect(tasks.schedulers.has(task.taskId)).toBe(false)
     const storedResponses = await tasks.connection.hget(
       `${tasks.prefix}:task:${task.taskId}`,
-      'inputResponses'
+      'input-response:confirm'
     )
-    expect(JSON.parse(storedResponses ?? '{}')).toEqual({
-      confirm: { accepted: true },
-      roots: { roots: [] }
-    })
+    expect(JSON.parse(storedResponses ?? '{}')).toEqual({ accepted: true })
   })
 })

@@ -162,7 +162,6 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
         .run(pending.length === 0 ? 'working' : 'input_required', new Date().toISOString(), taskId)
     })
     transaction()
-    if (this.pendingInputRequests(taskId).length === 0) this.startWorker(taskId)
     return true
   }
 

@@ -5,9 +5,12 @@ This independent Bun package demonstrates two production-shaped implementations 
 execution scheduler ephemeral.
 
 Both providers persist MRTR request keys and partial responses, expose pending requests through
-`input_required`, reject lifetime key reuse, and resume their controlled executor after the final
-response. A zero TTL still permits the required initial durable read, then expires the record and
-removes any queued or process-local scheduling state.
+`input_required`, and reject lifetime key reuse. They intentionally stop there: the adapter's
+`TaskExecutionScheduler` accepts only an abort signal, so safely resuming application work requires
+an application-defined checkpoint/continuation format that consumes the persisted responses. These
+examples never replay an executor after input, because replay can duplicate side effects. A zero TTL
+still permits the required initial durable read, then expires the record and removes any queued or
+process-local scheduling state.
 
 ## Subprocess + SQLite
 

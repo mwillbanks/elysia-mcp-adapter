@@ -117,7 +117,7 @@ describe('SQLite subprocess task provider', () => {
     expect(provider.children.has(created.taskId)).toBe(false)
   })
 
-  test('persists MRTR requests, partial responses, and lifetime-unique keys', async () => {
+  test('persists MRTR requests and partial responses without replaying execution', async () => {
     const { provider } = await fixture()
     const owner = context('tenant-a:user-1')
     const created = await provider.create(request('input', 500), owner, {
@@ -160,5 +160,7 @@ describe('SQLite subprocess task provider', () => {
       .get(created.taskId, 'confirm')
     expect(JSON.parse(stored?.response ?? '{}')).toEqual({ accepted: true })
     expect((await provider.get(created.taskId, owner))?.status).toBe('working')
+    await Bun.sleep(50)
+    expect(provider.children.has(created.taskId)).toBe(false)
   })
 })
