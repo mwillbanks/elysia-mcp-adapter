@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
-    "bullmq": "6.0.2",
+    "bullmq": "6.0.3",
     "elysia": "1.4.29",
     "ioredis-mock": "8.13.1"
   },
