@@ -55,7 +55,7 @@
     "examples:setup": "bun link && bun install",
     "examples:build": "bun run --cwd examples/apps-vanilla build && bun run --cwd examples/apps-react build",
     "examples:typecheck": "bun run --cwd examples/tasks typecheck && bun run --cwd examples/auth typecheck && bun run --cwd examples/apps-vanilla typecheck && bun run --cwd examples/apps-react typecheck",
-    "examples:test": "bun run --cwd examples/tasks test && bun run --cwd examples/auth test && bun run --cwd examples/apps-vanilla test && bun run --cwd examples/apps-react test",
+    "examples:test": "bun run examples:build && bun run --cwd examples/tasks test && bun run --cwd examples/auth test && bun run --cwd examples/apps-vanilla test && bun run --cwd examples/apps-react test",
     "examples:smoke": "bun run --cwd examples/tasks smoke && bun run --cwd examples/auth smoke && bun run --cwd examples/apps-vanilla smoke && bun run --cwd examples/apps-react smoke",
     "extensions:check-drift": "bun scripts/check-extension-drift.ts",
     "prepack": "bun run build",

@@ -40,6 +40,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   constructor(readonly databasePath: string) {
     this.database = new Database(databasePath, { create: true })
     this.database.exec('PRAGMA journal_mode = WAL')
+    this.database.exec('PRAGMA busy_timeout = 5000')
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
