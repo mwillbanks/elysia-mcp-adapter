@@ -165,7 +165,7 @@ function Home() {
               icon={Workflow}
               label="04 / Extend"
               slug="extensions"
-              text="Add MCP Apps, Authentication, and Tasks (draft spec) support."
+              text="Add MCP Apps, Authorization, and Tasks (draft spec) support."
               title="MCP Extensions"
             />
           </div>
