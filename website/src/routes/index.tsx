@@ -139,7 +139,7 @@ function Home() {
               harden the surface for production.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <JourneyCard
               icon={Sparkles}
               label="01 / Start"
@@ -160,6 +160,13 @@ function Home() {
               slug="core-concepts/resources-and-prompts"
               text="Add standalone tools, URI resources, templates, and reusable prompts."
               title="MCP primitives"
+            />
+            <JourneyCard
+              icon={Workflow}
+              label="04 / Extend"
+              slug="extensions"
+              text="Add MCP Apps, Authorization, and Tasks (draft spec) support."
+              title="MCP Extensions"
             />
           </div>
         </section>
