@@ -1,0 +1,14 @@
+---
+title: Action and trust annotations
+description: Carry draft behavioral and trust metadata without granting authority.
+---
+
+Action metadata appears under tool annotations at `io.modelcontextprotocol/action-metadata`. It can describe input destination and sensitivity, return source and sensitivity, outcome as `benign`, `consequential`, or `irreversible`, and `requiresReview`.
+
+Destination and sensitivity vocabularies remain open strings in the draft. Hosts can strengthen multiple signals as a union. They must not weaken a stronger annotation because another signal is absent.
+
+Trust annotations appear in result `_meta` at `io.modelcontextprotocol/trust-annotations`. Optional `sensitive` and `untrusted` booleans distinguish absence from `false`. `evidenceRef` contains bounded `type`, `digest`, and `canonicalization` strings, with optional `schema` and `ref`.
+
+The adapter validates and preserves these records. It never fetches evidence. Hosts own approval, reference retrieval, canonicalization verification, consent, and display behavior. Treat unsupported host functionality as unavailable. Behavioral annotations never replace authentication or authorization.
+
+When runtime annotations change, publish `notifications/tools/list_changed` through the configured subscription provider. Hosts must refresh the tool list before using the new annotation set.

@@ -1,3 +1,21 @@
+import {
+  assertEventDefinition,
+  type McpEventDefinition,
+  type McpEventHandler,
+  notifyMcpEventListChanged,
+  snapshotEventDefinition
+} from '../extensions/events/index.js'
+import {
+  assertInterceptorDefinition,
+  type McpInterceptorDefinition,
+  type McpInterceptorHandler
+} from '../extensions/interceptors/index.js'
+import {
+  buildSkillDefinition,
+  type McpSkillBytes,
+  type McpSkillRegistrationOptions,
+  snapshotSkillRegistration
+} from '../extensions/skills/index.js'
 import { ensureMcpState, invalidateRegistry } from '../state.js'
 import type {
   AnyElysiaApp,
@@ -25,7 +43,7 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
       ) {
         const state = ensureMcpState(this)
         state.explicitTools.set(name, { name, handler, options })
-        invalidateRegistry(this)
+        invalidateRegistry(this, 'tools')
         return this
       }
     })
@@ -44,7 +62,7 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
       ) {
         const state = ensureMcpState(this)
         state.explicitResources.set(uriOrTemplate, { uriOrTemplate, handler, options })
-        invalidateRegistry(this)
+        invalidateRegistry(this, 'resources')
         return this
       }
     })
@@ -63,7 +81,74 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
       ) {
         const state = ensureMcpState(this)
         state.explicitPrompts.set(name, { name, handler, options })
+        invalidateRegistry(this, 'prompts')
+        return this
+      }
+    })
+  }
+
+  if (typeof target.mcpSkill !== 'function') {
+    Object.defineProperty(target, 'mcpSkill', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: function mcpSkill(
+        this: AnyElysiaApp,
+        uri: string,
+        skill: McpSkillBytes,
+        options: McpSkillRegistrationOptions = {}
+      ) {
+        const state = ensureMcpState(this)
+        const registration = snapshotSkillRegistration(uri, skill, options)
+        // Validate before mutating application state.
+        buildSkillDefinition(registration)
+        state.explicitSkills.set(uri, registration)
+        invalidateRegistry(this, 'resources')
+        return this
+      }
+    })
+  }
+
+  if (typeof target.mcpInterceptor !== 'function') {
+    Object.defineProperty(target, 'mcpInterceptor', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: function mcpInterceptor(
+        this: AnyElysiaApp,
+        definition: McpInterceptorDefinition,
+        handler: McpInterceptorHandler
+      ) {
+        assertInterceptorDefinition(definition)
+        const state = ensureMcpState(this)
+        state.explicitInterceptors.set(definition.name, {
+          definition: structuredClone(definition),
+          handler
+        })
         invalidateRegistry(this)
+        return this
+      }
+    })
+  }
+
+  if (typeof target.mcpEvent !== 'function') {
+    Object.defineProperty(target, 'mcpEvent', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: function mcpEvent(
+        this: AnyElysiaApp,
+        definition: McpEventDefinition,
+        handler: McpEventHandler
+      ) {
+        assertEventDefinition(definition)
+        const state = ensureMcpState(this)
+        state.explicitEvents.set(definition.name, {
+          definition: snapshotEventDefinition(definition),
+          handler
+        })
+        invalidateRegistry(this, 'events')
+        notifyMcpEventListChanged(this)
         return this
       }
     })
@@ -76,4 +161,7 @@ interface McpMethodRuntime {
   mcpTool?: unknown
   mcpResource?: unknown
   mcpPrompt?: unknown
+  mcpSkill?: unknown
+  mcpInterceptor?: unknown
+  mcpEvent?: unknown
 }

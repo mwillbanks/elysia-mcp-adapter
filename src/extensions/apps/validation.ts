@@ -1,4 +1,4 @@
-import { MCP_APPS_RESOURCE_MIME_TYPE } from './constants.js'
+import { MCP_APPS_RESOURCE_MIME_TYPE, MCP_APPS_RESOURCE_URI_META_KEY } from './constants.js'
 import type {
   McpAppsResourceContent,
   McpAppsResourceContentInput,
@@ -101,10 +101,23 @@ export function assertMcpAppsToolMetadata(
 ): asserts value is McpAppsToolMetadata {
   assertCodecVersion(version)
   if (!isRecord(value)) throw new TypeError('MCP Apps tool metadata must be an object')
-  if (value.ui === undefined) return
+  if (value.ui === undefined) {
+    if (value[MCP_APPS_RESOURCE_URI_META_KEY] !== undefined) {
+      assertMcpAppsResourceUri(
+        value[MCP_APPS_RESOURCE_URI_META_KEY],
+        `_meta["${MCP_APPS_RESOURCE_URI_META_KEY}"]`
+      )
+    }
+    return
+  }
   if (!isRecord(value.ui)) throw new TypeError('MCP Apps tool metadata ui must be an object')
   if (value.ui.resourceUri !== undefined) {
     assertMcpAppsResourceUri(value.ui.resourceUri, '_meta.ui.resourceUri')
+  } else if (value[MCP_APPS_RESOURCE_URI_META_KEY] !== undefined) {
+    assertMcpAppsResourceUri(
+      value[MCP_APPS_RESOURCE_URI_META_KEY],
+      `_meta["${MCP_APPS_RESOURCE_URI_META_KEY}"]`
+    )
   }
   if (value.ui.visibility !== undefined) assertVisibility(value.ui.visibility)
 }

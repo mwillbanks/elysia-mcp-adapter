@@ -50,6 +50,7 @@ async function modernRpc(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': method,
         ...(typeof name === 'string' ? { 'mcp-name': name } : {})

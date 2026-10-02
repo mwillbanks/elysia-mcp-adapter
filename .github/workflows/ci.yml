@@ -11,30 +11,42 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8.10.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
       - run: bun link
       - run: bun ci
       - run: bun ci --cwd website
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bun run fallow
-      - run: bun run build
-      - run: bun run examples:typecheck
-      - run: bun run examples:test
-      - run: bun run examples:smoke
-      - run: bun run --cwd website lint
-      - run: bun run --cwd website typecheck
-      - run: bun run --cwd website test
-      - run: bun run --cwd website build
-      - run: bun run --cwd website verify:build
-      - run: bun run --cwd website build
+      - run: bun --bun run lint
+      - run: bun --bun run typecheck
+      - run: bun --bun run test
+      - run: bun --bun run fallow
+      - run: bun --bun run build
+      - run: bun --bun run pack:check
+      - run: bun --bun run examples:build
+      - run: bun --bun run examples:typecheck
+      - run: bun --bun run examples:test
+      - run: bun --bun run examples:smoke
+      - run: bun --bun run --cwd website lint
+      - run: bun --bun run --cwd website typecheck
+      - run: bun --bun run --cwd website test
+      - run: bun --bun run --cwd website build
+      - run: bun --bun run --cwd website verify:build
+      - run: bun --bun run --cwd website build
         env:
           VITE_BASE_PATH: /elysia-mcp-adapter/
-      - run: bun run --cwd website verify:build
+      - run: bun --bun run --cwd website verify:build
         env:
           VITE_BASE_PATH: /elysia-mcp-adapter/

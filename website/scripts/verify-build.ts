@@ -6,12 +6,23 @@ const publicRoot = resolve(import.meta.dirname, "../.output/public");
 const configuredBase = process.env.VITE_BASE_PATH ?? "/";
 const base = configuredBase === "/" ? "" : `/${configuredBase.replace(/^\/+|\/+$/g, "")}`;
 
-const extensionPages = ["tasks", "authorization", "apps"].flatMap((extension) => [
-  extension,
-  `${extension}/quick-start`,
-  `${extension}/configuration`,
-  `${extension}/examples`,
-]);
+const extensionPages = ["tasks", "authorization", "apps", "skills"].flatMap((extension) => {
+  const children = ["quick-start", "configuration"];
+  children.push(extension === "skills" ? "security" : "examples");
+  return [extension, ...children.map((child) => `${extension}/${child}`)];
+});
+const integrationPages = [
+  "core-concepts/modern-core",
+  "api-reference/plugin",
+  "api-reference/extensions",
+  "extensions/specification-inventory",
+  "extensions/experimental",
+  "extensions/experimental/server-card",
+  "extensions/experimental/interceptors",
+  "extensions/experimental/server-variants",
+  "extensions/experimental/annotations",
+  "extensions/experimental/events",
+];
 
 function required(path: string): string {
   const absolute = resolve(publicRoot, path);
@@ -23,13 +34,25 @@ for (const page of extensionPages) {
   required(`docs/extensions/${page}/index.html`);
   required(`docs/extensions/${page}.md`);
 }
+for (const page of integrationPages) {
+  required(`docs/${page}/index.html`);
+  required(`docs/${page}.md`);
+}
 
 const overviewHtml = required("docs/extensions/index.html");
 const overviewMarkdown = required("docs/extensions.md");
 const llms = required("llms.txt");
 const llmsFull = required("llms-full.txt");
 
-for (const title of ["Tasks overview", "Authorization overview", "Apps overview"]) {
+for (const title of [
+  "Tasks overview",
+  "Authorization overview",
+  "Apps overview",
+  "Skills over MCP",
+  "Modern Core Protocol",
+  "Experimental extensions",
+  "Events",
+]) {
   if (!llms.includes(title) || !llmsFull.includes(title)) {
     throw new Error(`Generated LLM documentation is missing: ${title}`);
   }
@@ -52,5 +75,5 @@ if (base) {
 }
 
 console.log(
-  `Verified ${extensionPages.length + 4} extension documentation artifacts for ${base || "/"}`,
+  `Verified ${extensionPages.length + integrationPages.length + 4} documentation artifacts for ${base || "/"}`,
 );

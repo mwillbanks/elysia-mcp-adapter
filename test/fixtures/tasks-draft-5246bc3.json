@@ -1,0 +1,11 @@
+{
+  "version": "draft-5246bc3",
+  "upstreamCommit": "5246bc3d0253c1c4b09e682f690b7e8b97362500",
+  "sourceSha256": "7fd574093a5c4e29da19a0d7683693af7b93a276f3ce37343664c9e12f4d039a",
+  "extension": "io.modelcontextprotocol/tasks",
+  "capability": {},
+  "missingCapabilityError": -32021,
+  "createResultType": "task",
+  "operationResultType": "complete",
+  "methods": ["tools/call", "tasks/get", "tasks/update", "tasks/cancel", "subscriptions/listen"]
+}

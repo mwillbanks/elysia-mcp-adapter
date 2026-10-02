@@ -10,6 +10,7 @@ async function modernRpc(method: string, params: Record<string, unknown> = {}) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': method,
         ...(typeof name === 'string' ? { 'mcp-name': name } : {})
@@ -22,6 +23,7 @@ async function modernRpc(method: string, params: Record<string, unknown> = {}) {
           ...params,
           _meta: {
             'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'apps-vanilla-test', version: '1.0.0' },
             'io.modelcontextprotocol/clientCapabilities': {
               extensions: { 'io.modelcontextprotocol/ui': {} }
             }
@@ -37,7 +39,7 @@ describe('vanilla MCP App server', () => {
   test('publishes tools and a self-contained UI resource', async () => {
     const discovery = await modernRpc('server/discover')
     expect(discovery.body.result.capabilities.extensions['io.modelcontextprotocol/ui']).toEqual({
-      version: '2026-01-26'
+      mimeTypes: [MCP_APPS_RESOURCE_MIME_TYPE]
     })
 
     const tools = await modernRpc('tools/list')

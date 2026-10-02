@@ -1,0 +1,20 @@
+{
+  "name": "@examples/skills",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build server.ts client.ts smoke.ts --outdir dist --target bun",
+    "typecheck": "bun --bun tsc --noEmit",
+    "test": "bun test --bail",
+    "smoke": "bun smoke.ts"
+  },
+  "dependencies": {
+    "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
+    "elysia": "1.4.30"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  },
+  "packageManager": "bun@1.4.2"
+}

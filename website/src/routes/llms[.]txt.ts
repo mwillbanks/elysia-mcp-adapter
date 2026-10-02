@@ -6,9 +6,9 @@ import { source } from "@/lib/source";
 export const Route = createFileRoute("/llms.txt")({
   server: {
     handlers: {
-      GET: () =>
+      GET: async () =>
         textResponse(
-          withBasePathInMarkdown(llms(source).index(), import.meta.env.BASE_URL),
+          withBasePathInMarkdown(await llms(source).index(), import.meta.env.BASE_URL),
           "text/plain",
         ),
     },

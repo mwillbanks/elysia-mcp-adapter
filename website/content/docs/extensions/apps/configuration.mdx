@@ -5,9 +5,10 @@ description: Resource metadata, tool visibility, compatibility keys, and host se
 
 Apps resources must use `ui://`, return the exact `text/html;profile=mcp-app` MIME type, and contain
 a complete HTML document as `text` or base64 `blob`. A referenced UI resource must be registered.
+When enabled, discovery advertises `io.modelcontextprotocol/ui` with the implemented MIME type.
 
 Tool metadata uses nested `_meta.ui.resourceUri`. By default the adapter also emits the deprecated
-flat `ui/resourceUri` key for compatibility with the official `1.7.5` helper. Tool visibility may
+flat `ui/resourceUri` key for compatibility with the official helper. Tool visibility may
 include `model`, `app`, or both; use app-only visibility for mutations that should not be selected
 directly by a model.
 
@@ -24,3 +25,6 @@ stable or draft codecs still validate Apps fields.
 
 Keep remote origins out of CSP unless required, expose no credentials or filesystem paths, and
 never assume declaration validation replaces host sandboxing or user approval.
+
+MCP Apps `2026-01-26` wire messages are unchanged by the SDK v2 migration. SDK v2 applications
+use the split client package and Zod v4 peers. The adapter remains independent of the Apps SDK.

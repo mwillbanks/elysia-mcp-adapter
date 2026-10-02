@@ -1,11 +1,14 @@
 import { isRecord } from '../internal.js'
 import type {
   McpContent,
+  McpPromptHandlerResult,
   McpPromptMessage,
   McpPromptResult,
   McpResourceContent,
+  McpResourceHandlerResult,
   McpResourceReadResult,
   McpResponseMarshalOptions,
+  McpToolHandlerResult,
   McpToolResult,
   NormalizedMcpPluginOptions
 } from '../types.js'
@@ -15,7 +18,7 @@ export async function marshalHttpResponseToToolResult(
   routeLabel: string,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpToolResult> {
+): Promise<McpToolHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
   const httpMetadata = marshal.includeHttpMetadata
@@ -42,6 +45,8 @@ export async function marshalHttpResponseToToolResult(
     }
   }
 
+  if (isInputRequiredResult(parsed.structured)) return parsed.structured
+
   if (parsed.binaryContent) {
     return {
       content: [parsed.binaryContent],
@@ -67,7 +72,7 @@ export async function marshalHttpResponseToResourceResult(
   uri: string,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpResourceReadResult> {
+): Promise<McpResourceHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
   const mimeType = response.headers.get('content-type')?.split(';')[0] || 'text/plain'
@@ -75,6 +80,8 @@ export async function marshalHttpResponseToResourceResult(
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} while reading resource ${uri}: ${parsed.text}`)
   }
+
+  if (isInputRequiredResult(parsed.structured)) return parsed.structured
 
   if (parsed.binaryResource) {
     return { contents: [{ ...parsed.binaryResource, uri, mimeType }] }
@@ -95,7 +102,7 @@ export async function marshalHttpResponseToPromptResult(
   response: Response,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpPromptResult> {
+): Promise<McpPromptHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
 
@@ -106,7 +113,8 @@ export async function marshalHttpResponseToPromptResult(
   return coercePromptResult(parsed.structured ?? parsed.text)
 }
 
-export function coerceToolResult(value: unknown): McpToolResult {
+export function coerceToolResult(value: unknown): McpToolHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isToolResult(value)) return value
 
   if (typeof value === 'string') {
@@ -132,7 +140,8 @@ export function coerceResourceResult(
   value: unknown,
   uri: string,
   mimeType?: string
-): McpResourceReadResult {
+): McpResourceHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isResourceReadResult(value)) return value
 
   if (Array.isArray(value) && value.every(isResourceContent)) {
@@ -164,7 +173,8 @@ export function coerceResourceResult(
   }
 }
 
-export function coercePromptResult(value: unknown): McpPromptResult {
+export function coercePromptResult(value: unknown): McpPromptHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isPromptResult(value)) return value
 
   if (Array.isArray(value) && value.every(isPromptMessage)) {
@@ -334,6 +344,12 @@ function isBinaryMimeType(mimeType: string): boolean {
 
 function isToolResult(value: unknown): value is McpToolResult {
   return isRecord(value) && Array.isArray(value.content)
+}
+
+function isInputRequiredResult(
+  value: unknown
+): value is import('../types.js').McpInputRequiredResult {
+  return isRecord(value) && value.resultType === 'input_required'
 }
 
 function isResourceReadResult(value: unknown): value is McpResourceReadResult {

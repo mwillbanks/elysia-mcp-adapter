@@ -49,6 +49,26 @@ async function waitForTerminal(
   throw new Error(`Task ${taskId} did not finish`)
 }
 
+function trackedSignal(aborted: boolean): {
+  signal: AbortSignal
+  counts: () => readonly [number, number]
+} {
+  let added = 0
+  let removed = 0
+  return {
+    signal: {
+      aborted,
+      addEventListener: () => {
+        added += 1
+      },
+      removeEventListener: () => {
+        removed += 1
+      }
+    } as unknown as AbortSignal,
+    counts: () => [added, removed]
+  }
+}
+
 describe('SQLite subprocess task provider', () => {
   test('runs through MCP in a distinct Bun child and survives provider reconstruction', async () => {
     const { provider, databasePath } = await fixture()
@@ -73,6 +93,19 @@ describe('SQLite subprocess task provider', () => {
     const reopened = new SqliteSubprocessTaskProvider(databasePath)
     disposals.push(() => reopened[Symbol.asyncDispose]())
     expect(await reopened.get(created.taskId, owner)).toEqual(completed)
+  })
+
+  test('completes tool-level errors instead of converting them to task failures', async () => {
+    const { provider } = await fixture()
+    const owner = context('tenant-a:user-1')
+    const created = await provider.create(request('tool-error', 0), owner, {
+      invoke: async () => ({})
+    })
+    const completed = await waitForTerminal(provider, created.taskId, owner)
+    expect(completed).toMatchObject({
+      status: 'completed',
+      result: { isError: true }
+    })
   })
 
   test('polls status notifications, cancels work, and expires TTL records', async () => {
@@ -103,6 +136,44 @@ describe('SQLite subprocess task provider', () => {
     expect(await provider.get(expiring.taskId, owner)).toBeDefined()
     await Bun.sleep(20)
     expect(await provider.get(expiring.taskId, owner)).toBeUndefined()
+  })
+
+  test('closes subscriptions during setup aborts and removes abort listeners', async () => {
+    const { provider } = await fixture()
+    const owner = context('tenant-a:user-1')
+    const created = await provider.create(request('subscription', 2_000), owner, {
+      invoke: async () => ({})
+    })
+    const normal = trackedSignal(false)
+    const subscription = provider.listen([created.taskId], () => undefined, {
+      ...owner,
+      signal: normal.signal
+    })
+    subscription.close()
+    subscription.close()
+    expect(normal.counts()).toEqual([1, 1])
+
+    const preAborted = trackedSignal(true)
+    provider.listen([created.taskId], () => undefined, { ...owner, signal: preAborted.signal })
+    expect(preAborted.counts()).toEqual([1, 1])
+    await provider.cancel(created.taskId, owner)
+  })
+
+  test('reports listener failures through subscription completion', async () => {
+    const { provider } = await fixture()
+    const owner = context('tenant-a:user-1')
+    const created = await provider.create(request('listener-error', 2_000), owner, {
+      invoke: async () => ({})
+    })
+    const subscription = provider.listen(
+      [created.taskId],
+      () => {
+        throw new Error('listener failed')
+      },
+      owner
+    )
+    await expect(subscription.done).rejects.toThrow('listener failed')
+    await provider.cancel(created.taskId, owner)
   })
 
   test('makes zero-TTL tasks readable once without spawning orphaned work', async () => {
@@ -144,7 +215,22 @@ describe('SQLite subprocess task provider', () => {
       }
     })
 
-    expect(await provider.update(created.taskId, { confirm: { accepted: true } }, owner)).toBe(true)
+    expect(await provider.update(created.taskId, { confirm: { action: 'accept' } }, owner)).toBe(
+      true
+    )
+    expect(
+      await provider.update(
+        created.taskId,
+        Object.fromEntries([
+          ['missing', { action: 'accept' }],
+          ['__proto__', { action: 'accept' }]
+        ]),
+        owner
+      )
+    ).toBe(true)
+    expect(await provider.update(created.taskId, { confirm: { action: 'accept' } }, owner)).toBe(
+      true
+    )
     expect(await provider.get(created.taskId, owner)).toMatchObject({
       status: 'input_required',
       inputRequests: { roots: { method: 'roots/list' } }
@@ -158,9 +244,108 @@ describe('SQLite subprocess task provider', () => {
         'SELECT response FROM task_input_requests WHERE task_id = ? AND request_key = ?'
       )
       .get(created.taskId, 'confirm')
-    expect(JSON.parse(stored?.response ?? '{}')).toEqual({ accepted: true })
+    expect(JSON.parse(stored?.response ?? '{}')).toEqual({ action: 'accept' })
     expect((await provider.get(created.taskId, owner))?.status).toBe('working')
     await Bun.sleep(50)
     expect(provider.children.has(created.taskId)).toBe(false)
+  })
+
+  test('keeps worker completion atomic with input, response, and cancellation transitions', async () => {
+    const { provider } = await fixture()
+    const owner = context('tenant-a:user-1')
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const inputTask = await provider.create(
+        request(`input-race-${attempt}`, attempt % 2),
+        owner,
+        {
+          invoke: async () => ({})
+        }
+      )
+      const accepted = await provider.requestInput(
+        inputTask.taskId,
+        'confirm',
+        { method: 'elicitation/create', params: { message: 'Continue?' } },
+        owner
+      )
+      const inputRow = provider.database
+        .query<{ status: string; result: string | null }, [string]>(
+          'SELECT status, result FROM tasks WHERE task_id = ?'
+        )
+        .get(inputTask.taskId)
+      const inputCount = provider.database
+        .query<{ count: number }, [string]>(
+          'SELECT COUNT(*) AS count FROM task_input_requests WHERE task_id = ?'
+        )
+        .get(inputTask.taskId)?.count
+      if (accepted) {
+        expect(inputRow).toMatchObject({ status: 'input_required', result: null })
+        expect(inputCount).toBe(1)
+      } else {
+        if (!inputRow) throw new Error('Expected the raced input task to remain durable')
+        expect(['completed', 'failed']).toContain(inputRow.status)
+        expect(inputCount).toBe(0)
+      }
+
+      const cancelTask = await provider.create(
+        request(`cancel-race-${attempt}`, attempt % 2),
+        owner,
+        { invoke: async () => ({}) }
+      )
+      expect(await provider.cancel(cancelTask.taskId, owner)).toBe(true)
+      const cancelled = await provider.get(cancelTask.taskId, owner)
+      if (!cancelled) throw new Error('Expected the raced cancellation task to remain durable')
+      expect(['completed', 'failed', 'cancelled']).toContain(cancelled.status)
+    }
+
+    const terminal = await provider.create(request('terminal-guards', 2_000), owner, {
+      invoke: async () => ({})
+    })
+    expect(
+      await provider.requestInput(
+        terminal.taskId,
+        'confirm',
+        { method: 'elicitation/create', params: { message: 'Continue?' } },
+        owner
+      )
+    ).toBe(true)
+    const terminalResult = JSON.stringify({ content: [{ type: 'text', text: 'already done' }] })
+    provider.database
+      .query("UPDATE tasks SET status = 'completed', result = ? WHERE task_id = ?")
+      .run(terminalResult, terminal.taskId)
+
+    expect(await provider.update(terminal.taskId, { confirm: { action: 'accept' } }, owner)).toBe(
+      true
+    )
+    expect(
+      await provider.requestInput(
+        terminal.taskId,
+        'late',
+        { method: 'elicitation/create', params: { message: 'Too late?' } },
+        owner
+      )
+    ).toBe(false)
+    expect(await provider.cancel(terminal.taskId, owner)).toBe(true)
+    const guarded = provider.database
+      .query<
+        { status: string; result: string | null; response: string | null; late: number },
+        [string]
+      >(
+        `SELECT tasks.status, tasks.result, confirm.response,
+                COUNT(late.request_key) AS late
+         FROM tasks
+         LEFT JOIN task_input_requests AS confirm
+           ON confirm.task_id = tasks.task_id AND confirm.request_key = 'confirm'
+         LEFT JOIN task_input_requests AS late
+           ON late.task_id = tasks.task_id AND late.request_key = 'late'
+         WHERE tasks.task_id = ?`
+      )
+      .get(terminal.taskId)
+    expect(guarded).toEqual({
+      status: 'completed',
+      result: terminalResult,
+      response: null,
+      late: 0
+    })
   })
 })

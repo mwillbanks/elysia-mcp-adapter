@@ -7,7 +7,7 @@ description: Provider durability, execution modes, MRTR, security, and distribut
 
 | Option | Meaning |
 | --- | --- |
-| `version` | `current`, `draft`, or a supported dated implementation. |
+| `version` | `current`, `2026-07-28`, legacy `draft`, or `draft-5246bc3`. |
 | `provider` | Required durable `TaskProvider`. |
 | `defaultTtl` | Default retention in milliseconds, or `null`. |
 | `pollInterval` | Suggested client polling interval in milliseconds. |
@@ -35,7 +35,13 @@ close subscriptions on disconnect. Store no raw access tokens, cookies, or reque
 ## Input requests and results
 
 Final `2026-07-28` Tasks can request elicitation, sampling, or roots input. Every input key is
-unique for the entire task lifetime. Partial responses arrive through `tasks/update`.
+unique for the entire task lifetime. Partial responses arrive through `tasks/update`. The adapter
+validates responses for currently outstanding keys. Providers ignore unknown, answered, and
+superseded keys without overwriting stored responses. A partial response keeps the task in
+`input_required` until all pending keys are satisfied.
+
+The `draft` selector remains pinned to revision `2c1425d` and its `-32003` capability error.
+Select `draft-5246bc3` for the current pinned draft and its final `-32021` error behavior.
 
 A resolved tool result—including `isError: true`—is `completed`. Use `failed` only for a JSON-RPC
 execution failure. Cancellation is cooperative and may remain pending until the executor observes

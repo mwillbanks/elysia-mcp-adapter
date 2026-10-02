@@ -28,7 +28,17 @@ const app = new Elysia().use(
 )
 ```
 
-`mcp()` installs `.mcpTool()`, `.mcpResource()`, and `.mcpPrompt()`, discovers eligible routes, and mounts the JSON-RPC transport.
+`mcp()` installs `.mcpTool()`, `.mcpResource()`, `.mcpPrompt()`, `.mcpSkill()`, `.mcpInterceptor()`, and `.mcpEvent()`, discovers eligible routes, and mounts the JSON-RPC transport.
+
+The additive extension registration methods use these signatures:
+
+```ts
+mcpSkill(uri: string, skill: McpSkillBytes, options?: McpSkillRegistrationOptions): Elysia
+mcpInterceptor(definition: McpInterceptorDefinition, handler: McpInterceptorHandler): Elysia
+mcpEvent(definition: McpEventDefinition, handler: McpEventHandler): Elysia
+```
+
+Skill handlers serve registered bytes or delegate to `McpSkillProvider`. Interceptor handlers receive `McpInterceptorInvocation` and an invocation context with an abort signal. Event handlers receive `McpEventPollRequest` and return `McpEventPollResult`; larger registries can use `McpEventProvider`. See the extension API reference for provider, context, and result contracts.
 
 <auto-type-table path="../../../../src/types.ts" name="McpPluginOptions" />
 
@@ -39,6 +49,30 @@ const app = new Elysia().use(
 ### Response marshaling
 
 <auto-type-table path="../../../../src/types.ts" name="McpResponseMarshalOptions" />
+
+### Modern core
+
+<auto-type-table path="../../../../src/types.ts" name="McpCoreOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpContinuationOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpPaginationOptions" />
+
+<auto-type-table path="../../../../src/types.ts" name="McpSubscriptionOptions" />
+
+Route handlers can read the current MCP call without accepting model-controlled headers:
+
+```ts
+import { getMcpInvocationContext } from '@mwillbanks/elysia-mcp-adapter'
+
+new Elysia().post('/report', ({ request }) => {
+  const invocation = getMcpInvocationContext(request)
+  invocation?.reportProgress?.({ progress: 1, total: 1, message: 'complete' })
+  return { inputResponses: invocation?.inputResponses }
+})
+```
+
+`getMcpInvocationContext()` returns data only for the internal request that the adapter passes to `app.handle()`. The adapter removes the association after the route finishes.
 
 ### Tool annotations
 

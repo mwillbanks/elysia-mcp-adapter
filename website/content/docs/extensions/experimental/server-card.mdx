@@ -1,0 +1,32 @@
+---
+title: Server card
+description: Publish cacheable advisory server metadata with strict disclosure boundaries.
+---
+
+```ts
+import { MCP_SERVER_CARD_REVISION, MCP_SERVER_CARD_SCHEMA, mcp } from '@mwillbanks/elysia-mcp-adapter'
+
+mcp({
+  server: { name: 'com.example/service', version: 'build-42' },
+  extensions: {
+    serverCard: {
+      version: MCP_SERVER_CARD_REVISION,
+      card: {
+        $schema: MCP_SERVER_CARD_SCHEMA,
+        name: 'com.example/service',
+        description: 'Example service',
+        version: 'build-42',
+        remotes: [{ type: 'streamable-http', url: 'https://api.example.com/mcp' }]
+      }
+    }
+  }
+})
+```
+
+The endpoint returns `application/mcp-server-card+json`, `Access-Control-Allow-Origin: *`, a stable ETag, and `Cache-Control`. Matching `If-None-Match` requests return `304`.
+
+Keep the card name and version consistent with live `serverInfo`. This consistency is advisory; runtime values are authoritative after connection. Exact non-semver version strings are valid. Version ranges are invalid.
+
+Serve the public card endpoint over HTTPS with TLS 1.2 or later in production. The application host or a configured TLS-terminating proxy enforces transport security. The adapter does not infer transport security from forwarded headers. Remote metadata URLs require HTTPS in production; `environment: 'development'` permits loopback HTTP.
+
+Cards are advisory. Do not include authorization values, embedded secrets, private topology, tools, resources, or prompts. The adapter never fetches a card automatically.

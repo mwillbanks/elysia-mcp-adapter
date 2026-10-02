@@ -11,6 +11,7 @@ import {
   setTaskController,
   type TaskDurableCreateRequest,
   type TaskExecutionScheduler,
+  type TaskInputResponse,
   type TaskInputResponses,
   TaskProtocolError,
   type TaskProvider,
@@ -18,6 +19,7 @@ import {
   taskCapabilityErrorCode,
   type WorkingTask
 } from '../src/extensions/tasks/index.js'
+import latestDraftFixture from './fixtures/tasks-draft-5246bc3.json' with { type: 'json' }
 
 const capabilityMeta = {
   'io.modelcontextprotocol/clientCapabilities': {
@@ -26,6 +28,12 @@ const capabilityMeta = {
     }
   }
 }
+
+interface CompatibleLegacyTaskInputResponse extends TaskInputResponse {
+  approved: boolean
+}
+
+const compatibleLegacyResponse: CompatibleLegacyTaskInputResponse = { approved: true }
 
 function workingTask(taskId = 'task-1'): WorkingTask {
   return {
@@ -116,9 +124,22 @@ describe('tasks extension', () => {
     expect(resolveTasksVersion('current')).toBe('2026-07-28')
     expect(resolveTasksVersion('2026-07-28')).toBe('2026-07-28')
     expect(resolveTasksVersion('draft')).toBe('draft')
+    expect(resolveTasksVersion('draft-5246bc3')).toBe('draft-5246bc3')
     expect(taskCapabilityErrorCode('current')).toBe(-32021)
     expect(taskCapabilityErrorCode('draft')).toBe(-32003)
+    expect(taskCapabilityErrorCode('draft-5246bc3')).toBe(-32021)
     expect(() => resolveTasksVersion('2025-11-25' as 'draft')).toThrow('Unsupported tasks')
+  })
+
+  it('matches the independently recorded current draft contract', () => {
+    expect(latestDraftFixture.version).toBe('draft-5246bc3')
+    expect(latestDraftFixture.missingCapabilityError).toBe(-32021)
+    expect(resolveTasksVersion('draft-5246bc3')).toBe('draft-5246bc3')
+    expect(taskCapabilityErrorCode('draft-5246bc3')).toBe(-32021)
+    expect(latestDraftFixture.extension).toBe('io.modelcontextprotocol/tasks')
+    expect(createTaskController({ provider: new TestTaskProvider() }).capability()).toEqual({
+      extensions: { 'io.modelcontextprotocol/tasks': latestDraftFixture.capability }
+    })
   })
 
   it('creates the version-specific missing capability error', () => {
@@ -298,7 +319,7 @@ describe('tasks extension', () => {
       params: {
         taskId: task.taskId,
         inputResponses: {
-          confirmation: { resultType: 'complete', action: 'accept' }
+          confirmation: { action: 'accept' }
         }
       },
       context
@@ -315,7 +336,7 @@ describe('tasks extension', () => {
     expect(provider.updates).toEqual([
       {
         taskId: task.taskId,
-        responses: { confirmation: { resultType: 'complete', action: 'accept' } }
+        responses: { confirmation: { action: 'accept' } }
       }
     ])
     expect(provider.cancellations).toEqual([task.taskId])
@@ -357,6 +378,101 @@ describe('tasks extension', () => {
         context
       })
     ).rejects.toMatchObject({ code: -32602 })
+  })
+
+  it('validates recognized responses and safely preserves special unknown keys', async () => {
+    const provider = new TestTaskProvider()
+    provider.tasks.set('waiting', {
+      ...workingTask('waiting'),
+      status: 'input_required',
+      inputRequests: {
+        confirm: { method: 'elicitation/create', params: { message: 'Continue?' } }
+      }
+    })
+    const controller = createTaskController({ provider })
+    const context = { request: new Request('http://localhost/mcp'), meta: capabilityMeta }
+
+    await expect(
+      dispatchTaskRequest(controller, {
+        method: 'tasks/update',
+        params: { taskId: 'waiting', inputResponses: { confirm: { accepted: true } } },
+        context
+      })
+    ).rejects.toThrow('inputResponses.confirm.action')
+
+    const inputResponses = JSON.parse(
+      '{"confirm":{"action":"accept"},"__proto__":{"action":"accept"},"constructor":{"action":"accept"}}'
+    )
+    await dispatchTaskRequest(controller, {
+      method: 'tasks/update',
+      params: { taskId: 'waiting', inputResponses },
+      context
+    })
+    const stored = provider.updates.at(-1)?.responses
+    expect(Object.hasOwn(stored ?? {}, '__proto__')).toBe(true)
+    expect(Object.hasOwn(stored ?? {}, 'constructor')).toBe(true)
+    expect(Object.getPrototypeOf(stored)).toBe(Object.prototype)
+  })
+
+  it('preserves open legacy responses and enforces modern core response contracts', async () => {
+    const provider = new TestTaskProvider()
+    const context = { request: new Request('http://localhost/mcp'), meta: capabilityMeta }
+    provider.tasks.set('legacy', {
+      ...workingTask('legacy'),
+      status: 'input_required',
+      inputRequests: { custom: { method: 'roots/list' } }
+    })
+    await createTaskController({ provider, version: 'draft' }).update(
+      'legacy',
+      { custom: compatibleLegacyResponse },
+      context
+    )
+
+    provider.tasks.set('roots', {
+      ...workingTask('roots'),
+      status: 'input_required',
+      inputRequests: { root: { method: 'roots/list' } }
+    })
+    const controller = createTaskController({ provider, version: 'draft-5246bc3' })
+    await expect(
+      controller.update('roots', { root: { roots: [{ uri: 'x y' }] } }, context)
+    ).rejects.toThrow('file URI')
+    await expect(
+      controller.update('roots', { root: { roots: [{ uri: 'https://example.com' }] } }, context)
+    ).rejects.toThrow('file URI')
+
+    provider.tasks.set('sampling', {
+      ...workingTask('sampling'),
+      status: 'input_required',
+      inputRequests: { sample: { method: 'sampling/createMessage', params: {} } }
+    })
+    for (const content of [null, 1, {}, { type: 'text', text: 1 }]) {
+      await expect(
+        controller.update(
+          'sampling',
+          { sample: { role: 'assistant', model: 'test', content } },
+          context
+        )
+      ).rejects.toThrow('valid MCP sampling content')
+    }
+    await controller.update(
+      'sampling',
+      {
+        sample: {
+          role: 'assistant',
+          model: 'test',
+          content: {
+            type: 'tool_result',
+            toolUseId: 'call-1',
+            content: [
+              { type: 'text', text: 'done' },
+              { type: 'resource_link', uri: 'data:text/plain,ok', name: 'result' }
+            ]
+          }
+        }
+      },
+      context
+    )
   })
 
   it('associates controllers with request identity without retaining request state', () => {

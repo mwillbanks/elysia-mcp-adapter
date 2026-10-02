@@ -1,0 +1,33 @@
+---
+title: Skills quick start
+description: Register a skill and its supporting resources.
+---
+
+```ts
+const app = new Elysia()
+  .use(mcp({
+    allowedRoutes: [],
+    extensions: { skills: { directoryRead: true } }
+  }))
+  .mcpSkill(
+    'skill://release-helper/SKILL.md',
+    `---
+name: release-helper
+description: Verify a release before publishing
+---
+
+# Release helper
+`,
+    {
+      resources: {
+        'references/VERIFY.md': '# Verification\n'
+      }
+    }
+  )
+```
+
+`.mcpSkill()` snapshots supplied byte arrays at registration. Later caller mutations cannot change
+the served bytes or manifest. Supporting resources use relative paths and never expose a directory.
+
+Set `listed: false` for direct-only publication. `skills/get` still retrieves the skill by its full
+`SKILL.md` URI. Set `resources: "dynamic"` only when stable digests cannot be published.

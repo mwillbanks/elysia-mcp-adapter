@@ -1,0 +1,12 @@
+---
+title: Server variants
+description: Negotiate stable, principal-bound legacy server views.
+---
+
+Server variants are legacy-only. Configure protocol `2025-11-25`, GET SSE, session deletion, and `extensions.variants`. Modern protocol options reject the extension.
+
+During initialize, the adapter authenticates the request, applies `visible`, applies `rank`, limits discovery, and stores the negotiated list against `MCP-Session-Id`. The first default variant must be stable unless the client requests experimental results. `io.modelcontextprotocol/server-variant` request metadata takes precedence over `MCP-Server-Variant`.
+
+The selected variant binds tool, resource, and prompt registries. It also binds pagination cursors and resource subscriptions. Requests from another principal cannot reuse the session. `resources/unsubscribe` closes its provider iterator. Session deletion closes streams and subscriptions.
+
+Use `core.subscriptions.provider` with `resources: true` for resource updates. Connect the session's GET `/mcp` SSE stream to receive variant-tagged notifications.

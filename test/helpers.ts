@@ -9,7 +9,11 @@ export async function rpc(
   const response = await app.handle(
     new Request('http://localhost/mcp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: {
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2025-11-25',
+        ...headers
+      },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
     })
   )
@@ -26,7 +30,9 @@ export async function modernRpc(
   const name =
     method === 'tools/call' || method === 'prompts/get'
       ? params.name
-      : method === 'resources/read'
+      : method === 'resources/read' ||
+          method === 'resources/directory/read' ||
+          method === 'skills/get'
         ? params.uri
         : method === 'tasks/get' || method === 'tasks/update' || method === 'tasks/cancel'
           ? params.taskId
@@ -34,6 +40,10 @@ export async function modernRpc(
   const meta = {
     ...(typeof params._meta === 'object' && params._meta !== null ? params._meta : {}),
     'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    'io.modelcontextprotocol/clientInfo': {
+      name: 'elysia-mcp-adapter-tests',
+      version: '1.0.0'
+    },
     'io.modelcontextprotocol/clientCapabilities':
       typeof params._meta === 'object' &&
       params._meta !== null &&
@@ -46,6 +56,7 @@ export async function modernRpc(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': method,
         ...(typeof name === 'string' ? { 'mcp-name': name } : {}),

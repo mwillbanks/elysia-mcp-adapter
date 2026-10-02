@@ -1,4 +1,5 @@
 import type { Elysia, HTTPMethod, InternalRoute } from 'elysia'
+import type { McpActionMetadata, McpTrustAnnotations } from './extensions/annotations/index.js'
 import type {
   McpAppsProtocolVersionSelector,
   McpAppsResourceCsp,
@@ -11,13 +12,29 @@ import type {
   McpAuthorizationContext,
   McpAuthVersion
 } from './extensions/auth/index.js'
+import type {
+  McpEventRegistration,
+  McpEventsOptions,
+  NormalizedMcpEventsOptions
+} from './extensions/events/index.js'
+import type {
+  McpInterceptorRegistration,
+  McpInterceptorsOptions
+} from './extensions/interceptors/index.js'
 import type { McpProtocolVersion } from './extensions/manifest.js'
+import type { McpServerCardOptions } from './extensions/server-card/index.js'
+import type {
+  ExplicitSkillRegistration,
+  McpSkillDefinition,
+  McpSkillsOptions
+} from './extensions/skills/index.js'
 import type {
   TaskController,
   TaskExecutionMode,
   TaskProvider,
   TasksVersionInput
 } from './extensions/tasks/index.js'
+import type { McpVariantsOptions } from './extensions/variants/index.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
 
@@ -54,6 +71,221 @@ export interface McpExtensionOptions {
   tasks?: McpTasksOptions
   auth?: McpAuthOptions
   apps?: McpAppsOptions
+  skills?: McpSkillsOptions
+  serverCard?: McpServerCardOptions
+  interceptors?: McpInterceptorsOptions
+  variants?: McpVariantsOptions
+  events?: McpEventsOptions
+}
+
+export interface McpClientInfo {
+  name: string
+  version: string
+  title?: string
+  description?: string
+  websiteUrl?: string
+  icons?: McpIcon[]
+}
+
+export interface McpElicitationFormRequest {
+  method: 'elicitation/create'
+  params: {
+    mode?: 'form'
+    message: string
+    requestedSchema: JsonSchema
+  }
+}
+
+export interface McpElicitationUrlRequest {
+  method: 'elicitation/create'
+  params: {
+    mode: 'url'
+    message: string
+    url: string
+  }
+}
+
+export interface McpSamplingMessage {
+  role: 'user' | 'assistant'
+  content: McpSamplingContent | McpSamplingContent[]
+  _meta?: Record<string, unknown>
+}
+
+export interface McpSamplingToolUseContent {
+  type: 'tool_use'
+  id: string
+  name: string
+  input: Record<string, unknown>
+  _meta?: Record<string, unknown>
+}
+
+export interface McpSamplingToolResultContent {
+  type: 'tool_result'
+  toolUseId: string
+  content: McpContent[]
+  structuredContent?: unknown
+  isError?: boolean
+  _meta?: Record<string, unknown>
+}
+
+export type McpSamplingContent =
+  | McpTextContent
+  | McpImageContent
+  | McpAudioContent
+  | McpSamplingToolUseContent
+  | McpSamplingToolResultContent
+
+export interface McpSamplingRequest {
+  method: 'sampling/createMessage'
+  params: {
+    messages: McpSamplingMessage[]
+    maxTokens: number
+    systemPrompt?: string
+    includeContext?: 'none' | 'thisServer' | 'allServers'
+    temperature?: number
+    stopSequences?: string[]
+    modelPreferences?: {
+      hints?: Array<{ name?: string }>
+      costPriority?: number
+      speedPriority?: number
+      intelligencePriority?: number
+    }
+    metadata?: Record<string, unknown>
+    tools?: Array<Record<string, unknown>>
+    toolChoice?: { mode?: 'auto' | 'required' | 'none' }
+  }
+}
+
+export interface McpRootsRequest {
+  method: 'roots/list'
+  params?: Record<string, never>
+}
+
+export type McpInputRequest =
+  | McpElicitationFormRequest
+  | McpElicitationUrlRequest
+  | McpSamplingRequest
+  | McpRootsRequest
+
+export interface McpElicitationResult {
+  action: 'accept' | 'decline' | 'cancel'
+  content?: Record<string, string | number | boolean | string[]>
+}
+
+export interface McpSamplingResult {
+  role: 'user' | 'assistant'
+  content: McpSamplingContent | McpSamplingContent[]
+  model: string
+  stopReason?: string
+  _meta?: Record<string, unknown>
+}
+
+export interface McpRootsResult {
+  roots: Array<{ uri: string; name?: string; _meta?: Record<string, unknown> }>
+}
+
+export type McpInputResponse = McpElicitationResult | McpSamplingResult | McpRootsResult
+export type McpInputResponses = Record<string, McpInputResponse>
+
+export interface McpInputRequiredResult {
+  resultType: 'input_required'
+  inputRequests?: Record<string, McpInputRequest>
+  requestState?: string
+  _meta?: Record<string, unknown>
+}
+
+export interface McpContinuationProvider {
+  consume(
+    id: string,
+    context: { request: Request; principalKey?: string; expiresAt: number }
+  ): boolean | Promise<boolean>
+}
+
+export interface McpContinuationOptions {
+  signingKey: string | Uint8Array
+  ttlMs?: number
+  singleUse?: boolean
+  provider?: McpContinuationProvider
+}
+
+export interface McpPaginationOptions {
+  pageSize: number
+  signingKey: string | Uint8Array
+  cursorTtlMs?: number
+}
+
+export interface McpCachePolicy {
+  cacheScope: 'private' | 'public'
+  ttlMs: number
+}
+
+export interface McpCacheOptions {
+  default?: Partial<McpCachePolicy>
+  policy?: (
+    method: string,
+    context: McpInvocationContext
+  ) => Partial<McpCachePolicy> | Promise<Partial<McpCachePolicy>>
+}
+
+export interface McpCompletionReference {
+  type: 'ref/prompt' | 'ref/resource'
+  name?: string
+  uri?: string
+}
+
+export interface McpCompletionRequest {
+  ref: McpCompletionReference
+  argument: { name: string; value: string }
+  context?: { arguments?: Record<string, string> }
+}
+
+export interface McpCompletionResult {
+  values: string[]
+  total?: number
+  hasMore?: boolean
+}
+
+export type McpCompletionHandler = (
+  request: McpCompletionRequest,
+  context: McpInvocationContext
+) => McpCompletionResult | Promise<McpCompletionResult>
+
+export interface McpSubscriptionFilter {
+  toolsListChanged?: boolean
+  promptsListChanged?: boolean
+  resourcesListChanged?: boolean
+  resourceSubscriptions?: string[]
+  taskIds?: string[]
+}
+
+export type McpServerNotification =
+  | { method: 'notifications/tools/list_changed'; params?: Record<string, unknown> }
+  | { method: 'notifications/events/list_changed'; params?: Record<string, unknown> }
+  | { method: 'notifications/prompts/list_changed'; params?: Record<string, unknown> }
+  | { method: 'notifications/resources/list_changed'; params?: Record<string, unknown> }
+  | { method: 'notifications/resources/updated'; params: { uri: string } }
+
+export interface McpSubscriptionProvider {
+  subscribe(
+    filter: Readonly<McpSubscriptionFilter>,
+    context: McpInvocationContext
+  ): AsyncIterable<McpServerNotification> | Promise<AsyncIterable<McpServerNotification>>
+}
+
+export interface McpSubscriptionOptions {
+  provider: McpSubscriptionProvider
+  toolsListChanged?: boolean
+  promptsListChanged?: boolean
+  resourcesListChanged?: boolean
+  resources?: boolean
+  heartbeatMs?: number
+}
+
+export interface McpCoreOptions {
+  continuation?: McpContinuationOptions
+  pagination?: McpPaginationOptions
+  cache?: McpCacheOptions
+  subscriptions?: McpSubscriptionOptions
 }
 
 export type McpAppToolOptions = McpAppsToolMeta & { resourceUri: string }
@@ -81,6 +313,7 @@ export interface McpToolAnnotations {
   destructiveHint?: boolean
   idempotentHint?: boolean
   openWorldHint?: boolean
+  'io.modelcontextprotocol/action-metadata'?: McpActionMetadata
 }
 
 export interface McpAnnotations {
@@ -93,6 +326,7 @@ export interface McpIcon {
   src: string
   mimeType?: string
   sizes?: string[]
+  theme?: 'dark' | 'light'
 }
 
 export interface McpResponseMarshalOptions {
@@ -112,6 +346,7 @@ export interface McpRouteResourceOptions {
   annotations?: McpAnnotations
   authorization?: McpAuthorizationOptions
   app?: McpAppResourceMetadata
+  complete?: McpCompletionHandler
   mapUriToInput?: (
     variables: Record<string, string>,
     context: McpResourceInvocationContext
@@ -121,6 +356,7 @@ export interface McpRouteResourceOptions {
 export interface McpRoutePromptOptions {
   argsSchema?: unknown
   arguments?: McpPromptArgument[]
+  complete?: McpCompletionHandler
   mapArgsToInput?: (
     args: Record<string, unknown>,
     context: McpPromptInvocationContext
@@ -172,6 +408,7 @@ export interface McpPluginOptions {
     protocolVersions?: McpProtocolVersion[]
   }
   extensions?: McpExtensionOptions
+  core?: McpCoreOptions
   diagnostics?: {
     failOnMissingSchema?: boolean
   }
@@ -203,6 +440,30 @@ export interface NormalizedMcpPluginOptions
     tasks?: McpTasksOptions & { version: Exclude<TasksVersionInput, 'current'> }
     auth?: McpAuthOptions & { version: Exclude<McpAuthVersion, 'current'> }
     apps?: McpAppsOptions & { version: '2026-01-26' | 'draft' }
+    skills?: McpSkillsOptions & {
+      version: Exclude<NonNullable<McpSkillsOptions['version']>, 'current'>
+      directoryRead: boolean
+      pagination?: McpPaginationOptions & { cursorTtlMs: number }
+      cache: McpCachePolicy
+    }
+    serverCard?: Required<McpServerCardOptions>
+    interceptors?: McpInterceptorsOptions & {
+      version: Exclude<NonNullable<McpInterceptorsOptions['version']>, 'current'>
+    }
+    variants?: McpVariantsOptions & {
+      version: Exclude<NonNullable<McpVariantsOptions['version']>, 'current'>
+      discoveryLimit: number
+    }
+    events?: NormalizedMcpEventsOptions
+  }
+  core: {
+    continuation?: McpContinuationOptions & { ttlMs: number; singleUse: boolean }
+    pagination?: McpPaginationOptions & { cursorTtlMs: number }
+    cache: {
+      default: McpCachePolicy
+      policy?: McpCacheOptions['policy']
+    }
+    subscriptions?: McpSubscriptionOptions & { heartbeatMs: number }
   }
   diagnostics: Required<NonNullable<McpPluginOptions['diagnostics']>>
   operationNameResolver: (operation: McpRouteOperation) => string
@@ -247,6 +508,10 @@ export interface McpInvocationContext {
   meta?: Record<string, unknown>
   protocolVersion?: McpProtocolVersion
   clientCapabilities?: Record<string, unknown>
+  clientInfo?: McpClientInfo
+  inputResponses?: McpInputResponses
+  requestState?: string
+  reportProgress?: (progress: number, options?: { total?: number; message?: string }) => void
   authorization?: Readonly<McpAuthorizationContext>
   task?: TaskController
 }
@@ -306,8 +571,12 @@ export interface McpToolResult {
   content: McpContent[]
   isError?: boolean
   structuredContent?: unknown
-  _meta?: Record<string, unknown>
+  _meta?: Record<string, unknown> & {
+    'io.modelcontextprotocol/trust-annotations'?: McpTrustAnnotations
+  }
 }
+
+export type McpToolHandlerResult = McpToolResult | McpInputRequiredResult
 
 export interface McpToolDefinition {
   source: 'route' | 'explicit'
@@ -321,7 +590,7 @@ export interface McpToolDefinition {
   authorization?: McpAuthorizationOptions
   taskExecution?: TaskExecutionMode
   app?: McpAppToolOptions
-  invoke: (args: unknown, context: McpInvocationContext) => Promise<McpToolResult>
+  invoke: (args: unknown, context: McpInvocationContext) => Promise<McpToolHandlerResult>
 }
 
 export interface McpResourceContent {
@@ -338,6 +607,8 @@ export interface McpResourceReadResult {
   _meta?: Record<string, unknown>
 }
 
+export type McpResourceHandlerResult = McpResourceReadResult | McpInputRequiredResult
+
 export interface McpResourceDefinition {
   source: 'route' | 'explicit'
   uri: string
@@ -349,7 +620,8 @@ export interface McpResourceDefinition {
   icons?: McpIcon[]
   authorization?: McpAuthorizationOptions
   app?: McpAppResourceMetadata
-  read: (context: McpResourceInvocationContext) => Promise<McpResourceReadResult>
+  complete?: McpCompletionHandler
+  read: (context: McpResourceInvocationContext) => Promise<McpResourceHandlerResult>
 }
 
 export interface McpResourceTemplateDefinition {
@@ -363,7 +635,8 @@ export interface McpResourceTemplateDefinition {
   icons?: McpIcon[]
   authorization?: McpAuthorizationOptions
   app?: McpAppResourceMetadata
-  read: (context: McpResourceInvocationContext) => Promise<McpResourceReadResult>
+  complete?: McpCompletionHandler
+  read: (context: McpResourceInvocationContext) => Promise<McpResourceHandlerResult>
 }
 
 export interface McpPromptArgument {
@@ -384,6 +657,8 @@ export interface McpPromptResult {
   _meta?: Record<string, unknown>
 }
 
+export type McpPromptHandlerResult = McpPromptResult | McpInputRequiredResult
+
 export interface McpPromptDefinition {
   source: 'route' | 'explicit'
   name: string
@@ -393,10 +668,11 @@ export interface McpPromptDefinition {
   argsSchema?: JsonSchema
   icons?: McpIcon[]
   authorization?: McpAuthorizationOptions
+  complete?: McpCompletionHandler
   get: (
     args: Record<string, unknown>,
     context: McpPromptInvocationContext
-  ) => Promise<McpPromptResult>
+  ) => Promise<McpPromptHandlerResult>
 }
 
 export interface McpRegistry {
@@ -404,17 +680,26 @@ export interface McpRegistry {
   resources: Map<string, McpResourceDefinition>
   resourceTemplates: Map<string, McpResourceTemplateDefinition>
   prompts: Map<string, McpPromptDefinition>
+  skills?: Map<string, McpSkillDefinition>
+  events?: Map<string, McpEventRegistration>
 }
 
 export type McpToolHandler<Input = unknown> = (
   input: Input,
   context: McpInvocationContext
-) => Promise<McpToolResult | unknown> | McpToolResult | unknown
+) => Promise<McpToolHandlerResult | unknown> | McpToolHandlerResult | unknown
 
 export type McpResourceHandler = (
   context: McpResourceInvocationContext
 ) =>
-  | Promise<McpResourceReadResult | McpResourceContent[] | McpResourceContent | unknown>
+  | Promise<
+      | McpResourceReadResult
+      | McpResourceContent[]
+      | McpResourceContent
+      | McpInputRequiredResult
+      | unknown
+    >
+  | McpInputRequiredResult
   | McpResourceReadResult
   | McpResourceContent[]
   | McpResourceContent
@@ -424,7 +709,8 @@ export type McpPromptHandler<Args extends Record<string, unknown> = Record<strin
   args: Args,
   context: McpPromptInvocationContext
 ) =>
-  | Promise<McpPromptResult | McpPromptMessage[] | string>
+  | Promise<McpPromptResult | McpPromptMessage[] | McpInputRequiredResult | string>
+  | McpInputRequiredResult
   | McpPromptResult
   | McpPromptMessage[]
   | string
@@ -450,6 +736,7 @@ export interface McpResourceOptions {
   icons?: McpIcon[]
   authorization?: McpAuthorizationOptions
   app?: McpAppResourceMetadata
+  complete?: McpCompletionHandler
 }
 
 export interface McpPromptOptions {
@@ -459,16 +746,21 @@ export interface McpPromptOptions {
   arguments?: McpPromptArgument[]
   icons?: McpIcon[]
   authorization?: McpAuthorizationOptions
+  complete?: McpCompletionHandler
 }
 
 export interface McpAdapterState {
   explicitTools: Map<string, ExplicitToolRegistration>
   explicitResources: Map<string, ExplicitResourceRegistration>
   explicitPrompts: Map<string, ExplicitPromptRegistration>
+  explicitSkills?: Map<string, ExplicitSkillRegistration>
+  explicitInterceptors?: Map<string, McpInterceptorRegistration>
+  explicitEvents?: Map<string, McpEventRegistration>
   version: number
   registryCache?: {
     fingerprint: string
     version: number
+    options?: NormalizedMcpPluginOptions
     registry: McpRegistry
   }
 }

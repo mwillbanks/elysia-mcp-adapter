@@ -3,7 +3,7 @@ import { oauthProvider } from '@better-auth/oauth-provider'
 import { type McpAuthPrincipal, mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { betterAuth } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
-import { verifyAccessToken } from 'better-auth/oauth2'
+import { verifyJwsAccessToken } from 'better-auth/oauth2'
 import { jwt } from 'better-auth/plugins'
 import { Elysia } from 'elysia'
 
@@ -39,12 +39,19 @@ export async function createOAuthExample({
         loginPage: '/sign-in',
         consentPage: '/consent',
         silenceWarnings: { oauthAuthServerConfig: true },
+        clientPrivileges: ({ action, session, user }) =>
+          Boolean(
+            session?.userId === user?.id &&
+              (action === 'create' || action === 'configure-client-credentials-scopes')
+          ),
         scopes: [...MCP_SCOPES],
         validAudiences: [MCP_RESOURCE],
+        resources: [MCP_RESOURCE],
+        clientRegistrationDefaultResources: [MCP_RESOURCE],
         clientCredentialGrantDefaultScopes: ['mcp:read'],
-        customAccessTokenClaims: ({ resource }) => ({
+        customAccessTokenClaims: ({ resources }) => ({
           'https://example.local/token-kind': 'access_token',
-          resource
+          resource: resources?.[0]
         })
       })
     ]
@@ -54,21 +61,22 @@ export async function createOAuthExample({
   const auth = betterAuth(options)
 
   const verifyForMcp = async (token: string): Promise<McpAuthPrincipal> => {
-    const payload = await verifyAccessToken(token, {
-      jwksUrl: `${OAUTH_BASE_URL}/jwks`,
-      verifyOptions: { issuer: OAUTH_BASE_URL, audience: MCP_RESOURCE },
-      scopes: ['mcp:read']
+    const payload = await verifyJwsAccessToken(token, {
+      jwksFetch: `${OAUTH_BASE_URL}/jwks`,
+      verifyOptions: { issuer: OAUTH_BASE_URL, audience: MCP_RESOURCE }
     })
     if (payload['https://example.local/token-kind'] !== 'access_token' || !payload.exp) {
       throw new Error('Bearer value is not an access token')
     }
+    const scopes = scopesFromClaim(payload.scope)
+    if (!scopes.includes('mcp:read')) throw new Error('Access token lacks the mcp:read scope')
     return {
       tokenType: 'access_token',
       subject: payload.sub,
       issuer: payload.iss,
       audience: payload.aud ?? [],
       expiresAt: payload.exp,
-      scopes: scopesFromClaim(payload.scope),
+      scopes,
       clientId: typeof payload.client_id === 'string' ? payload.client_id : undefined,
       claims: { grantType: payload.gty }
     }
@@ -121,11 +129,16 @@ export async function createOAuthClient(
     headers: new Headers({ cookie: ownerCookie }),
     body: {
       client_name: options.publicClient ? 'PKCE MCP client' : 'M2M MCP client',
-      redirect_uris: ['http://localhost:43101/callback'],
+      redirect_uris: [
+        options.publicClient ? 'http://localhost:43101/callback' : 'https://client.example/callback'
+      ],
       token_endpoint_auth_method: options.publicClient ? 'none' : 'client_secret_post',
       grant_types: options.publicClient ? ['authorization_code'] : ['client_credentials'],
-      response_types: ['code'],
-      type: options.publicClient ? 'native' : 'web',
+      client_credentials_scopes: options.publicClient
+        ? undefined
+        : (options.scopes ?? [...MCP_SCOPES]),
+      response_types: options.publicClient ? ['code'] : undefined,
+      application_type: options.publicClient ? 'native' : 'web',
       require_pkce: options.publicClient,
       skip_consent: true,
       scope: (options.scopes ?? [...MCP_SCOPES]).join(' ')
@@ -145,6 +158,7 @@ export async function mcpCall(
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': 'tools/call',
         'mcp-name': name
@@ -158,6 +172,7 @@ export async function mcpCall(
           arguments: {},
           _meta: {
             'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'oauth-example', version: '1.0.0' },
             'io.modelcontextprotocol/clientCapabilities': {}
           }
         }

@@ -1,3 +1,8 @@
+import { assertToolAnnotationExtensions } from './extensions/annotations/index.js'
+import {
+  assertCompatibleSkillDefinitions,
+  buildSkillDefinition
+} from './extensions/skills/index.js'
 import {
   coercePromptResult,
   coerceResourceResult,
@@ -37,35 +42,56 @@ import type {
 export function getMcpRegistry(
   app: AnyElysiaApp,
   options: NormalizedMcpPluginOptions
-): McpRegistry {
+): McpRegistry & {
+  skills: NonNullable<McpRegistry['skills']>
+  events: NonNullable<McpRegistry['events']>
+} {
   const state = ensureMcpState(app)
   const fingerprint = routeFingerprint(app)
 
   if (
     state.registryCache &&
     state.registryCache.version === state.version &&
-    state.registryCache.fingerprint === fingerprint
+    state.registryCache.fingerprint === fingerprint &&
+    state.registryCache.options === options &&
+    state.registryCache.registry.skills &&
+    state.registryCache.registry.events
   ) {
-    return state.registryCache.registry
+    return state.registryCache.registry as McpRegistry & {
+      skills: NonNullable<McpRegistry['skills']>
+      events: NonNullable<McpRegistry['events']>
+    }
   }
 
   const registry = buildMcpRegistry(app, options)
   state.registryCache = {
     fingerprint,
     version: state.version,
+    options,
     registry
   }
 
   return registry
 }
 
-function buildMcpRegistry(app: AnyElysiaApp, options: NormalizedMcpPluginOptions): McpRegistry {
+function buildMcpRegistry(
+  app: AnyElysiaApp,
+  options: NormalizedMcpPluginOptions
+): McpRegistry & {
+  skills: NonNullable<McpRegistry['skills']>
+  events: NonNullable<McpRegistry['events']>
+} {
   const state = ensureMcpState(app)
-  const registry: McpRegistry = {
+  const registry: McpRegistry & {
+    skills: NonNullable<McpRegistry['skills']>
+    events: NonNullable<McpRegistry['events']>
+  } = {
     tools: new Map(),
     resources: new Map(),
     resourceTemplates: new Map(),
-    prompts: new Map()
+    prompts: new Map(),
+    skills: new Map(),
+    events: new Map()
   }
 
   for (const tool of state.explicitTools.values()) {
@@ -80,6 +106,30 @@ function buildMcpRegistry(app: AnyElysiaApp, options: NormalizedMcpPluginOptions
 
   for (const prompt of state.explicitPrompts.values()) {
     addPrompt(registry, createExplicitPrompt(prompt, options), options)
+  }
+
+  for (const skill of state.explicitSkills.values()) {
+    const definition = buildSkillDefinition(skill)
+    if (
+      options.extensions.skills?.directoryRead &&
+      definition.entry.resources === 'dynamic' &&
+      !definition.readDirectory
+    ) {
+      throw new TypeError(
+        `Dynamic skill ${definition.uri} requires readDirectory when directoryRead is enabled`
+      )
+    }
+    if (registry.skills.has(definition.uri)) {
+      throw new TypeError(`Duplicate MCP skill: ${definition.uri}`)
+    }
+    assertCompatibleSkillDefinitions(registry.skills.values(), definition)
+    registry.skills.set(definition.uri, definition)
+  }
+
+  for (const event of state.explicitEvents.values()) {
+    if (registry.events.has(event.definition.name))
+      throw new TypeError(`Duplicate MCP event: ${event.definition.name}`)
+    registry.events.set(event.definition.name, event)
   }
 
   const routeOperations = listRouteOperations(app)
@@ -109,6 +159,7 @@ function createExplicitTool(
   registration: ExplicitToolRegistration,
   options: NormalizedMcpPluginOptions
 ): McpToolDefinition {
+  assertToolAnnotationExtensions(registration.options.annotations)
   const inputSchema = composeExplicitInputSchema(registration.options.inputSchema, 'tool', options)
   const outputSchema = composeExplicitOutputSchema(
     registration.options.outputSchema,
@@ -155,6 +206,7 @@ function createExplicitResource(
     icons: registration.options.icons,
     authorization: registration.options.authorization,
     app: registration.options.app,
+    complete: registration.options.complete,
     read: async (context: any) => {
       const result = await registration.handler(context)
       return coerceResourceResult(result, context.uri, registration.options.mimeType)
@@ -190,6 +242,7 @@ function createExplicitPrompt(
     arguments: promptArguments,
     icons: registration.options.icons,
     authorization: registration.options.authorization,
+    complete: registration.options.complete,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       const result = await registration.handler(args ?? {}, context)
@@ -206,6 +259,7 @@ function createRouteTool(
   const inputSchema = composeRouteInputSchema(operation, 'tool', options)
   const outputSchema = composeRouteOutputSchema(operation, 'tool', options)
   const name = sanitizeMcpName(routeMcp?.name ?? options.operationNameResolver(operation))
+  assertToolAnnotationExtensions(routeMcp?.annotations)
 
   if (
     options.diagnostics.failOnMissingSchema &&
@@ -258,6 +312,7 @@ function createRouteResource(
     icons: routeMcp?.icons,
     authorization: resource.authorization ?? routeMcp?.authorization,
     app: resource.app,
+    complete: resource.complete,
     read: (context: any) => invokeRouteResource(operation, context, options)
   }
 
@@ -291,6 +346,7 @@ function createRoutePrompt(
     arguments: routeMcp?.prompt?.arguments ?? promptArgumentsFromSchema(argsSchema),
     icons: routeMcp?.icons,
     authorization: routeMcp?.authorization,
+    complete: routeMcp?.prompt?.complete,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       return invokeRoutePrompt(operation, args ?? {}, context, options)

@@ -30,34 +30,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
 
       - name: Install dependencies
         run: bun ci --cwd website
 
       - name: Lint documentation
-        run: bun run --cwd website lint
+        run: bun --bun run --cwd website lint
 
       - name: Typecheck documentation
-        run: bun run --cwd website typecheck
+        run: bun --bun run --cwd website typecheck
 
       - name: Test documentation
-        run: bun run --cwd website test
+        run: bun --bun run --cwd website test
 
       - name: Build static documentation
         env:
           VITE_BASE_PATH: /elysia-mcp-adapter/
-        run: bun run --cwd website build
+        run: bun --bun run --cwd website build
 
       - name: Verify static documentation
         env:
           VITE_BASE_PATH: /elysia-mcp-adapter/
-        run: bun run --cwd website verify:build
+        run: bun --bun run --cwd website verify:build
 
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'
@@ -83,4 +83,4 @@ jobs:
     steps:
       - name: Deploy GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5.0.0
+        uses: actions/deploy-pages@v5.0.1

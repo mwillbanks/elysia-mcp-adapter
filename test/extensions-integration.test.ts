@@ -4,6 +4,7 @@ import {
   type DetailedTask,
   getMcpTaskContext,
   MCP_APPS_RESOURCE_MIME_TYPE,
+  type McpServerNotification,
   mcp,
   type TaskDurableCreateRequest,
   type TaskExecutionScheduler,
@@ -53,6 +54,7 @@ describe('modern MCP protocol', () => {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
           'mcp-protocol-version': '2026-07-28',
           'mcp-method': 'notifications/initialized'
         },
@@ -82,6 +84,22 @@ describe('modern MCP protocol', () => {
 
   test('rejects modern batches without changing legacy batches', async () => {
     const app = new Elysia().use(mcp())
+    const defaultModern = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 1, method: 'ping' },
+          { jsonrpc: '2.0', id: 2, method: 'ping' }
+        ])
+      })
+    )
+    const defaultModernBody = (await defaultModern.json()) as any
+    expect(defaultModern.status).toBe(400)
+    expect(Array.isArray(defaultModernBody)).toBe(false)
+    expect(defaultModernBody).not.toHaveProperty('id')
+    expect(defaultModernBody.error.code).toBe(-32600)
+
     const modern = await app.handle(
       new Request('http://localhost/mcp', {
         method: 'POST',
@@ -101,10 +119,91 @@ describe('modern MCP protocol', () => {
           'content-type': 'application/json',
           'mcp-protocol-version': '2025-11-25'
         },
-        body: JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }])
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 1, method: 'ping' },
+          { jsonrpc: '2.0', id: 'legacy-42', method: 'unknown/method' }
+        ])
       })
     )
     expect(legacy.status).toBe(200)
+    const legacyBody = (await legacy.json()) as any[]
+    expect(legacyBody.map((response) => response.id)).toEqual([1, 'legacy-42'])
+    expect(legacyBody[1].error.code).toBe(-32601)
+
+    const legacyKnownError = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'mcp-protocol-version': '2025-11-25'
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 'legacy-42', method: 'unknown/method' })
+      })
+    )
+    const legacyKnownErrorBody = (await legacyKnownError.json()) as any
+    expect(legacyKnownErrorBody.id).toBe('legacy-42')
+    expect(legacyKnownErrorBody.error.code).toBe(-32601)
+
+    const legacyOnly = new Elysia().use(
+      mcp({ transport: { protocolVersions: ['2025-11-25'], protocolVersion: '2025-11-25' } })
+    )
+    const legacyOnlyBatch = await legacyOnly.handle(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify([
+          { jsonrpc: '2.0', id: 1, method: 'ping' },
+          { jsonrpc: '2.0', id: 2, method: 'ping' }
+        ])
+      })
+    )
+    expect(legacyOnlyBatch.status).toBe(200)
+    expect(((await legacyOnlyBatch.json()) as any[]).map((response) => response.id)).toEqual([1, 2])
+  })
+
+  test('selects auxiliary HTTP methods by protocol era', async () => {
+    const app = new Elysia().use(
+      mcp({ transport: { enableGetSse: true, enableDeleteSession: true } })
+    )
+    for (const method of ['GET', 'DELETE']) {
+      const defaultModern = await app.handle(new Request('http://localhost/mcp', { method }))
+      const defaultModernBody = (await defaultModern.json()) as any
+      expect(defaultModern.status).toBe(405)
+      expect(defaultModernBody).not.toHaveProperty('id')
+      expect(defaultModernBody.error.code).toBe(-32600)
+    }
+
+    const legacyGet = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'GET',
+        headers: { 'mcp-protocol-version': '2025-11-25' }
+      })
+    )
+    expect(legacyGet.status).toBe(200)
+    expect(legacyGet.headers.get('content-type')).toBe('text/event-stream')
+
+    const legacyDelete = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'DELETE',
+        headers: { 'mcp-protocol-version': '2025-11-25' }
+      })
+    )
+    expect(legacyDelete.status).toBe(202)
+
+    const legacyOnly = new Elysia().use(
+      mcp({
+        transport: {
+          protocolVersions: ['2025-11-25'],
+          protocolVersion: '2025-11-25',
+          enableGetSse: true,
+          enableDeleteSession: true
+        }
+      })
+    )
+    expect((await legacyOnly.handle(new Request('http://localhost/mcp'))).status).toBe(200)
+    expect(
+      (await legacyOnly.handle(new Request('http://localhost/mcp', { method: 'DELETE' }))).status
+    ).toBe(202)
   })
 })
 
@@ -404,6 +503,7 @@ describe('integrated Tasks', () => {
             taskId: 'task-1',
             _meta: {
               'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0.0' },
               'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
             }
           }
@@ -431,6 +531,7 @@ describe('integrated Tasks', () => {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
           'mcp-protocol-version': '2026-07-28',
           'mcp-method': 'subscriptions/listen'
         },
@@ -442,6 +543,7 @@ describe('integrated Tasks', () => {
             notifications: { taskIds: ['observed'] },
             _meta: {
               'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0.0' },
               'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
             }
           }
@@ -482,7 +584,63 @@ describe('integrated Tasks', () => {
     await reader.cancel()
   })
 
-  test('rejects notifications outside the accepted subscription subset', async () => {
+  test('closes task subscriptions when the incoming HTTP request aborts', async () => {
+    const provider = new IntegrationTaskProvider()
+    provider.tasks.set('observed', workingIntegrationTask('observed'))
+    const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
+    const incomingAbort = new AbortController()
+    const response = await taskSubscriptionRequest(app, ['observed'], incomingAbort.signal)
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing subscription body')
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+      'notifications/subscriptions/acknowledged'
+    )
+    incomingAbort.abort('HTTP client disconnected')
+    await Bun.sleep(0)
+    expect(provider.subscriptionClosed).toBe(true)
+    expect(provider.subscriptionCloseCalls).toBe(1)
+    let streamDone = false
+    for (let count = 0; count < 3 && !streamDone; count += 1) {
+      streamDone = (await reader.read()).done
+    }
+    expect(streamDone).toBe(true)
+
+    const racingProvider = new IntegrationTaskProvider()
+    let releaseListen: (() => void) | undefined
+    const listenBarrier = new Promise<void>((resolve) => {
+      releaseListen = resolve
+    })
+    const originalListen = racingProvider.listen.bind(racingProvider)
+    Object.defineProperty(racingProvider, 'listen', {
+      value: async (...args: Parameters<IntegrationTaskProvider['listen']>) => {
+        await listenBarrier
+        return originalListen(...args)
+      }
+    })
+    const racingApp = new Elysia().use(mcp({ extensions: { tasks: { provider: racingProvider } } }))
+    const setupAbort = new AbortController()
+    const pendingResponse = taskSubscriptionRequest(racingApp, ['observed'], setupAbort.signal)
+    setupAbort.abort('HTTP client disconnected during setup')
+    releaseListen?.()
+    const setupResponse = await pendingResponse
+    expect(racingProvider.subscriptionClosed).toBe(true)
+    expect(racingProvider.subscriptionCloseCalls).toBe(1)
+    expect((await setupResponse.body?.getReader().read())?.done).toBe(true)
+
+    const alreadyAbortedProvider = new IntegrationTaskProvider()
+    const alreadyAborted = new AbortController()
+    alreadyAborted.abort('HTTP client already disconnected')
+    const alreadyAbortedResponse = await taskSubscriptionRequest(
+      new Elysia().use(mcp({ extensions: { tasks: { provider: alreadyAbortedProvider } } })),
+      ['observed'],
+      alreadyAborted.signal
+    )
+    expect(alreadyAbortedProvider.subscriptionClosed).toBe(true)
+    expect(alreadyAbortedProvider.subscriptionCloseCalls).toBe(1)
+    expect((await alreadyAbortedResponse.body?.getReader().read())?.done).toBe(true)
+  })
+
+  test('cancels streams that receive notifications outside the accepted subset', async () => {
     const provider = new IntegrationTaskProvider()
     provider.acceptedTaskIds = ['accepted']
     const app = new Elysia().use(mcp({ extensions: { tasks: { provider } } }))
@@ -496,7 +654,12 @@ describe('integrated Tasks', () => {
       ...workingIntegrationTask('declined'),
       taskId: 'declined'
     })
-    await expect(reader.read()).rejects.toThrow('unaccepted task')
+    const closure =
+      new TextDecoder().decode((await reader.read()).value) +
+      new TextDecoder().decode((await reader.read()).value)
+    expect(closure).toContain('notifications/cancelled')
+    expect(closure).toContain('"requestId":7')
+    expect(closure).toContain('"resultType":"complete"')
     expect(provider.subscriptionClosed).toBe(true)
   })
 
@@ -511,7 +674,11 @@ describe('integrated Tasks', () => {
     await reader.read()
 
     provider.subscriptionListener?.(workingIntegrationTask('declined'))
-    await expect(reader.read()).rejects.toThrow('unaccepted task')
+    const closure =
+      new TextDecoder().decode((await reader.read()).value) +
+      new TextDecoder().decode((await reader.read()).value)
+    expect(closure).toContain('notifications/cancelled')
+    expect(closure).toContain('"resultType":"complete"')
   })
 
   test('completes subscriptions gracefully when the provider cannot listen', async () => {
@@ -523,7 +690,158 @@ describe('integrated Tasks', () => {
 
     expect(body).toContain('"notifications/subscriptions/acknowledged"')
     expect(body).toContain('"taskIds":[]')
+    expect(body).toContain('"notifications/cancelled"')
+    expect(body.indexOf('notifications/cancelled')).toBeLessThan(
+      body.indexOf('"resultType":"complete"')
+    )
     expect(body).toContain('"resultType":"complete"')
+  })
+
+  test('combines task and core subscription filters without mixing progress or logging', async () => {
+    const provider = new IntegrationTaskProvider()
+    const incomingAbort = new AbortController()
+    let coreAborted = false
+    provider.tasks.set('observed', workingIntegrationTask('observed'))
+    const app = new Elysia().use(
+      mcp({
+        allowedRoutes: [],
+        extensions: { tasks: { provider } },
+        core: {
+          subscriptions: {
+            toolsListChanged: true,
+            heartbeatMs: 1000,
+            provider: {
+              subscribe(_filter, context) {
+                return (async function* () {
+                  try {
+                    yield { method: 'notifications/tools/list_changed' as const }
+                    await new Promise<void>((resolve) => {
+                      context.signal?.addEventListener('abort', () => resolve(), { once: true })
+                    })
+                  } finally {
+                    coreAborted = context.signal?.aborted === true
+                  }
+                })()
+              }
+            }
+          }
+        }
+      })
+    )
+    const response = await app.handle(
+      new Request('http://localhost/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          'mcp-protocol-version': '2026-07-28',
+          'mcp-method': 'subscriptions/listen'
+        },
+        signal: incomingAbort.signal,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 8,
+          method: 'subscriptions/listen',
+          params: {
+            notifications: { taskIds: ['observed'], toolsListChanged: true },
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0.0' },
+              'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+            }
+          }
+        })
+      })
+    )
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('Missing mixed subscription body')
+    const decoder = new TextDecoder()
+    let stream = ''
+    for (let count = 0; count < 4; count += 1) {
+      const next = await reader.read()
+      stream += decoder.decode(next.value, { stream: !next.done })
+      if (
+        stream.includes('notifications/subscriptions/acknowledged') &&
+        stream.includes('notifications/tasks') &&
+        stream.includes('notifications/tools/list_changed')
+      ) {
+        break
+      }
+    }
+    expect(stream).toContain('"taskIds":["observed"]')
+    expect(stream).toContain('"toolsListChanged":true')
+    expect(stream).not.toContain('notifications/progress')
+    expect(stream).not.toContain('notifications/message')
+    incomingAbort.abort('HTTP client disconnected')
+    await Bun.sleep(0)
+    expect(coreAborted).toBe(true)
+    expect(provider.subscriptionClosed).toBe(true)
+    await reader.cancel()
+  })
+
+  test('cleans core subscriptions when mixed task setup fails', async () => {
+    for (const invalidAcceptedSubset of [false, true]) {
+      const provider = new IntegrationTaskProvider()
+      let iteratorReturns = 0
+      let failedTaskSetupSignal: AbortSignal | undefined
+      if (invalidAcceptedSubset) {
+        provider.acceptedTaskIds = ['unrequested']
+        provider.rejectSubscriptionClose = true
+      } else {
+        Object.defineProperty(provider, 'listen', {
+          value: async (
+            _taskIds: string[],
+            _listener: unknown,
+            context: { signal?: AbortSignal }
+          ) => {
+            failedTaskSetupSignal = context.signal
+            throw new Error('task listen failed')
+          }
+        })
+      }
+      const app = new Elysia().use(
+        mcp({
+          allowedRoutes: [],
+          extensions: { tasks: { provider } },
+          core: {
+            subscriptions: {
+              toolsListChanged: true,
+              provider: {
+                subscribe: () => {
+                  const iterator: AsyncIterableIterator<McpServerNotification> = {
+                    [Symbol.asyncIterator]() {
+                      return this
+                    },
+                    next: async () => new Promise<IteratorResult<McpServerNotification>>(() => {}),
+                    return: async () => {
+                      iteratorReturns += 1
+                      throw new Error('core cleanup failed')
+                    }
+                  }
+                  return iterator
+                }
+              }
+            }
+          }
+        })
+      )
+      const response = await mixedSubscriptionRequest(app, {
+        taskIds: ['observed'],
+        toolsListChanged: true
+      })
+      expect(response.status).toBe(200)
+      const error = ((await response.json()) as any).error
+      expect(error.code).toBe(-32603)
+      expect(error.message).toBe(
+        invalidAcceptedSubset
+          ? 'Task provider accepted an unrequested subscription task'
+          : 'task listen failed'
+      )
+      expect(iteratorReturns).toBe(1)
+      expect(provider.subscriptionClosed).toBe(invalidAcceptedSubset)
+      expect(provider.subscriptionCloseCalls).toBe(invalidAcceptedSubset ? 1 : 0)
+      if (!invalidAcceptedSubset) expect(failedTaskSetupSignal?.aborted).toBe(true)
+    }
   })
 
   test('binds provider operations to the verifier-derived principal key', async () => {
@@ -634,6 +952,14 @@ describe('integrated Tasks', () => {
 })
 
 describe('integrated Apps', () => {
+  test('advertises the implemented Apps MIME type in modern discovery', async () => {
+    const app = new Elysia().use(mcp({ allowedRoutes: [], extensions: { apps: {} } }))
+    const discovery = await modernRpc(app, 'server/discover')
+    expect(discovery.body.result.capabilities.extensions['io.modelcontextprotocol/ui']).toEqual({
+      mimeTypes: [MCP_APPS_RESOURCE_MIME_TYPE]
+    })
+  })
+
   test('normalizes tool and resource metadata and preserves fallback content', async () => {
     const uri = 'ui://weather/index.html'
     const app = new Elysia()
@@ -690,6 +1016,7 @@ class IntegrationTaskProvider implements TaskProvider {
   execution: Promise<void> = Promise.resolve()
   executionSignal?: AbortSignal
   subscriptionClosed = false
+  subscriptionCloseCalls = 0
   acceptedTaskIds?: readonly string[]
   subscriptionListener?: (task: DetailedTask) => void | Promise<void>
   rejectSubscriptionClose = false
@@ -752,6 +1079,7 @@ class IntegrationTaskProvider implements TaskProvider {
       acceptedTaskIds: this.acceptedTaskIds,
       close: async () => {
         this.subscriptionClosed = true
+        this.subscriptionCloseCalls += 1
         if (this.rejectSubscriptionClose) throw new Error('cleanup failed')
       }
     }
@@ -769,15 +1097,17 @@ function workingIntegrationTask(taskId: string): DetailedTask {
   }
 }
 
-function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[]) {
+function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[], signal?: AbortSignal) {
   return app.handle(
     new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': 'subscriptions/listen'
       },
+      signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 7,
@@ -786,6 +1116,34 @@ function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[]) {
           notifications: { taskIds },
           _meta: {
             'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0.0' },
+            'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
+          }
+        }
+      })
+    })
+  )
+}
+
+function mixedSubscriptionRequest(app: Elysia, notifications: Record<string, unknown>) {
+  return app.handle(
+    new Request('http://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'subscriptions/listen'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'subscriptions/listen',
+        params: {
+          notifications,
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'test-client', version: '1.0.0' },
             'io.modelcontextprotocol/clientCapabilities': TASKS_CAPABILITY
           }
         }

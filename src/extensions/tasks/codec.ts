@@ -1,12 +1,20 @@
 import { isRecord } from '../../internal.js'
+import {
+  isMcpElicitationResult,
+  isMcpRootsResult,
+  isMcpSamplingResult
+} from '../../schema/content.js'
 import type {
   DetailedTask,
   TaskCreateRequest,
+  TaskDefinedInputResponse,
   TaskDurableCreateRequest,
   TaskExecutionDescriptor,
   TaskExecutionScheduler,
+  TaskInputRequest,
   TaskProviderContext,
-  TaskStatus
+  TaskStatus,
+  TasksVersion
 } from './types.js'
 
 const TASK_STATUSES: readonly TaskStatus[] = [
@@ -69,6 +77,47 @@ export function assertTaskRecord(value: unknown, label = 'task'): asserts value 
   if (!isRecord(value)) throw new TypeError(`${label} must be an object`)
   assertTaskBase(value, label)
   assertTaskStatusPayload(value, label)
+}
+
+/** Validates a response against the outstanding request it satisfies. */
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label?: string,
+  version?: Exclude<TasksVersion, 'draft'>
+): asserts response is TaskDefinedInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label: string | undefined,
+  version: 'draft'
+): asserts response is import('./types.js').TaskInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label: string | undefined,
+  version: TasksVersion
+): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label = 'task input response',
+  version: TasksVersion = '2026-07-28'
+): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse {
+  if (!isRecord(response)) throw new TypeError(`${label} must be an object`)
+  if (version === 'draft') return
+  if (request.method === 'elicitation/create') {
+    if (!isMcpElicitationResult(response))
+      throw new TypeError(`${label}.action or content is invalid`)
+    return
+  }
+  if (request.method === 'roots/list') {
+    if (!isMcpRootsResult(response)) throw new TypeError(`${label}.roots must contain file URIs`)
+    return
+  }
+  if (!isMcpSamplingResult(response)) {
+    throw new TypeError(`${label}.content must contain valid MCP sampling content`)
+  }
 }
 
 function assertTaskBase(value: Record<string, unknown>, label: string): void {

@@ -2,16 +2,17 @@ import { validateJsonSchema } from '../schema/validate.js'
 import type {
   JsonSchema,
   McpInvocationContext,
+  McpPromptHandlerResult,
   McpPromptInvocationContext,
-  McpPromptResult,
+  McpResourceHandlerResult,
   McpResourceInvocationContext,
-  McpResourceReadResult,
   McpRouteOperation,
-  McpToolResult,
+  McpToolHandlerResult,
   NormalizedMcpPluginOptions,
   RouteInvocationInput
 } from '../types.js'
 import { buildInternalRequest, normalizeRouteToolInput } from './build-request.js'
+import { deleteMcpInvocationContext } from './context.js'
 import {
   createValidationToolError,
   marshalHttpResponseToPromptResult,
@@ -25,27 +26,30 @@ export async function invokeRouteTool(
   inputSchema: JsonSchema,
   context: McpInvocationContext,
   options: NormalizedMcpPluginOptions
-): Promise<McpToolResult> {
+): Promise<McpToolHandlerResult> {
   const validation = validateJsonSchema(inputSchema, args ?? {})
   if (!validation.ok) return createValidationToolError(validation.issues)
 
   const input = normalizeRouteToolInput(args ?? {}, operation, options)
   const request = buildInternalRequest(operation, input, context, options)
-  const response = await operation.app.handle(request)
-
-  return marshalHttpResponseToToolResult(
-    response,
-    `${operation.method} ${operation.path}`,
-    options,
-    operation.mcp === false ? undefined : operation.mcp?.marshal
-  )
+  try {
+    const response = await operation.app.handle(request)
+    return marshalHttpResponseToToolResult(
+      response,
+      `${operation.method} ${operation.path}`,
+      options,
+      operation.mcp === false ? undefined : operation.mcp?.marshal
+    )
+  } finally {
+    deleteMcpInvocationContext(request)
+  }
 }
 
 export async function invokeRouteResource(
   operation: McpRouteOperation,
   context: McpResourceInvocationContext,
   options: NormalizedMcpPluginOptions
-): Promise<McpResourceReadResult> {
+): Promise<McpResourceHandlerResult> {
   const routeMcp = operation.mcp === false ? undefined : operation.mcp
   const mapper = routeMcp?.resource?.mapUriToInput
 
@@ -54,9 +58,12 @@ export async function invokeRouteResource(
     : defaultResourceInput(operation, context.variables)
 
   const request = buildInternalRequest(operation, input, context, options)
-  const response = await operation.app.handle(request)
-
-  return marshalHttpResponseToResourceResult(response, context.uri, options, routeMcp?.marshal)
+  try {
+    const response = await operation.app.handle(request)
+    return marshalHttpResponseToResourceResult(response, context.uri, options, routeMcp?.marshal)
+  } finally {
+    deleteMcpInvocationContext(request)
+  }
 }
 
 export async function invokeRoutePrompt(
@@ -64,15 +71,18 @@ export async function invokeRoutePrompt(
   args: Record<string, unknown>,
   context: McpPromptInvocationContext,
   options: NormalizedMcpPluginOptions
-): Promise<McpPromptResult> {
+): Promise<McpPromptHandlerResult> {
   const routeMcp = operation.mcp === false ? undefined : operation.mcp
   const mapper = routeMcp?.prompt?.mapArgsToInput
 
   const input = mapper ? mapper(args, context) : defaultPromptInput(operation, args)
   const request = buildInternalRequest(operation, input, context, options)
-  const response = await operation.app.handle(request)
-
-  return marshalHttpResponseToPromptResult(response, options, routeMcp?.marshal)
+  try {
+    const response = await operation.app.handle(request)
+    return marshalHttpResponseToPromptResult(response, options, routeMcp?.marshal)
+  } finally {
+    deleteMcpInvocationContext(request)
+  }
 }
 
 function defaultResourceInput(

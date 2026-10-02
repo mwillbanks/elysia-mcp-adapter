@@ -1,17 +1,20 @@
 import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
-import type { JsonRpcRequest, NormalizedMcpPluginOptions } from '../types.js'
+import { isValidUri } from '../schema/validate.js'
+import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28' as const
 const LEGACY_PROTOCOL_VERSION = '2025-11-25' as const
 const PROTOCOL_VERSION_META_KEY = 'io.modelcontextprotocol/protocolVersion'
 const CLIENT_CAPABILITIES_META_KEY = 'io.modelcontextprotocol/clientCapabilities'
+const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo'
 const BASE64_SENTINEL = /^=\?base64\?([A-Za-z0-9+/]*={0,2})\?=$/u
 
 export interface McpRequestProtocolContext {
   version: McpProtocolVersion
   modern: boolean
   clientCapabilities: Record<string, unknown>
+  clientInfo?: McpClientInfo
   meta?: Record<string, unknown>
 }
 
@@ -36,11 +39,14 @@ export function resolveRequestProtocol(
   const metaVersion = meta?.[PROTOCOL_VERSION_META_KEY]
   assertProtocolVersionEnvelope(headerVersion, metaVersion)
   const requestedVersion =
-    typeof metaVersion === 'string' ? metaVersion : (headerVersion ?? LEGACY_PROTOCOL_VERSION)
+    typeof metaVersion === 'string'
+      ? metaVersion
+      : (headerVersion ?? options.transport.protocolVersions[0] ?? LEGACY_PROTOCOL_VERSION)
 
   if (!isSupportedProtocolVersion(requestedVersion, options)) {
     throw new McpProtocolError(-32022, `Unsupported protocol version: ${requestedVersion}`, 400, {
-      supportedVersions: options.transport.protocolVersions
+      supported: options.transport.protocolVersions,
+      requested: requestedVersion
     })
   }
 
@@ -54,16 +60,78 @@ export function resolveRequestProtocol(
     }
   }
 
+  if (headerVersion !== MODERN_PROTOCOL_VERSION || metaVersion !== MODERN_PROTOCOL_VERSION) {
+    throw new McpProtocolError(
+      -32020,
+      'Modern MCP requests require matching protocol versions in the header and request _meta',
+      400
+    )
+  }
+
   assertRoutingHeaders(request, payload)
+  assertAcceptHeader(request)
+  assertProgressToken(meta?.progressToken)
 
   const capabilities = meta?.[CLIENT_CAPABILITIES_META_KEY]
+  const clientInfo = meta?.[CLIENT_INFO_META_KEY]
   assertClientCapabilities(capabilities)
+  if (clientInfo !== undefined) assertClientInfo(clientInfo)
   return {
     version: MODERN_PROTOCOL_VERSION,
     modern: true,
     clientCapabilities: capabilities,
+    clientInfo,
     meta
   }
+}
+
+function assertProgressToken(value: unknown): void {
+  if (
+    value === undefined ||
+    typeof value === 'string' ||
+    (typeof value === 'number' && Number.isSafeInteger(value))
+  ) {
+    return
+  }
+  throw new McpProtocolError(-32020, 'progressToken must be a string or integer', 400)
+}
+
+function assertAcceptHeader(request: Request): void {
+  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
+  if (accept.includes('application/json') && accept.includes('text/event-stream')) return
+  throw new McpProtocolError(
+    -32020,
+    'Modern MCP requests must accept application/json and text/event-stream',
+    400
+  )
+}
+
+function assertClientInfo(value: unknown): asserts value is McpClientInfo {
+  if (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    typeof value.version === 'string' &&
+    value.version.length > 0 &&
+    (value.title === undefined || typeof value.title === 'string') &&
+    (value.description === undefined || typeof value.description === 'string') &&
+    (value.websiteUrl === undefined || isValidUri(value.websiteUrl)) &&
+    (value.icons === undefined || (Array.isArray(value.icons) && value.icons.every(isIcon)))
+  ) {
+    return
+  }
+  throw new McpProtocolError(-32020, 'clientInfo must match the MCP implementation schema', 400)
+}
+
+function isIcon(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isValidUri(value.src) &&
+    (value.mimeType === undefined || typeof value.mimeType === 'string') &&
+    (value.sizes === undefined ||
+      (Array.isArray(value.sizes) && value.sizes.every((size) => typeof size === 'string'))) &&
+    (value.theme === undefined || value.theme === 'dark' || value.theme === 'light')
+  )
 }
 
 function assertProtocolVersionEnvelope(headerVersion: string | null, metaVersion: unknown): void {
@@ -99,12 +167,57 @@ function assertRoutingHeaders(request: Request, payload: JsonRpcRequest): void {
 }
 
 function assertClientCapabilities(value: unknown): asserts value is Record<string, unknown> {
-  if (isRecord(value)) return
-  throw new McpProtocolError(
-    -32020,
-    'Modern MCP requests require client capabilities in request _meta',
-    400
-  )
+  if (!isRecord(value)) {
+    throw new McpProtocolError(
+      -32020,
+      'Modern MCP requests require client capabilities in request _meta',
+      400
+    )
+  }
+  for (const capability of ['elicitation', 'roots', 'sampling']) {
+    if (value[capability] !== undefined && !isRecord(value[capability])) {
+      throw new McpProtocolError(-32020, `clientCapabilities.${capability} must be an object`, 400)
+    }
+  }
+  const elicitation = value.elicitation
+  if (isRecord(elicitation)) {
+    for (const mode of ['form', 'url']) {
+      if (elicitation[mode] !== undefined && !isRecord(elicitation[mode])) {
+        throw new McpProtocolError(
+          -32020,
+          `clientCapabilities.elicitation.${mode} must be an object`,
+          400
+        )
+      }
+    }
+  }
+  const sampling = value.sampling
+  if (isRecord(sampling)) {
+    for (const feature of ['context', 'tools']) {
+      if (sampling[feature] !== undefined && !isRecord(sampling[feature])) {
+        throw new McpProtocolError(
+          -32020,
+          `clientCapabilities.sampling.${feature} must be an object`,
+          400
+        )
+      }
+    }
+  }
+  const roots = value.roots
+  if (
+    isRecord(roots) &&
+    roots.listChanged !== undefined &&
+    typeof roots.listChanged !== 'boolean'
+  ) {
+    throw new McpProtocolError(-32020, 'clientCapabilities.roots.listChanged must be boolean', 400)
+  }
+  for (const namespace of ['experimental', 'extensions']) {
+    const container = value[namespace]
+    if (container === undefined) continue
+    if (!isRecord(container) || Object.values(container).some((entry) => !isRecord(entry))) {
+      throw new McpProtocolError(-32020, `clientCapabilities.${namespace} must map to objects`, 400)
+    }
+  }
 }
 
 function isSupportedProtocolVersion(
@@ -114,33 +227,10 @@ function isSupportedProtocolVersion(
   return options.transport.protocolVersions.includes(version as McpProtocolVersion)
 }
 
-function protocolCapabilities(options: NormalizedMcpPluginOptions) {
-  const extensions: Record<string, unknown> = {}
-  if (options.extensions.tasks) {
-    extensions.tasks = { version: options.extensions.tasks.version }
-  }
-  if (options.extensions.auth) {
-    extensions.auth = { version: options.extensions.auth.version }
-  }
-  if (options.extensions.apps) {
-    extensions.apps = { version: options.extensions.apps.version }
-  }
-
-  return {
-    tools: { listChanged: false },
-    resources: { subscribe: false, listChanged: false },
-    prompts: { listChanged: false },
-    extensions
-  }
-}
-
 export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
   return {
-    cacheScope: 'private',
     resultType: 'complete',
     supportedVersions: options.transport.protocolVersions,
-    ttlMs: 0,
-    capabilities: protocolCapabilities(options),
     _meta: {
       'io.modelcontextprotocol/serverInfo': {
         name: options.server.name,
@@ -157,7 +247,11 @@ function methodName(payload: JsonRpcRequest): string | undefined {
   if (payload.method === 'tools/call' || payload.method === 'prompts/get') {
     return typeof params.name === 'string' ? params.name : undefined
   }
-  if (payload.method === 'resources/read') {
+  if (
+    payload.method === 'resources/read' ||
+    payload.method === 'resources/directory/read' ||
+    payload.method === 'skills/get'
+  ) {
     return typeof params.uri === 'string' ? params.uri : undefined
   }
   if (

@@ -3,6 +3,7 @@
   "icon": "Waypoints",
   "pages": [
     "transportation",
+    "modern-core",
     "route-backed-tools",
     "standalone-primitives",
     "resources-and-prompts",

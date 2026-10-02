@@ -14,6 +14,7 @@ import {
   validateMcpAppsResourceContent,
   validateMcpAppsResourceListing
 } from '../src/extensions/apps/index.js'
+import stableFixture from './fixtures/apps-2026-01-26.json' with { type: 'json' }
 
 describe('MCP Apps protocol versions', () => {
   it('resolves stable aliases and preserves the draft channel', () => {
@@ -24,6 +25,17 @@ describe('MCP Apps protocol versions', () => {
     expect(() => resolveMcpAppsProtocolVersion('2025-01-01')).toThrow(
       'Unsupported MCP Apps protocol version'
     )
+  })
+
+  it('matches the independent stable fixture', () => {
+    expect(stableFixture.version).toBe('2026-01-26')
+    expect(resolveMcpAppsProtocolVersion('2026-01-26')).toBe('2026-01-26')
+    expect(() => assertMcpAppsToolMetadata(stableFixture.tool._meta, '2026-01-26')).not.toThrow()
+    expect(isMcpAppsResourceUri(stableFixture.resource.uri)).toBe(true)
+    expect(isMcpAppsResourceMimeType(stableFixture.resource.mimeType)).toBe(true)
+    expect(() =>
+      assertMcpAppsResourceMetadata(stableFixture.resource._meta, '2026-01-26')
+    ).not.toThrow()
   })
 })
 
@@ -180,5 +192,8 @@ describe('MCP Apps metadata', () => {
     expect(() =>
       assertMcpAppsResourceMetadata({ ui: { permissions: { camera: true } } }, 'draft')
     ).toThrow('empty object')
+    expect(() =>
+      assertMcpAppsToolMetadata({ 'ui/resourceUri': 'https://example.com/app' }, '2026-01-26')
+    ).toThrow('valid ui:// URI')
   })
 })

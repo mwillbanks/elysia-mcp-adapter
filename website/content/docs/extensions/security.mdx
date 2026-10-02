@@ -11,7 +11,13 @@ Extensions add durable state, authorization decisions, and embedded application 
 - The Elysia application remains authoritative for route guards and business authorization.
 - The Tasks provider owns durable isolation, retention, cancellation, and subscription fan-out.
 - The Apps host owns iframe sandboxing, CSP enforcement, permissions, user approvals, and audit logs.
+- The Skills host identifies the source server, obtains per-skill approval, verifies exact resources, and gates local execution.
 
 Never store raw access tokens in task records or expose them to tools. Use unguessable task IDs, short bounded retention, least-privilege scopes, explicit CSP domains, and app-only tool visibility for UI-internal mutations.
 
+Treat every MCP-served skill as untrusted model input. Do not grant `allowed-tools`, execute bundled
+scripts, resolve skill authorities through DNS, or expose local filesystem paths automatically.
+
 See the [canonical client support matrix](https://modelcontextprotocol.io/extensions/client-matrix) before depending on a client capability.
+
+For experimental Events, bind every subscription to its normalized principal and original event tuple. Reauthorize each delivery. Persist webhook verification, secrets, expiry, and status atomically. Keep callback HTTPS verification enabled, deny private and special-use addresses by default, resolve DNS for each delivery, bypass ambient proxies, reject redirects, and bound response bytes, retries, and elapsed time. Rotate secrets with a short dual-signature grace period. Hosts approve subscriptions and store replay positions.

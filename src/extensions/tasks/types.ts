@@ -1,6 +1,12 @@
+import type { McpElicitationResult, McpRootsResult, McpSamplingResult } from '../../types.js'
+
 export const TASKS_EXTENSION_ID = 'io.modelcontextprotocol/tasks' as const
 
-export type TasksVersion = '2026-07-28' | 'draft'
+/**
+ * `draft` keeps the original 2c1425d draft codec. `draft-5246bc3` selects the
+ * current pinned draft without moving the legacy alias.
+ */
+export type TasksVersion = '2026-07-28' | 'draft' | 'draft-5246bc3'
 export type TasksVersionInput = TasksVersion | 'current'
 
 /**
@@ -41,10 +47,28 @@ export type TaskInputRequest =
   | TaskSamplingInputRequest
   | TaskRootsInputRequest
 
+export type TaskElicitationInputResponse = McpElicitationResult
+export type TaskSamplingInputResponse = McpSamplingResult
+export type TaskRootsInputResponse = McpRootsResult
+
+/** Defined response shapes used by the final and current-draft Tasks codecs. */
+export type TaskDefinedInputResponse =
+  | TaskElicitationInputResponse
+  | TaskSamplingInputResponse
+  | TaskRootsInputResponse
+
+/**
+ * Open legacy response shape exported by the original Tasks draft.
+ *
+ * Keep this interface extensible for existing consumers. Modern codecs validate
+ * recognized responses as `TaskDefinedInputResponse` at the protocol boundary.
+ */
 export interface TaskInputResponse {
   resultType?: string
   [key: string]: unknown
 }
+
+export type TaskModernInputResponse = TaskDefinedInputResponse
 
 export interface TaskInputRequests {
   [key: string]: TaskInputRequest
@@ -106,6 +130,10 @@ export type Task20260728<TResult extends Record<string, unknown> = Record<string
 
 /** Pinned ext-tasks draft record; its capability error code differs from the final codec. */
 export type TaskDraft<TResult extends Record<string, unknown> = Record<string, unknown>> =
+  DetailedTask<TResult>
+
+/** Current ext-tasks draft pinned at revision 5246bc3. */
+export type TaskDraft5246bc3<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult>
 
 export type CreateTaskResult<TResult extends Record<string, unknown> = Record<string, unknown>> =
@@ -193,6 +221,11 @@ export interface TaskSubscription {
   done?: Promise<void>
 }
 
+export interface TaskSubscriptionContext extends TaskProviderContext {
+  /** Aborts when subscription setup fails or its HTTP stream closes. */
+  signal?: AbortSignal
+}
+
 export type TaskStatusListener = (task: DetailedTask) => void | Promise<void>
 
 /**
@@ -211,6 +244,11 @@ export interface TaskProvider {
     scheduler: TaskExecutionScheduler
   ): Promise<DetailedTask>
   get(taskId: string, context: TaskProviderContext): Promise<DetailedTask | undefined>
+  /**
+   * Acknowledges responses for an owned task. Implementations MUST validate
+   * currently outstanding keys and ignore unknown, answered, or superseded
+   * keys. Partial updates leave remaining requests pending.
+   */
   update(
     taskId: string,
     inputResponses: TaskInputResponses,
@@ -230,7 +268,7 @@ export interface TaskProvider {
   listen?(
     taskIds: readonly string[],
     listener: TaskStatusListener,
-    context: TaskProviderContext
+    context: TaskSubscriptionContext
   ): Promise<TaskSubscription | undefined> | TaskSubscription | undefined
 }
 

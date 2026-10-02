@@ -44,7 +44,7 @@ describe('transport', () => {
     const response = await request(
       app,
       'POST',
-      {},
+      { 'mcp-protocol-version': '2025-11-25' },
       JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
     )
     expect(response.status).toBe(202)
@@ -58,10 +58,16 @@ describe('transport', () => {
 
   it('returns a parse error for malformed JSON', async () => {
     const app = new Elysia().use(mcp({ server, transport: { validateOrigin: false } }))
-    const response = await request(app, 'POST', {}, '{ not json')
+    const response = await request(
+      app,
+      'POST',
+      { 'mcp-protocol-version': '2025-11-25' },
+      '{ not json'
+    )
     const body = (await response.json()) as any
     expect(response.status).toBe(400)
     expect(body.error.code).toBe(-32700)
+    expect(body.id).toBeNull()
   })
 
   it('default-denies browser origins and returns 405 for disabled GET/DELETE', async () => {
@@ -90,7 +96,7 @@ describe('transport', () => {
     const ok = await request(
       app,
       'POST',
-      { origin: 'http://trusted.example' },
+      { origin: 'http://trusted.example', 'mcp-protocol-version': '2025-11-25' },
       JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })
     )
     expect(ok.status).toBe(200)

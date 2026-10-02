@@ -6,6 +6,7 @@ import type {
   NormalizedMcpPluginOptions,
   RouteInvocationInput
 } from '../types.js'
+import { setMcpInvocationContext } from './context.js'
 
 export function normalizeRouteToolInput(
   args: unknown,
@@ -69,6 +70,7 @@ export function buildInternalRequest(
     body: hasBody ? serializeBody(input.body, headers) : undefined,
     signal: context.signal
   })
+  setMcpInvocationContext(request, context)
   if (context.task) setTaskController(request, context.task)
   return request
 }

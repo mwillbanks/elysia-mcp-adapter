@@ -2,21 +2,22 @@
   "name": "elysia-mcp-auth-examples",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun --bun tsc --noEmit",
     "test": "bun test --bail",
-    "smoke": "bun run oauth/smoke.ts && bun run enterprise/smoke.ts"
+    "smoke": "bun --bun run oauth/smoke.ts && bun --bun run enterprise/smoke.ts",
+    "build": "bun build oauth/app.ts oauth/flows.ts oauth/smoke.ts enterprise/app.ts enterprise/smoke.ts --outdir dist --target bun"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.6.25",
-    "@better-auth/sso": "1.6.25",
+    "@better-auth/oauth-provider": "1.7.7",
+    "@better-auth/sso": "1.7.7",
     "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
-    "better-auth": "1.6.25",
-    "elysia": "1.4.29"
+    "better-auth": "1.7.7",
+    "elysia": "1.4.30"
   },
   "devDependencies": {
-    "@types/bun": "1.3.14",
+    "@types/bun": "1.4.2",
     "typescript": "7.0.2"
   }
 }
