@@ -13,6 +13,7 @@ const resolvedDatabasePath = databasePath
 const resolvedTaskId = taskId
 
 const database = new Database(resolvedDatabasePath, { readwrite: true, create: false })
+database.exec('PRAGMA busy_timeout = 5000')
 
 function update(status: string, value: Record<string, unknown>): void {
   database

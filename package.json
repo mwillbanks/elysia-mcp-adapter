@@ -1,6 +1,6 @@
 {
   "name": "@mwillbanks/elysia-mcp-adapter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "packageManager": "bun@1.4.2",
   "description": "Expose Elysia HTTP routes, prompts, and resources through a native-feeling MCP adapter.",
   "type": "module",
@@ -59,7 +59,7 @@
     "examples:setup": "bun link && bun install",
     "examples:build": "bun --bun run --cwd examples/tasks build && bun --bun run --cwd examples/auth build && bun --bun run --cwd examples/apps-vanilla build && bun --bun run --cwd examples/apps-react build && bun --bun run --cwd examples/core build && bun --bun run --cwd examples/skills build && bun --bun run --cwd examples/experimental build && bun --bun run --cwd examples/events build",
     "examples:typecheck": "bun --bun run --cwd examples/tasks typecheck && bun --bun run --cwd examples/auth typecheck && bun --bun run --cwd examples/apps-vanilla typecheck && bun --bun run --cwd examples/apps-react typecheck && bun --bun run --cwd examples/core typecheck && bun --bun run --cwd examples/skills typecheck && bun --bun run --cwd examples/experimental typecheck && bun --bun run --cwd examples/events typecheck",
-    "examples:test": "bun --bun run --cwd examples/tasks test && bun --bun run --cwd examples/auth test && bun --bun run --cwd examples/apps-vanilla test && bun --bun run --cwd examples/apps-react test && bun --bun run --cwd examples/core test && bun --bun run --cwd examples/skills test && bun --bun run --cwd examples/experimental test && bun --bun run --cwd examples/events test",
+    "examples:test": "bun --bun run examples:build && bun --bun run --cwd examples/tasks test && bun --bun run --cwd examples/auth test && bun --bun run --cwd examples/apps-vanilla test && bun --bun run --cwd examples/apps-react test && bun --bun run --cwd examples/core test && bun --bun run --cwd examples/skills test && bun --bun run --cwd examples/experimental test && bun --bun run --cwd examples/events test",
     "examples:smoke": "bun --bun run --cwd examples/tasks smoke && bun --bun run --cwd examples/auth smoke && bun --bun run --cwd examples/apps-vanilla smoke && bun --bun run --cwd examples/apps-react smoke && bun --bun run --cwd examples/core smoke && bun --bun run --cwd examples/skills smoke && bun --bun run --cwd examples/experimental smoke && bun --bun run --cwd examples/events smoke",
     "extensions:check-drift": "bun scripts/check-extension-drift.ts",
     "prepack": "bun --bun run build",
