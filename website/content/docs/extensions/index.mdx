@@ -4,7 +4,7 @@ description: Add durable work, OAuth authorization, and interactive application 
 ---
 
 MCP Extensions add optional capabilities to the core protocol without forcing every client and
-server to implement them. This adapter implements **Tasks**, **Authorization**, and **Apps** as
+server to implement them. This adapter implements **Tasks**, **Authorization**, **Apps**, **Skills**, and finalized **Server Cards** as
 thin, opt-in protocol layers around the same Elysia application. Route-backed operations still
 pass through Elysia validation, hooks, guards, error handling, and response mapping.
 
@@ -23,7 +23,8 @@ app.use(mcp({
       authorizationServers: ['https://auth.example.com'],
       verifyAccessToken
     },
-    apps: { version: 'current' }
+    apps: { version: 'current' },
+    skills: { version: 'current', directoryRead: true }
   }
 }))
 ```
@@ -71,6 +72,12 @@ supports the Client Credentials and Enterprise-Managed Authorization capability 
 [Apps](/docs/extensions/apps) associate tools with self-contained `ui://` HTML resources. Apps
 can receive structured tool results and call app-only tools while preserving useful text fallback
 for clients without an Apps host.
+
+## Skills
+
+[Skills](/docs/extensions/skills) publish Agent Skills as byte-bound MCP resources. The adapter
+validates exact frontmatter, builds complete SHA-256 manifests, supports direct lookup, and keeps
+directory reads, binary resources, and scalable providers explicitly configured.
 
 Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
 

@@ -12,11 +12,16 @@ bun run build
 bun run --cwd examples/tasks smoke
 ```
 
-The providers persist pending MRTR requests, partial responses, and lifetime-unique keys, but do not
+The providers persist pending MRTR requests, partial responses, and lifetime-unique keys. They
+ignore duplicate and unknown response keys and never overwrite a stored response. They do not
 replay work after input. Safe continuation requires an application-defined checkpoint that consumes
 those responses; replaying the original executor can duplicate side effects.
 
 ## Subprocess provider
+
+The minimal clients preserve the published modern task result. MCP client SDK `2.3.1` currently
+rejects that result after the server creates work, including generic requests with a supplied schema.
+Its generic requests can read and cancel tasks. Do not retry task creation blindly after this SDK error.
 
 The [subprocess example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/subprocess)
 stores task descriptors and snapshots in SQLite before spawning a fixed Bun worker command. The
@@ -34,9 +39,11 @@ const child = Bun.spawn([process.execPath, workerPath, databasePath, taskId], {
 ## BullMQ provider
 
 The [BullMQ example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/bullmq)
-uses a `Queue`, `Worker`, Redis task records, and pub/sub snapshots. `ioredis-mock` keeps the demo
-self-contained and validates the queue boundary, but it is not a production Redis substitute.
+uses a `Queue`, `Worker`, Redis task records, and pub/sub snapshots. Tests run against real Redis and
+cover normal BullMQ enqueue and Worker processing, restart recovery, partial inputs, and races.
 
 Production deployments should use a real Redis service with separate worker connections,
 `maxRetriesPerRequest: null` for workers, a `noeviction` policy, and no ioredis `keyPrefix`. Keep
 queue payloads limited to the durable descriptor and deployment-controlled identity.
+Use the provider's trusted `resolveScheduler` callback to map persisted descriptors to
+application-owned handlers after restart. Never serialize executable callbacks or credentials.

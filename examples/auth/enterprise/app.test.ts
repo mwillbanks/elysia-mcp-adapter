@@ -78,6 +78,7 @@ describe('Better Auth enterprise SAML boundary to OAuth MCP token', () => {
         headers: {
           authorization: `Bearer ${token.access_token}`,
           'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
           'mcp-method': 'server/discover',
           'mcp-protocol-version': '2026-07-28'
         },

@@ -9,7 +9,8 @@ Build the adapter first because both examples import its public package root.
 
 The [vanilla example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-vanilla)
 uses Elysia, a model-visible weather tool, an app-only refresh tool, and minimal browser code for
-the stable view handshake and same-server calls.
+the stable view handshake and same-server calls. It uses the v2 `App` API with an origin-bound
+parent transport and bounded request timeouts.
 
 ```bash
 bun run examples:setup
@@ -20,7 +21,7 @@ bun run --cwd examples/apps-vanilla smoke
 ## React and shadcn app
 
 The [React example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-react)
-uses React 19, `@modelcontextprotocol/ext-apps@1.7.5`, its React APIs, local shadcn-style component
+uses React 19, `@modelcontextprotocol/ext-apps@2.0.3`, its React APIs, local shadcn-style component
 source, Tailwind host variables, responsive sizing, display mode, tool input/result handling, and
 an app-only task mutation.
 
@@ -30,10 +31,11 @@ bun run build
 bun run --cwd examples/apps-react smoke
 ```
 
-Both examples use Bun standalone HTML output. They include no Vite configuration, CDN links,
+Both examples use the split `@modelcontextprotocol/client` and `@modelcontextprotocol/ext-apps`
+v2 packages with Zod v4. Bun produces standalone HTML without Vite configuration, CDN links,
 runtime asset fetches, external fonts, or unresolved local assets. Server tests verify tool and
-resource contracts; the bounded postMessage fixture exercises host messages but is not a
-production host.
+resource contracts. The host fixture also connects the actual v2 `App` and `AppBridge` through
+linked in-memory transports.
 
 Client availability changes independently of this package. Consult the canonical
 [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).

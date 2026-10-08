@@ -44,36 +44,37 @@ export function normalizeJsonSchema(
 
 function cloneJsonSchema(value: unknown): unknown {
   if (value === null) return null
-
-  const type = typeof value
-  if (type === 'string' || type === 'number' || type === 'boolean') return value
-  if (type === 'undefined' || type === 'function' || type === 'symbol' || type === 'bigint')
-    return undefined
-
-  if (Array.isArray(value)) {
-    const result: unknown[] = []
-    for (const item of value) {
-      const cloned = cloneJsonSchema(item)
-      if (cloned !== undefined) result.push(cloned)
-    }
-    return result
-  }
-
+  if (isJsonPrimitive(value)) return value
+  if (unsupportedJsonType(value)) return undefined
+  if (Array.isArray(value)) return cloneArray(value)
   if (value instanceof Date) return value.toISOString()
+  return typeof value === 'object' ? cloneRecord(value as Record<string, unknown>) : undefined
+}
 
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    const result: Record<string, unknown> = {}
+function isJsonPrimitive(value: unknown): boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
 
-    for (const key of Object.keys(record)) {
-      const cloned = cloneJsonSchema(record[key])
-      if (cloned !== undefined) result[key] = cloned
-    }
+function unsupportedJsonType(value: unknown): boolean {
+  return ['undefined', 'function', 'symbol', 'bigint'].includes(typeof value)
+}
 
-    return result
+function cloneArray(value: readonly unknown[]): unknown[] {
+  const result: unknown[] = []
+  for (const item of value) {
+    const cloned = cloneJsonSchema(item)
+    if (cloned !== undefined) result.push(cloned)
   }
+  return result
+}
 
-  return undefined
+function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const key of Object.keys(value)) {
+    const cloned = cloneJsonSchema(value[key])
+    if (cloned !== undefined) result[key] = cloned
+  }
+  return result
 }
 
 export function emptyObjectSchema(): JsonSchema {

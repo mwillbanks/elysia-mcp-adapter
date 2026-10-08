@@ -1,0 +1,4 @@
+{
+  "title": "Experimental extensions",
+  "pages": ["index", "server-card", "interceptors", "server-variants", "annotations", "events"]
+}

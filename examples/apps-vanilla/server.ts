@@ -2,7 +2,6 @@ import { MCP_APPS_RESOURCE_MIME_TYPE, mcp } from '@mwillbanks/elysia-mcp-adapter
 import { Elysia } from 'elysia'
 
 const appUri = 'ui://weather/index.html'
-// fallow-ignore-next-line unresolved-import
 const html = await Bun.file(new URL('./dist/index.html', import.meta.url)).text()
 
 const app = new Elysia()

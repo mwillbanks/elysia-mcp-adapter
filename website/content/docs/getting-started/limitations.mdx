@@ -8,15 +8,19 @@ The adapter intentionally keeps its dependency surface and transport behavior sm
 
 ## Not implemented
 
-- stateful MCP sessions
+- general-purpose stateful MCP sessions outside the legacy server-variants experiment
 - resumable SSE streams
-- server-initiated requests
+- deprecated modern logging configuration
 - inferred multipart or file uploads
 - automatic model-controlled credential or filesystem access
+- automatic skill activation, execution, filesystem materialization, or network retrieval
+- Filesystems extension methods: its reviewed repository has no implementable wire contract
 
 ## Transport scope
 
-GET SSE provides a minimal connected event and closes. DELETE can acknowledge a session deletion request, but no server-side session state is retained.
+Modern MCP uses POST-only request and subscription streams. Legacy GET SSE normally provides a minimal connected stream. The server-variants experiment retains principal-bound session state, variant-bound resource subscriptions, and open SSE controllers. `resources/unsubscribe` and DELETE close those resources.
+
+MRTR transports elicitation, sampling, and roots requests inside input-required results. The adapter validates and returns them. The host owns approval, execution, and retry behavior.
 
 ## Route discovery
 
@@ -25,6 +29,8 @@ Route inspection uses Elysia's current public `app.routes` and router history sh
 ## Framework dependency
 
 The package does not depend on the official MCP TypeScript SDK. It implements the required JSON-RPC surface directly to keep transport abstractions thin and avoid translating TypeBox schemas through Zod.
+
+This distinction matters for migration. SDK extension types describe a client or host API, while the adapter implements wire methods, HTTP headers, and JSON records. Use the minimal protocol clients in `examples/experimental` when an SDK or host does not expose a draft method. Do not infer modern support from the legacy server-variants experiment.
 
 ## Output constraints
 

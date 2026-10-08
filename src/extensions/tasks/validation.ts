@@ -31,15 +31,15 @@ export function validateUpdateTaskParams(params: unknown): UpdateTaskParams {
     throw createInvalidTaskParamsError('Missing task input responses')
   }
 
-  const inputResponses: TaskInputResponses = {}
+  const entries: Array<[string, TaskInputResponses[string]]> = []
   for (const [key, response] of Object.entries(params.inputResponses)) {
     if (key.length === 0 || !isRecord(response)) {
       throw createInvalidTaskParamsError('Task input responses must be keyed objects')
     }
-    inputResponses[key] = response
+    entries.push([key, response as unknown as TaskInputResponses[string]])
   }
 
-  return { taskId, inputResponses }
+  return { taskId, inputResponses: Object.fromEntries(entries) }
 }
 
 export function hasTasksCapability(meta: Record<string, unknown> | undefined): boolean {

@@ -1,0 +1,88 @@
+diff --git a/dist/api/syncChannel.js b/dist/api/syncChannel.js
+index 7b9cf99d6b052ca506d3b6c11f97911416c7949f..3e3c3309ccec7af906196d21ad856ab7478e04d4 100644
+--- a/dist/api/syncChannel.js
++++ b/dist/api/syncChannel.js
+@@ -9,8 +9,10 @@
+  * directly on the pipe file descriptors obtained from the spawned
+  * ChildProcess.
+  */
+-import { spawn, } from "node:child_process";
+-import { closeSync, openSync, readSync, writeSync, } from "node:fs";
++import { spawn, spawnSync, } from "node:child_process";
++import { closeSync, constants, mkdtempSync, openSync, readSync, rmSync, writeSync, } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
+ import { binHeaderSize, MSGPACK_BIN16, MSGPACK_BIN32, MSGPACK_BIN8, MSGPACK_FIXARRAY3, MSGPACK_UINT8, writeBinHeader, } from "./node/msgpack.js";
+ // ── MessageType constants ────────────────────────────────────────────
+ // Sent by channel (parent → child)
+@@ -64,6 +66,7 @@ export class SyncRpcChannel {
+     readFd;
+     writeFd;
+     pipeFd;
++    ownedFds;
+     callbacks = new Map();
+     methodBufCache = new Map();
+     // When true, the payload byte lengths of each request/response are recorded
+@@ -121,6 +124,51 @@ export class SyncRpcChannel {
+             this.writeFd = fd;
+             this.pipeFd = fd;
+         }
++        else if (typeof Bun !== "undefined") {
++            // Bun streams do not expose libuv handles. Numeric FIFO descriptors
++            // keep the native compiler protocol synchronous without stream readers.
++            const directory = mkdtempSync(join(tmpdir(), "tsgo-sync-"));
++            const input = join(directory, "input");
++            const output = join(directory, "output");
++            const opened = new Set();
++            const open = (path, flags) => {
++                const fd = openSync(path, flags);
++                opened.add(fd);
++                return fd;
++            };
++            const close = fd => {
++                opened.delete(fd);
++                closeSync(fd);
++            };
++            try {
++                const result = spawnSync("mkfifo", ["-m", "600", input, output]);
++                if (result.error || result.status !== 0) {
++                    throw new Error("SyncRpcChannel: failed to create Bun compiler pipes", { cause: result.error });
++                }
++                const inputAnchor = open(input, constants.O_RDWR | constants.O_NONBLOCK);
++                const outputAnchor = open(output, constants.O_RDWR | constants.O_NONBLOCK);
++                this.writeFd = open(input, constants.O_WRONLY);
++                const childRead = open(input, constants.O_RDONLY);
++                this.readFd = open(output, constants.O_RDONLY);
++                const childWrite = open(output, constants.O_WRONLY);
++                close(inputAnchor);
++                close(outputAnchor);
++                this.child = spawn(exe, args, { stdio: [childRead, childWrite, "inherit"] });
++                close(childRead);
++                close(childWrite);
++                this.ownedFds = [this.writeFd, this.readFd];
++                // Both processes hold descriptors; no named filesystem entry is needed.
++                rmSync(directory, { recursive: true, force: true });
++            }
++            catch (error) {
++                this.child?.kill();
++                for (const fd of opened) {
++                    try { closeSync(fd); } catch {}
++                }
++                rmSync(directory, { recursive: true, force: true });
++                throw error;
++            }
++        }
+         else {
+             // POSIX: use stdio pipe file descriptors directly.
+             this.child = spawn(exe, args, {
+@@ -180,6 +228,10 @@ export class SyncRpcChannel {
+     close() {
+         try {
+             liveChildren.delete(this.child);
++            for (const fd of this.ownedFds ?? []) {
++                try { closeSync(fd); } catch {}
++            }
++            this.ownedFds = undefined;
+             if (this.pipeFd !== undefined) {
+                 closeSync(this.pipeFd);
+                 this.pipeFd = undefined;

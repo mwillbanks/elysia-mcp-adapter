@@ -95,90 +95,24 @@ export async function authorizeBearerRequest(
   options: AuthorizeBearerRequestOptions
 ): Promise<McpAuthorizationResult> {
   assertClockSkew(options.clockSkewSeconds ?? 0)
-  const resource = options.resource instanceof URL ? options.resource.href : options.resource
+  const resource = typeof options.resource === 'string' ? options.resource : options.resource.href
   const resourceMetadata = protectedResourceMetadataUrl(options.resource)
   const parsed = parseBearerAuthorization(request.headers.get('authorization'))
-
-  if (!parsed.ok) {
-    const error = parsed.reason === 'missing' ? 'invalid_token' : 'invalid_request'
-    const requiredScopes = options.requiredScopes ?? []
-    return {
-      ok: false,
-      status: 401,
-      error,
-      challenge: buildBearerChallenge({
-        resourceMetadata,
-        ...(parsed.reason === 'malformed'
-          ? {
-              error,
-              errorDescription: 'Malformed Authorization header'
-            }
-          : {}),
-        ...(requiredScopes.length > 0 ? { scope: requiredScopes } : {})
-      })
-    }
-  }
-
-  let principal: McpAuthPrincipal
-  try {
-    principal = normalizePrincipal(
-      await verifierFunction(options.verifier)(parsed.token, {
-        request,
-        resource,
-        signal: request.signal
-      })
-    )
-  } catch {
-    return {
-      ok: false,
-      status: 401,
-      error: 'invalid_token',
-      challenge: buildBearerChallenge({
-        resourceMetadata,
-        error: 'invalid_token',
-        errorDescription: 'Access token verification failed'
-      })
-    }
-  }
+  if (!parsed.ok) return invalidAuthorizationHeader(parsed.reason, options, resourceMetadata)
+  const verified = await verifyPrincipal(parsed.token, request, resource, options, resourceMetadata)
+  if (!verified.ok) return verified.result
+  const principal = verified.principal
 
   const nowMilliseconds = options.now?.() ?? Date.now()
   assertFiniteTime(nowMilliseconds, 'now')
   const nowSeconds = nowMilliseconds / 1000
-  const trustedIssuers = options.authorizationServers?.map((issuer) =>
-    issuer instanceof URL ? issuer.href : issuer
-  )
-  if (
-    (trustedIssuers !== undefined &&
-      (!principal.issuer || !trustedIssuers.includes(principal.issuer))) ||
-    !isAudienceAllowed(principal, resource) ||
-    isPrincipalExpired(principal, nowSeconds, options.clockSkewSeconds ?? 0)
-  ) {
-    return {
-      ok: false,
-      status: 401,
-      error: 'invalid_token',
-      challenge: buildBearerChallenge({
-        resourceMetadata,
-        error: 'invalid_token',
-        errorDescription: 'Access token is not valid for this resource'
-      })
-    }
+  if (!validPrincipalForRequest(principal, resource, nowSeconds, options)) {
+    return invalidToken(resourceMetadata, 'Access token is not valid for this resource')
   }
 
   const missingScopes = missingRequiredScopes(options.requiredScopes ?? [], principal.scopes)
   if (missingScopes.length > 0) {
-    return {
-      ok: false,
-      status: 403,
-      error: 'insufficient_scope',
-      missingScopes,
-      challenge: buildBearerChallenge({
-        resourceMetadata,
-        error: 'insufficient_scope',
-        errorDescription: 'Access token has insufficient scope',
-        scope: options.requiredScopes ?? []
-      })
-    }
+    return insufficientScope(resourceMetadata, missingScopes, options.requiredScopes ?? [])
   }
 
   return {
@@ -187,6 +121,97 @@ export async function authorizeBearerRequest(
       principal,
       scopes: principal.scopes,
       attributes: principal.claims ?? Object.freeze({})
+    })
+  }
+}
+
+function invalidAuthorizationHeader(
+  reason: 'malformed' | 'missing',
+  options: AuthorizeBearerRequestOptions,
+  resourceMetadata: string | URL
+): McpAuthorizationResult {
+  const error = reason === 'missing' ? 'invalid_token' : 'invalid_request'
+  const requiredScopes = options.requiredScopes ?? []
+  return {
+    ok: false,
+    status: 401,
+    error,
+    challenge: buildBearerChallenge({
+      resourceMetadata,
+      ...(reason === 'malformed'
+        ? { error, errorDescription: 'Malformed Authorization header' }
+        : {}),
+      ...(requiredScopes.length > 0 ? { scope: requiredScopes } : {})
+    })
+  }
+}
+
+async function verifyPrincipal(
+  token: string,
+  request: Request,
+  resource: string,
+  options: AuthorizeBearerRequestOptions,
+  resourceMetadata: string | URL
+): Promise<
+  { ok: true; principal: McpAuthPrincipal } | { ok: false; result: McpAuthorizationResult }
+> {
+  try {
+    const principal = await verifierFunction(options.verifier)(token, {
+      request,
+      resource,
+      signal: request.signal
+    })
+    return { ok: true, principal: normalizePrincipal(principal) }
+  } catch {
+    return { ok: false, result: invalidToken(resourceMetadata, 'Access token verification failed') }
+  }
+}
+
+function validPrincipalForRequest(
+  principal: McpAuthPrincipal,
+  resource: string,
+  nowSeconds: number,
+  options: AuthorizeBearerRequestOptions
+): boolean {
+  const trustedIssuers = options.authorizationServers?.map((issuer) =>
+    issuer instanceof URL ? issuer.href : issuer
+  )
+  if (trustedIssuers !== undefined && !trustedIssuer(principal, trustedIssuers)) return false
+  if (!isAudienceAllowed(principal, resource)) return false
+  return !isPrincipalExpired(principal, nowSeconds, options.clockSkewSeconds ?? 0)
+}
+
+function trustedIssuer(principal: McpAuthPrincipal, trusted: readonly string[]): boolean {
+  return typeof principal.issuer === 'string' && trusted.includes(principal.issuer)
+}
+
+function invalidToken(
+  resourceMetadata: string | URL,
+  errorDescription: string
+): McpAuthorizationResult {
+  return {
+    ok: false,
+    status: 401,
+    error: 'invalid_token',
+    challenge: buildBearerChallenge({ resourceMetadata, error: 'invalid_token', errorDescription })
+  }
+}
+
+function insufficientScope(
+  resourceMetadata: string | URL,
+  missingScopes: string[],
+  requiredScopes: readonly string[]
+): McpAuthorizationResult {
+  return {
+    ok: false,
+    status: 403,
+    error: 'insufficient_scope',
+    missingScopes,
+    challenge: buildBearerChallenge({
+      resourceMetadata,
+      error: 'insufficient_scope',
+      errorDescription: 'Access token has insufficient scope',
+      scope: requiredScopes
     })
   }
 }

@@ -28,13 +28,18 @@ import { Elysia } from 'elysia'
 const app = new Elysia().use(mcp())
 ```
 
-This installs three fluent methods and registers the MCP HTTP endpoint:
+This installs six fluent registration methods and the MCP HTTP endpoint:
 
 - `.mcpTool()`
 - `.mcpResource()`
 - `.mcpPrompt()`
+- `.mcpSkill()`
+- `.mcpInterceptor()`
+- `.mcpEvent()`
 
 The default endpoint is `/mcp`.
+Skills, interceptors, and events require their corresponding extension options.
+See the [extension guides](/docs/extensions) for revision selectors and host responsibilities.
 
 ## Optional integrations
 

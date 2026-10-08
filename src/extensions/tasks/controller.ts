@@ -1,5 +1,6 @@
 import {
   assertTaskCreateRequest,
+  assertTaskInputResponse,
   assertTaskRecord,
   buildTaskExecutionScheduler,
   toDurableTaskCreateRequest,
@@ -83,7 +84,31 @@ export class TaskController {
     inputResponses: TaskInputResponses,
     context: TaskRequestContext
   ): Promise<UpdateTaskResult> {
-    const accepted = await this.provider.update(taskId, inputResponses, this.context(context))
+    const providerContext = this.context(context)
+    const task = await this.provider.get(taskId, providerContext)
+    if (!task) throw createInvalidTaskParamsError(`Unknown task: ${taskId}`)
+    assertTaskRecord(task, 'task')
+    if (task.taskId !== taskId) {
+      throw new Error(
+        `Task provider violated its identity contract: requested "${taskId}", received "${task.taskId}"`
+      )
+    }
+    if (task.status === 'input_required') {
+      for (const [key, response] of Object.entries(inputResponses)) {
+        const request: TaskInputRequest | undefined = Object.hasOwn(task.inputRequests, key)
+          ? task.inputRequests[key]
+          : undefined
+        if (request) {
+          assertTaskInputResponse(
+            request,
+            response,
+            `inputResponses.${key}`,
+            providerContext.version
+          )
+        }
+      }
+    }
+    const accepted = await this.provider.update(taskId, inputResponses, providerContext)
     if (accepted === false) throw createInvalidTaskParamsError(`Unknown task: ${taskId}`)
     return { resultType: 'complete' }
   }
@@ -147,7 +172,7 @@ export class TaskController {
         }
         return listener(task)
       },
-      this.context(context)
+      Object.freeze({ ...this.context(context), signal: context.signal })
     )
   }
 

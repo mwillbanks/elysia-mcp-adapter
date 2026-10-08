@@ -301,22 +301,24 @@ describe('resource-server enforcement', () => {
     })
   })
 
-  test('rejects a verifier result that is not an OAuth access token', async () => {
-    const result = await authorizeBearerRequest(
-      new Request(resource, { headers: { Authorization: 'Bearer direct-id-jag' } }),
-      {
-        resource,
-        verifier: () =>
-          ({
-            tokenType: 'id-jag',
-            subject: 'enterprise-user',
-            audience: resource,
-            expiresAt: Math.floor(Date.now() / 1000) + 60,
-            scopes: ['tools:read']
-          }) as never
-      }
-    )
+  test('rejects ID tokens, ID-JAGs, and raw SAML assertions as MCP credentials', async () => {
+    for (const tokenType of ['id_token', 'id-jag', 'saml_assertion']) {
+      const result = await authorizeBearerRequest(
+        new Request(resource, { headers: { Authorization: `Bearer direct-${tokenType}` } }),
+        {
+          resource,
+          verifier: () =>
+            ({
+              tokenType,
+              subject: 'enterprise-user',
+              audience: resource,
+              expiresAt: Math.floor(Date.now() / 1000) + 60,
+              scopes: ['tools:read']
+            }) as never
+        }
+      )
 
-    expect(result).toMatchObject({ ok: false, status: 401, error: 'invalid_token' })
+      expect(result).toMatchObject({ ok: false, status: 401, error: 'invalid_token' })
+    }
   })
 })

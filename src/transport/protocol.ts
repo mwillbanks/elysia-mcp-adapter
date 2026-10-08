@@ -1,29 +1,25 @@
 import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
-import type { JsonRpcRequest, NormalizedMcpPluginOptions } from '../types.js'
+import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
+import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
+import { McpProtocolError } from './protocol-error.js'
+import { requestTargetName } from './protocol-routing.js'
+
+export { McpProtocolError } from './protocol-error.js'
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28' as const
 const LEGACY_PROTOCOL_VERSION = '2025-11-25' as const
 const PROTOCOL_VERSION_META_KEY = 'io.modelcontextprotocol/protocolVersion'
 const CLIENT_CAPABILITIES_META_KEY = 'io.modelcontextprotocol/clientCapabilities'
+const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo'
 const BASE64_SENTINEL = /^=\?base64\?([A-Za-z0-9+/]*={0,2})\?=$/u
 
 export interface McpRequestProtocolContext {
   version: McpProtocolVersion
   modern: boolean
   clientCapabilities: Record<string, unknown>
+  clientInfo?: McpClientInfo
   meta?: Record<string, unknown>
-}
-
-export class McpProtocolError extends Error {
-  constructor(
-    readonly code: number,
-    message: string,
-    readonly status = 400,
-    readonly data?: unknown
-  ) {
-    super(message)
-  }
 }
 
 export function resolveRequestProtocol(
@@ -36,11 +32,14 @@ export function resolveRequestProtocol(
   const metaVersion = meta?.[PROTOCOL_VERSION_META_KEY]
   assertProtocolVersionEnvelope(headerVersion, metaVersion)
   const requestedVersion =
-    typeof metaVersion === 'string' ? metaVersion : (headerVersion ?? LEGACY_PROTOCOL_VERSION)
+    typeof metaVersion === 'string'
+      ? metaVersion
+      : (headerVersion ?? options.transport.protocolVersions[0] ?? LEGACY_PROTOCOL_VERSION)
 
   if (!isSupportedProtocolVersion(requestedVersion, options)) {
     throw new McpProtocolError(-32022, `Unsupported protocol version: ${requestedVersion}`, 400, {
-      supportedVersions: options.transport.protocolVersions
+      supported: options.transport.protocolVersions,
+      requested: requestedVersion
     })
   }
 
@@ -54,16 +53,50 @@ export function resolveRequestProtocol(
     }
   }
 
+  if (headerVersion !== MODERN_PROTOCOL_VERSION || metaVersion !== MODERN_PROTOCOL_VERSION) {
+    throw new McpProtocolError(
+      -32020,
+      'Modern MCP requests require matching protocol versions in the header and request _meta',
+      400
+    )
+  }
+
   assertRoutingHeaders(request, payload)
+  assertAcceptHeader(request)
+  assertProgressToken(meta?.progressToken)
 
   const capabilities = meta?.[CLIENT_CAPABILITIES_META_KEY]
+  const clientInfo = meta?.[CLIENT_INFO_META_KEY]
   assertClientCapabilities(capabilities)
+  if (clientInfo !== undefined) assertClientInfo(clientInfo)
   return {
     version: MODERN_PROTOCOL_VERSION,
     modern: true,
     clientCapabilities: capabilities,
+    clientInfo,
     meta
   }
+}
+
+function assertProgressToken(value: unknown): void {
+  if (
+    value === undefined ||
+    typeof value === 'string' ||
+    (typeof value === 'number' && Number.isSafeInteger(value))
+  ) {
+    return
+  }
+  throw new McpProtocolError(-32020, 'progressToken must be a string or integer', 400)
+}
+
+function assertAcceptHeader(request: Request): void {
+  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
+  if (accept.includes('application/json') && accept.includes('text/event-stream')) return
+  throw new McpProtocolError(
+    -32020,
+    'Modern MCP requests must accept application/json and text/event-stream',
+    400
+  )
 }
 
 function assertProtocolVersionEnvelope(headerVersion: string | null, metaVersion: unknown): void {
@@ -87,7 +120,7 @@ function assertRoutingHeaders(request: Request, payload: JsonRpcRequest): void {
     throw new McpProtocolError(-32020, 'Mcp-Method header must match the JSON-RPC method', 400)
   }
 
-  const expectedName = methodName(payload)
+  const expectedName = requestTargetName(payload)
   const headerName = request.headers.get('mcp-name')
   const decodedName = headerName === null ? null : decodeMcpHeaderValue(headerName, 'Mcp-Name')
   if (expectedName !== undefined && decodedName !== expectedName) {
@@ -98,15 +131,6 @@ function assertRoutingHeaders(request: Request, payload: JsonRpcRequest): void {
   }
 }
 
-function assertClientCapabilities(value: unknown): asserts value is Record<string, unknown> {
-  if (isRecord(value)) return
-  throw new McpProtocolError(
-    -32020,
-    'Modern MCP requests require client capabilities in request _meta',
-    400
-  )
-}
-
 function isSupportedProtocolVersion(
   version: string,
   options: NormalizedMcpPluginOptions
@@ -114,33 +138,10 @@ function isSupportedProtocolVersion(
   return options.transport.protocolVersions.includes(version as McpProtocolVersion)
 }
 
-function protocolCapabilities(options: NormalizedMcpPluginOptions) {
-  const extensions: Record<string, unknown> = {}
-  if (options.extensions.tasks) {
-    extensions.tasks = { version: options.extensions.tasks.version }
-  }
-  if (options.extensions.auth) {
-    extensions.auth = { version: options.extensions.auth.version }
-  }
-  if (options.extensions.apps) {
-    extensions.apps = { version: options.extensions.apps.version }
-  }
-
-  return {
-    tools: { listChanged: false },
-    resources: { subscribe: false, listChanged: false },
-    prompts: { listChanged: false },
-    extensions
-  }
-}
-
 export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
   return {
-    cacheScope: 'private',
     resultType: 'complete',
     supportedVersions: options.transport.protocolVersions,
-    ttlMs: 0,
-    capabilities: protocolCapabilities(options),
     _meta: {
       'io.modelcontextprotocol/serverInfo': {
         name: options.server.name,
@@ -150,24 +151,6 @@ export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
     },
     instructions: options.server.instructions
   }
-}
-
-function methodName(payload: JsonRpcRequest): string | undefined {
-  const params = isRecord(payload.params) ? payload.params : {}
-  if (payload.method === 'tools/call' || payload.method === 'prompts/get') {
-    return typeof params.name === 'string' ? params.name : undefined
-  }
-  if (payload.method === 'resources/read') {
-    return typeof params.uri === 'string' ? params.uri : undefined
-  }
-  if (
-    payload.method === 'tasks/get' ||
-    payload.method === 'tasks/update' ||
-    payload.method === 'tasks/cancel'
-  ) {
-    return typeof params.taskId === 'string' ? params.taskId : undefined
-  }
-  return undefined
 }
 
 export function decodeMcpHeaderValue(value: string, headerName: string): string {

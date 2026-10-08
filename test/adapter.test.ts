@@ -84,6 +84,31 @@ describe('tools', () => {
     expect(body.result.structuredContent.http.status).toBe(404)
   })
 
+  it('does not treat error response bodies as input-required results', async () => {
+    const app = new Elysia().use(mcp({ server, transport: { validateOrigin: false } })).get(
+      '/denied-input',
+      ({ status }) =>
+        status(403, {
+          resultType: 'input_required',
+          inputRequests: {
+            approval: {
+              method: 'elicitation/create',
+              params: { message: 'Approve?', requestedSchema: { type: 'object' } }
+            }
+          }
+        }),
+      { detail: { operationId: 'denied.input' } }
+    )
+
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'denied.input',
+      arguments: {}
+    })
+    expect(body.result.isError).toBe(true)
+    expect(body.result.resultType).toBeUndefined()
+    expect(body.result.structuredContent.http.status).toBe(403)
+  })
+
   it('runs beforeHandle guards during route-backed invocation', async () => {
     const app = new Elysia()
       .use(mcp({ server, transport: { validateOrigin: false } }))

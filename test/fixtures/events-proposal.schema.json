@@ -1,0 +1,423 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Cursor": { "type": ["string", "null"] },
+    "IsoDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "EventDescriptor": {
+      "type": "object",
+      "required": ["name", "description", "delivery", "inputSchema", "payloadSchema"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "delivery": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["poll", "push", "webhook"] }
+        },
+        "inputSchema": { "type": "object" },
+        "payloadSchema": { "type": "object" },
+        "_meta": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "EventOccurrence": {
+      "type": "object",
+      "required": ["eventId", "name", "timestamp", "data"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "timestamp": { "$ref": "#/$defs/IsoDateTime" },
+        "data": { "type": "object" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "_meta": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "ListRequest": {
+      "type": "object",
+      "properties": { "cursor": { "$ref": "#/$defs/Cursor" } },
+      "additionalProperties": false
+    },
+    "ListResult": {
+      "type": "object",
+      "required": ["events"],
+      "properties": {
+        "events": { "type": "array", "items": { "$ref": "#/$defs/EventDescriptor" } },
+        "nextCursor": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "SubscriptionRequest": {
+      "type": "object",
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "maxAgeMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "PollRequest": {
+      "type": "object",
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "maxAgeMs": { "type": "integer", "minimum": 0 },
+        "maxEvents": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "PollResult": {
+      "type": "object",
+      "required": ["events"],
+      "properties": {
+        "events": { "type": "array", "items": { "$ref": "#/$defs/EventOccurrence" } },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "truncated": { "type": "boolean" },
+        "hasMore": { "type": "boolean" },
+        "nextPollMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "StreamRequest": { "$ref": "#/$defs/SubscriptionRequest" },
+    "StreamResult": {
+      "type": "object",
+      "required": ["_meta"],
+      "properties": { "_meta": { "type": "object" } },
+      "additionalProperties": false
+    },
+    "WebhookDelivery": {
+      "type": "object",
+      "required": ["mode", "url", "secret"],
+      "properties": {
+        "mode": { "const": "webhook" },
+        "url": { "type": "string", "pattern": "^https://" },
+        "secret": { "type": "string", "pattern": "^whsec_[A-Za-z0-9+/]+={0,2}$" }
+      },
+      "additionalProperties": false
+    },
+    "SubscribeRequest": {
+      "type": "object",
+      "required": ["name", "arguments", "delivery"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "delivery": { "$ref": "#/$defs/WebhookDelivery" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "maxAgeMs": { "type": "integer", "minimum": 0 },
+        "ttlMs": {
+          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeliveryStatus": {
+      "type": "object",
+      "required": ["active", "lastError"],
+      "properties": {
+        "active": { "type": "boolean" },
+        "lastDeliveryAt": { "$ref": "#/$defs/IsoDateTime" },
+        "lastError": {
+          "oneOf": [
+            {
+              "enum": [
+                "connection_refused",
+                "timeout",
+                "tls_error",
+                "http_4xx",
+                "http_5xx",
+                "challenge_failed"
+              ]
+            },
+            { "type": "null" }
+          ]
+        },
+        "failedSince": { "$ref": "#/$defs/IsoDateTime" },
+        "throttled": { "type": "boolean" },
+        "retryAfterMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "SubscribeResult": {
+      "type": "object",
+      "required": ["id", "refreshBefore"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "refreshBefore": {
+          "oneOf": [{ "$ref": "#/$defs/IsoDateTime" }, { "type": "null" }]
+        },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "truncated": { "type": "boolean" },
+        "deliveryStatus": { "$ref": "#/$defs/DeliveryStatus" }
+      },
+      "additionalProperties": false
+    },
+    "UnsubscribeRequest": {
+      "type": "object",
+      "required": ["name", "arguments", "delivery"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "delivery": {
+          "type": "object",
+          "required": ["url"],
+          "properties": { "url": { "type": "string", "pattern": "^https://" } },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnsubscribeResult": { "type": "object", "maxProperties": 0 },
+    "SubscriptionMeta": {
+      "type": "object",
+      "required": ["io.modelcontextprotocol/subscriptionId"],
+      "properties": {
+        "io.modelcontextprotocol/subscriptionId": { "type": ["string", "integer"] }
+      },
+      "additionalProperties": true
+    },
+    "EventError": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "message": { "type": "string" },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "ActiveNotificationParams": {
+      "type": "object",
+      "required": ["truncated", "_meta"],
+      "properties": {
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "truncated": { "type": "boolean" },
+        "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
+      },
+      "additionalProperties": false
+    },
+    "EventNotificationParams": {
+      "type": "object",
+      "required": ["eventId", "name", "timestamp", "data", "_meta"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "timestamp": { "$ref": "#/$defs/IsoDateTime" },
+        "data": { "type": "object" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
+      },
+      "additionalProperties": false
+    },
+    "HeartbeatNotificationParams": {
+      "type": "object",
+      "required": ["_meta"],
+      "properties": {
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
+      },
+      "additionalProperties": false
+    },
+    "ErrorNotificationParams": {
+      "type": "object",
+      "required": ["error", "_meta"],
+      "properties": {
+        "error": { "$ref": "#/$defs/EventError" },
+        "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
+      },
+      "additionalProperties": false
+    },
+    "StreamNotification": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["jsonrpc", "method", "params"],
+          "properties": {
+            "jsonrpc": { "const": "2.0" },
+            "method": { "const": "notifications/events/active" },
+            "params": { "$ref": "#/$defs/ActiveNotificationParams" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["jsonrpc", "method", "params"],
+          "properties": {
+            "jsonrpc": { "const": "2.0" },
+            "method": { "const": "notifications/events/event" },
+            "params": { "$ref": "#/$defs/EventNotificationParams" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["jsonrpc", "method", "params"],
+          "properties": {
+            "jsonrpc": { "const": "2.0" },
+            "method": { "const": "notifications/events/heartbeat" },
+            "params": { "$ref": "#/$defs/HeartbeatNotificationParams" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["jsonrpc", "method", "params"],
+          "properties": {
+            "jsonrpc": { "const": "2.0" },
+            "method": { "enum": ["notifications/events/error", "notifications/events/terminated"] },
+            "params": { "$ref": "#/$defs/ErrorNotificationParams" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "VerificationEnvelope": {
+      "type": "object",
+      "required": ["type", "challenge"],
+      "properties": {
+        "type": { "const": "verification" },
+        "challenge": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "GapEnvelope": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "gap" },
+        "cursor": { "$ref": "#/$defs/Cursor" }
+      },
+      "additionalProperties": false
+    },
+    "TerminatedEnvelope": {
+      "type": "object",
+      "required": ["type", "error"],
+      "properties": {
+        "type": { "const": "terminated" },
+        "error": { "$ref": "#/$defs/EventError" }
+      },
+      "additionalProperties": false
+    },
+    "WebhookBody": {
+      "oneOf": [
+        { "$ref": "#/$defs/EventOccurrence" },
+        { "$ref": "#/$defs/VerificationEnvelope" },
+        { "$ref": "#/$defs/GapEnvelope" },
+        { "$ref": "#/$defs/TerminatedEnvelope" }
+      ]
+    },
+    "DefinedProtocolError": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": -32602 },
+            "message": { "const": "InvalidParams" },
+            "data": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": -32011 },
+            "message": { "const": "NotFound" },
+            "data": {
+              "type": "object",
+              "properties": { "kind": { "enum": ["event", "subscription"] } },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": -32012 },
+            "message": { "const": "Forbidden" },
+            "data": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "message", "data"],
+          "properties": {
+            "code": { "const": -32013 },
+            "message": { "const": "ResourceExhausted" },
+            "data": {
+              "type": "object",
+              "required": ["limit"],
+              "properties": {
+                "limit": { "type": "string", "minLength": 1 },
+                "max": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "message", "data"],
+          "properties": {
+            "code": { "const": -32014 },
+            "message": { "const": "Unsupported" },
+            "data": {
+              "type": "object",
+              "required": ["feature"],
+              "properties": {
+                "feature": { "type": "string", "minLength": 1 },
+                "value": {},
+                "reason": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["code", "message", "data"],
+          "properties": {
+            "code": { "const": -32015 },
+            "message": { "const": "CallbackEndpointError" },
+            "data": {
+              "type": "object",
+              "required": ["reason"],
+              "properties": {
+                "reason": {
+                  "enum": [
+                    "connection_refused",
+                    "timeout",
+                    "tls_error",
+                    "http_4xx",
+                    "http_5xx",
+                    "challenge_failed"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

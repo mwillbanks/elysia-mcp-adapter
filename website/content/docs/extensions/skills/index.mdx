@@ -1,0 +1,19 @@
+---
+title: Skills over MCP
+description: Publish byte-bound Agent Skills through MCP resources.
+---
+
+The Skills extension implements the stable `io.modelcontextprotocol/skills` contract against MCP
+`2026-07-28`. It adds `skills/list`, `skills/get`, and optional `resources/directory/read` methods.
+Every skill file remains an ordinary resource read through `resources/read`.
+
+The adapter validates `SKILL.md` against the delegated Agent Skills format. It preserves every
+frontmatter field, exact served bytes, byte sizes, and lowercase SHA-256 digests. A static manifest
+is complete and atomic. Generated collections declare `resources: "dynamic"` explicitly.
+
+The implementation accepts Unicode lowercase alphanumeric names because the delegated specification
+and its reference validator define names in Unicode code points. It applies NFKC only while checking
+the naming rules and never rewrites frontmatter or served bytes. It rejects uppercase, leading or
+trailing hyphens, consecutive hyphens, invalid UTF-8, and URI/name mismatches.
+
+See the runnable [Skills example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/skills).

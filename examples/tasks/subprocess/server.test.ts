@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { waitFor } from '../test-support.js'
 import { SqliteSubprocessTaskProvider } from './provider.js'
 import { createSubprocessTaskApp } from './server.js'
 
@@ -50,6 +51,7 @@ async function modernRpc(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': method,
         ...(typeof name === 'string' ? { 'mcp-name': name } : {})
@@ -75,10 +77,8 @@ async function modernRpc(
 }
 
 async function pollTask(app: ReturnType<typeof createSubprocessTaskApp>, taskId: string) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  return waitFor(`MCP task ${taskId} to finish`, async () => {
     const task = await modernRpc(app, 'tasks/get', { taskId })
     if (task.result.status !== 'working') return task
-    await Bun.sleep(20)
-  }
-  throw new Error(`Task ${taskId} did not finish`)
+  })
 }

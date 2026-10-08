@@ -1,4 +1,4 @@
-import { MCP_APPS_RESOURCE_MIME_TYPE } from './constants.js'
+import { MCP_APPS_RESOURCE_MIME_TYPE, MCP_APPS_RESOURCE_URI_META_KEY } from './constants.js'
 import type {
   McpAppsResourceContent,
   McpAppsResourceContentInput,
@@ -101,10 +101,23 @@ export function assertMcpAppsToolMetadata(
 ): asserts value is McpAppsToolMetadata {
   assertCodecVersion(version)
   if (!isRecord(value)) throw new TypeError('MCP Apps tool metadata must be an object')
-  if (value.ui === undefined) return
+  if (value.ui === undefined) {
+    if (value[MCP_APPS_RESOURCE_URI_META_KEY] !== undefined) {
+      assertMcpAppsResourceUri(
+        value[MCP_APPS_RESOURCE_URI_META_KEY],
+        `_meta["${MCP_APPS_RESOURCE_URI_META_KEY}"]`
+      )
+    }
+    return
+  }
   if (!isRecord(value.ui)) throw new TypeError('MCP Apps tool metadata ui must be an object')
   if (value.ui.resourceUri !== undefined) {
     assertMcpAppsResourceUri(value.ui.resourceUri, '_meta.ui.resourceUri')
+  } else if (value[MCP_APPS_RESOURCE_URI_META_KEY] !== undefined) {
+    assertMcpAppsResourceUri(
+      value[MCP_APPS_RESOURCE_URI_META_KEY],
+      `_meta["${MCP_APPS_RESOURCE_URI_META_KEY}"]`
+    )
   }
   if (value.ui.visibility !== undefined) assertVisibility(value.ui.visibility)
 }
@@ -117,35 +130,46 @@ export function assertMcpAppsResourceMetadata(
   if (!isRecord(value)) throw new TypeError('MCP Apps resource metadata must be an object')
   if (value.ui === undefined) return
   if (!isRecord(value.ui)) throw new TypeError('MCP Apps resource metadata ui must be an object')
+  assertResourceCsp(value.ui.csp)
+  assertResourcePermissions(value.ui.permissions)
+  assertOptionalUiFields(value.ui)
+}
 
-  if (value.ui.csp !== undefined) {
-    assertNamedObject(value.ui.csp, 'MCP Apps resource CSP')
-    for (const name of CSP_NAMES) {
-      const domains = value.ui.csp[name]
-      if (
-        domains !== undefined &&
-        (!Array.isArray(domains) || domains.some((domain) => typeof domain !== 'string'))
-      ) {
-        throw new TypeError(`_meta.ui.csp.${name} must be an array of strings`)
-      }
+function assertResourceCsp(value: unknown): void {
+  if (value === undefined) return
+  assertNamedObject(value, 'MCP Apps resource CSP')
+  for (const name of CSP_NAMES) {
+    const domains = value[name]
+    if (domains !== undefined && !isStringArray(domains)) {
+      throw new TypeError(`_meta.ui.csp.${name} must be an array of strings`)
     }
   }
-  if (value.ui.permissions !== undefined) {
-    assertNamedObject(value.ui.permissions, 'MCP Apps resource permissions')
-    for (const name of PERMISSION_NAMES) {
-      const permission = value.ui.permissions[name]
-      if (
-        permission !== undefined &&
-        (!isRecord(permission) || Object.keys(permission).length > 0)
-      ) {
-        throw new TypeError(`_meta.ui.permissions.${name} must be an empty object`)
-      }
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+}
+
+function assertResourcePermissions(value: unknown): void {
+  if (value === undefined) return
+  assertNamedObject(value, 'MCP Apps resource permissions')
+  for (const name of PERMISSION_NAMES) {
+    const permission = value[name]
+    if (permission !== undefined && !isEmptyObject(permission)) {
+      throw new TypeError(`_meta.ui.permissions.${name} must be an empty object`)
     }
   }
-  if (value.ui.domain !== undefined && typeof value.ui.domain !== 'string') {
+}
+
+function isEmptyObject(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).length === 0
+}
+
+function assertOptionalUiFields(value: Record<string, unknown>): void {
+  if (value.domain !== undefined && typeof value.domain !== 'string') {
     throw new TypeError('_meta.ui.domain must be a string')
   }
-  if (value.ui.prefersBorder !== undefined && typeof value.ui.prefersBorder !== 'boolean') {
+  if (value.prefersBorder !== undefined && typeof value.prefersBorder !== 'boolean') {
     throw new TypeError('_meta.ui.prefersBorder must be a boolean')
   }
 }

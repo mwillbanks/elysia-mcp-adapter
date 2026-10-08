@@ -65,4 +65,24 @@ describe('resources', () => {
 
     expect(body.error.code).toBe(-32002)
   })
+
+  it('does not treat error resource bodies as input-required results', async () => {
+    const app = new Elysia()
+      .use(mcp({ server, transport: { validateOrigin: false } }))
+      .get(
+        '/private-doc',
+        ({ status }) => status(403, { resultType: 'input_required', requestState: 'unsafe' }),
+        {
+          mcp: {
+            kind: 'resource',
+            name: 'private-doc',
+            resource: { uri: 'docs://private', mimeType: 'application/json' }
+          }
+        }
+      )
+
+    const { body } = await rpc(app, 'resources/read', { uri: 'docs://private' })
+    expect(body.error.code).toBe(-32603)
+    expect(body.result).toBeUndefined()
+  })
 })

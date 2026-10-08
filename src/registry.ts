@@ -1,3 +1,8 @@
+import { assertToolAnnotationExtensions } from './extensions/annotations/index.js'
+import {
+  assertCompatibleSkillDefinitions,
+  buildSkillDefinition
+} from './extensions/skills/index.js'
 import {
   coercePromptResult,
   coerceResourceResult,
@@ -34,81 +39,185 @@ import type {
   NormalizedMcpPluginOptions
 } from './types.js'
 
+type RouteMcpOptions = Exclude<McpRouteOperation['mcp'], false | undefined>
+
 export function getMcpRegistry(
   app: AnyElysiaApp,
   options: NormalizedMcpPluginOptions
-): McpRegistry {
+): McpRegistry & {
+  skills: NonNullable<McpRegistry['skills']>
+  events: NonNullable<McpRegistry['events']>
+} {
   const state = ensureMcpState(app)
   const fingerprint = routeFingerprint(app)
 
   if (
     state.registryCache &&
     state.registryCache.version === state.version &&
-    state.registryCache.fingerprint === fingerprint
+    state.registryCache.fingerprint === fingerprint &&
+    state.registryCache.options === options &&
+    state.registryCache.registry.skills &&
+    state.registryCache.registry.events
   ) {
-    return state.registryCache.registry
+    return state.registryCache.registry as McpRegistry & {
+      skills: NonNullable<McpRegistry['skills']>
+      events: NonNullable<McpRegistry['events']>
+    }
   }
 
   const registry = buildMcpRegistry(app, options)
   state.registryCache = {
     fingerprint,
     version: state.version,
+    options,
     registry
   }
 
   return registry
 }
 
-function buildMcpRegistry(app: AnyElysiaApp, options: NormalizedMcpPluginOptions): McpRegistry {
+function buildMcpRegistry(
+  app: AnyElysiaApp,
+  options: NormalizedMcpPluginOptions
+): McpRegistry & {
+  skills: NonNullable<McpRegistry['skills']>
+  events: NonNullable<McpRegistry['events']>
+} {
   const state = ensureMcpState(app)
-  const registry: McpRegistry = {
+  const registry: McpRegistry & {
+    skills: NonNullable<McpRegistry['skills']>
+    events: NonNullable<McpRegistry['events']>
+  } = {
     tools: new Map(),
     resources: new Map(),
     resourceTemplates: new Map(),
-    prompts: new Map()
+    prompts: new Map(),
+    skills: new Map(),
+    events: new Map()
   }
+  addExplicitDefinitions(state, registry, options)
+  addRouteDefinitions(app, registry, options)
+  return registry
+}
 
+function addExplicitDefinitions(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry & {
+    skills: NonNullable<McpRegistry['skills']>
+    events: NonNullable<McpRegistry['events']>
+  },
+  options: NormalizedMcpPluginOptions
+): void {
+  addExplicitTools(state, registry, options)
+  addExplicitResources(state, registry, options)
+  addExplicitPrompts(state, registry, options)
+  addExplicitSkills(state, registry, options)
+  addExplicitEvents(state, registry)
+}
+
+function addExplicitTools(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry,
+  options: NormalizedMcpPluginOptions
+): void {
   for (const tool of state.explicitTools.values()) {
     addTool(registry, createExplicitTool(tool, options), options)
   }
+}
 
+function addExplicitResources(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry,
+  options: NormalizedMcpPluginOptions
+): void {
   for (const resource of state.explicitResources.values()) {
     const definition = createExplicitResource(resource, options)
     if ('uriTemplate' in definition) addResourceTemplate(registry, definition, options)
     else addResource(registry, definition, options)
   }
+}
 
+function addExplicitPrompts(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry,
+  options: NormalizedMcpPluginOptions
+): void {
   for (const prompt of state.explicitPrompts.values()) {
     addPrompt(registry, createExplicitPrompt(prompt, options), options)
   }
+}
 
-  const routeOperations = listRouteOperations(app)
-
-  for (const operation of routeOperations) {
-    if (!shouldExposeRoute(operation, options)) continue
-
-    const kind = resolveRouteKind(operation, options)
-
-    if (kind === 'tool') {
-      addTool(registry, createRouteTool(operation, options), options)
-    } else if (kind === 'resource') {
-      const definition = createRouteResource(operation, options)
-      if (definition) {
-        if ('uriTemplate' in definition) addResourceTemplate(registry, definition, options)
-        else addResource(registry, definition, options)
-      }
-    } else if (kind === 'prompt') {
-      addPrompt(registry, createRoutePrompt(operation, options), options)
+function addExplicitSkills(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry & { skills: NonNullable<McpRegistry['skills']> },
+  options: NormalizedMcpPluginOptions
+): void {
+  for (const skill of state.explicitSkills.values()) {
+    const definition = buildSkillDefinition(skill)
+    if (
+      options.extensions.skills?.directoryRead &&
+      definition.entry.resources === 'dynamic' &&
+      !definition.readDirectory
+    ) {
+      throw new TypeError(
+        `Dynamic skill ${definition.uri} requires readDirectory when directoryRead is enabled`
+      )
     }
+    if (registry.skills.has(definition.uri)) {
+      throw new TypeError(`Duplicate MCP skill: ${definition.uri}`)
+    }
+    assertCompatibleSkillDefinitions(registry.skills.values(), definition)
+    registry.skills.set(definition.uri, definition)
   }
+}
 
-  return registry
+function addExplicitEvents(
+  state: ReturnType<typeof ensureMcpState>,
+  registry: McpRegistry & { events: NonNullable<McpRegistry['events']> }
+): void {
+  for (const event of state.explicitEvents.values()) {
+    if (registry.events.has(event.definition.name))
+      throw new TypeError(`Duplicate MCP event: ${event.definition.name}`)
+    registry.events.set(event.definition.name, event)
+  }
+}
+
+function addRouteDefinitions(
+  app: AnyElysiaApp,
+  registry: McpRegistry,
+  options: NormalizedMcpPluginOptions
+): void {
+  for (const operation of listRouteOperations(app)) {
+    if (!shouldExposeRoute(operation, options)) continue
+    addRouteDefinition(registry, operation, resolveRouteKind(operation, options), options)
+  }
+}
+
+function addRouteDefinition(
+  registry: McpRegistry,
+  operation: McpRouteOperation,
+  kind: McpRouteKind,
+  options: NormalizedMcpPluginOptions
+): void {
+  if (kind === 'tool') {
+    addTool(registry, createRouteTool(operation, options), options)
+    return
+  }
+  if (kind === 'prompt') {
+    addPrompt(registry, createRoutePrompt(operation, options), options)
+    return
+  }
+  const definition = createRouteResource(operation, options)
+  if (!definition) return
+  if ('uriTemplate' in definition) addResourceTemplate(registry, definition, options)
+  else addResource(registry, definition, options)
 }
 
 function createExplicitTool(
   registration: ExplicitToolRegistration,
   options: NormalizedMcpPluginOptions
 ): McpToolDefinition {
+  assertToolAnnotationExtensions(registration.options.annotations)
   const inputSchema = composeExplicitInputSchema(registration.options.inputSchema, 'tool', options)
   const outputSchema = composeExplicitOutputSchema(
     registration.options.outputSchema,
@@ -155,6 +264,7 @@ function createExplicitResource(
     icons: registration.options.icons,
     authorization: registration.options.authorization,
     app: registration.options.app,
+    complete: registration.options.complete,
     read: async (context: any) => {
       const result = await registration.handler(context)
       return coerceResourceResult(result, context.uri, registration.options.mimeType)
@@ -190,6 +300,7 @@ function createExplicitPrompt(
     arguments: promptArguments,
     icons: registration.options.icons,
     authorization: registration.options.authorization,
+    complete: registration.options.complete,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       const result = await registration.handler(args ?? {}, context)
@@ -202,75 +313,86 @@ function createRouteTool(
   operation: McpRouteOperation,
   options: NormalizedMcpPluginOptions
 ): McpToolDefinition {
-  const routeMcp = operation.mcp === false ? undefined : operation.mcp
+  const routeMcp = routeMcpOptions(operation)
   const inputSchema = composeRouteInputSchema(operation, 'tool', options)
   const outputSchema = composeRouteOutputSchema(operation, 'tool', options)
-  const name = sanitizeMcpName(routeMcp?.name ?? options.operationNameResolver(operation))
-
-  if (
-    options.diagnostics.failOnMissingSchema &&
-    !routeMcp?.inputSchema &&
-    !hasRouteInputSchema(operation)
-  ) {
-    throw new Error(`Missing input schema for MCP route tool ${operation.method} ${operation.path}`)
-  }
+  const name = sanitizeMcpName(
+    firstDefined(routeMcp.name, options.operationNameResolver(operation))
+  )
+  assertToolAnnotationExtensions(routeMcp.annotations)
+  assertRouteToolSchema(operation, Boolean(routeMcp.inputSchema), options)
 
   return {
     source: 'route',
     name,
-    title: routeTitle(operation, name, routeMcp?.title),
+    title: routeTitle(operation, name, routeMcp.title),
     description: routeDescription(
       operation,
-      routeMcp?.description,
+      routeMcp.description,
       `${operation.method} ${operation.path}`
     ),
     inputSchema,
     outputSchema,
-    annotations: routeMcp?.annotations ?? defaultAnnotationsForMethod(operation.method),
-    icons: routeMcp?.icons,
-    authorization: routeMcp?.authorization,
-    taskExecution: routeMcp?.taskExecution ?? 'optional',
-    app: routeMcp?.app,
+    annotations: firstDefined(routeMcp.annotations, defaultAnnotationsForMethod(operation.method)),
+    icons: routeMcp.icons,
+    authorization: routeMcp.authorization,
+    taskExecution: firstDefined(routeMcp.taskExecution, 'optional'),
+    app: routeMcp.app,
     invoke: (args, context) => invokeRouteTool(operation, args ?? {}, inputSchema, context, options)
   }
+}
+
+function assertRouteToolSchema(
+  operation: McpRouteOperation,
+  hasOverride: boolean,
+  options: NormalizedMcpPluginOptions
+): void {
+  if (!options.diagnostics.failOnMissingSchema || hasOverride || hasRouteInputSchema(operation))
+    return
+  throw new Error(`Missing input schema for MCP route tool ${operation.method} ${operation.path}`)
 }
 
 function createRouteResource(
   operation: McpRouteOperation,
   options: NormalizedMcpPluginOptions
 ): McpResourceDefinition | McpResourceTemplateDefinition | undefined {
-  const routeMcp = operation.mcp === false ? undefined : operation.mcp
-  const resource = routeMcp?.resource
+  const routeMcp = routeMcpOptions(operation)
+  const resource = routeMcp.resource
 
-  if (!resource?.uri && !resource?.uriTemplate) return undefined
-
+  if (!resource) return undefined
   const uriOrTemplate = resource.uriTemplate ?? resource.uri
   if (!uriOrTemplate) return undefined
+  const name = sanitizeMcpName(
+    firstDefined(routeMcp.name, resource.name, templateName(uriOrTemplate))
+  )
+  const base = routeResourceBase(operation, options, routeMcp, resource, name)
+  return resource.uriTemplate
+    ? { ...base, uriTemplate: resource.uriTemplate }
+    : { ...base, uri: uriOrTemplate }
+}
 
-  const name = sanitizeMcpName(routeMcp?.name ?? resource.name ?? templateName(uriOrTemplate))
-  const base = {
+function routeResourceBase(
+  operation: McpRouteOperation,
+  options: NormalizedMcpPluginOptions,
+  routeMcp: Partial<RouteMcpOptions>,
+  resource: NonNullable<RouteMcpOptions['resource']>,
+  name: string
+) {
+  return {
     source: 'route' as const,
     name,
-    title: routeTitle(operation, name, resource.title ?? routeMcp?.title),
-    description: routeDescription(operation, resource.description ?? routeMcp?.description),
+    title: routeTitle(operation, name, firstDefined(resource.title, routeMcp.title)),
+    description: routeDescription(
+      operation,
+      firstDefined(resource.description, routeMcp.description)
+    ),
     mimeType: resource.mimeType,
     annotations: resource.annotations,
-    icons: routeMcp?.icons,
-    authorization: resource.authorization ?? routeMcp?.authorization,
+    icons: routeMcp.icons,
+    authorization: firstDefined(resource.authorization, routeMcp.authorization),
     app: resource.app,
+    complete: resource.complete,
     read: (context: any) => invokeRouteResource(operation, context, options)
-  }
-
-  if (resource.uriTemplate) {
-    return {
-      ...base,
-      uriTemplate: resource.uriTemplate
-    }
-  }
-
-  return {
-    ...base,
-    uri: uriOrTemplate
   }
 }
 
@@ -278,24 +400,36 @@ function createRoutePrompt(
   operation: McpRouteOperation,
   options: NormalizedMcpPluginOptions
 ): McpPromptDefinition {
-  const routeMcp = operation.mcp === false ? undefined : operation.mcp
+  const routeMcp = routeMcpOptions(operation)
   const argsSchema = composeRouteInputSchema(operation, 'prompt', options)
-  const name = sanitizeMcpName(routeMcp?.name ?? options.operationNameResolver(operation))
-
+  const name = sanitizeMcpName(
+    firstDefined(routeMcp.name, options.operationNameResolver(operation))
+  )
+  const prompt = routeMcp.prompt
   return {
     source: 'route',
     name,
-    title: routeTitle(operation, name, routeMcp?.title),
-    description: routeDescription(operation, routeMcp?.description),
+    title: routeTitle(operation, name, routeMcp.title),
+    description: routeDescription(operation, routeMcp.description),
     argsSchema,
-    arguments: routeMcp?.prompt?.arguments ?? promptArgumentsFromSchema(argsSchema),
-    icons: routeMcp?.icons,
-    authorization: routeMcp?.authorization,
+    arguments: firstDefined(prompt?.arguments, promptArgumentsFromSchema(argsSchema)),
+    icons: routeMcp.icons,
+    authorization: routeMcp.authorization,
+    complete: prompt?.complete,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
       return invokeRoutePrompt(operation, args ?? {}, context, options)
     }
   }
+}
+
+function routeMcpOptions(operation: McpRouteOperation): Partial<RouteMcpOptions> {
+  return operation.mcp === false || operation.mcp === undefined ? {} : operation.mcp
+}
+
+function firstDefined<T>(...values: readonly (T | undefined)[]): T {
+  const value = values.find((candidate) => candidate !== undefined)
+  return value as T
 }
 
 export function findResourceReader(

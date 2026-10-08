@@ -121,9 +121,15 @@ function valueAtPath(value: Record<string, unknown>, path: readonly string[]): u
 
 function matchesBodyValue(header: string, body: unknown, type: MirroredHeader['type']): boolean {
   if (type === 'string') return typeof body === 'string' && header === body
-  if (type === 'boolean') {
-    return typeof body === 'boolean' && header === (body ? 'true' : 'false')
-  }
+  if (type === 'boolean') return matchesBoolean(header, body)
+  return matchesInteger(header, body)
+}
+
+function matchesBoolean(header: string, body: unknown): boolean {
+  return typeof body === 'boolean' && header === (body ? 'true' : 'false')
+}
+
+function matchesInteger(header: string, body: unknown): boolean {
   if (typeof body !== 'number' || !Number.isSafeInteger(body)) return false
   if (!JSON_NUMBER.test(header)) return false
   const parsed = Number(header)

@@ -1,12 +1,20 @@
 import { isRecord } from '../../internal.js'
+import {
+  isMcpElicitationResult,
+  isMcpRootsResult,
+  isMcpSamplingResult
+} from '../../schema/content.js'
 import type {
   DetailedTask,
   TaskCreateRequest,
+  TaskDefinedInputResponse,
   TaskDurableCreateRequest,
   TaskExecutionDescriptor,
   TaskExecutionScheduler,
+  TaskInputRequest,
   TaskProviderContext,
-  TaskStatus
+  TaskStatus,
+  TasksVersion
 } from './types.js'
 
 const TASK_STATUSES: readonly TaskStatus[] = [
@@ -16,6 +24,7 @@ const TASK_STATUSES: readonly TaskStatus[] = [
   'failed',
   'cancelled'
 ]
+const TASK_INPUT_METHODS = new Set(['elicitation/create', 'sampling/createMessage', 'roots/list'])
 
 function isTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === 'string' && TASK_STATUSES.includes(value as TaskStatus)
@@ -71,6 +80,47 @@ export function assertTaskRecord(value: unknown, label = 'task'): asserts value 
   assertTaskStatusPayload(value, label)
 }
 
+/** Validates a response against the outstanding request it satisfies. */
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label?: string,
+  version?: Exclude<TasksVersion, 'draft'>
+): asserts response is TaskDefinedInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label: string | undefined,
+  version: 'draft'
+): asserts response is import('./types.js').TaskInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label: string | undefined,
+  version: TasksVersion
+): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse
+export function assertTaskInputResponse(
+  request: TaskInputRequest,
+  response: unknown,
+  label = 'task input response',
+  version: TasksVersion = '2026-07-28'
+): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse {
+  if (!isRecord(response)) throw new TypeError(`${label} must be an object`)
+  if (version === 'draft') return
+  if (request.method === 'elicitation/create') {
+    if (!isMcpElicitationResult(response))
+      throw new TypeError(`${label}.action or content is invalid`)
+    return
+  }
+  if (request.method === 'roots/list') {
+    if (!isMcpRootsResult(response)) throw new TypeError(`${label}.roots must contain file URIs`)
+    return
+  }
+  if (!isMcpSamplingResult(response)) {
+    throw new TypeError(`${label}.content must contain valid MCP sampling content`)
+  }
+}
+
 function assertTaskBase(value: Record<string, unknown>, label: string): void {
   assertTaskIdentity(value, label)
   assertTaskTiming(value, label)
@@ -107,60 +157,56 @@ function assertTaskTiming(value: Record<string, unknown>, label: string): void {
 }
 
 function assertTaskStatusPayload(value: Record<string, unknown>, label: string): void {
-  switch (value.status) {
-    case 'working':
-      assertNoStatusPayload(value, ['result', 'error', 'inputRequests'])
-      return
-    case 'input_required':
-      if (!isRecord(value.inputRequests)) {
-        throw new TypeError(`${label}.inputRequests must be an object`)
-      }
-      assertTaskInputRequests(value.inputRequests, label)
-      assertNoStatusPayload(value, ['result', 'error'])
-      return
-    case 'completed':
-      if (!isRecord(value.result)) {
-        throw new TypeError(`${label}.result must be an object`)
-      }
-      assertNoStatusPayload(value, ['error', 'inputRequests'])
-      return
-    case 'failed':
-      if (!isRecord(value.error)) {
-        throw new TypeError(`${label}.error must be an object`)
-      }
-      if (
-        !Number.isInteger((value.error as Record<string, unknown>).code) ||
-        typeof (value.error as Record<string, unknown>).message !== 'string'
-      ) {
-        throw new TypeError(`${label}.error must include code and message`)
-      }
-      assertNoStatusPayload(value, ['result', 'inputRequests'])
-      return
-    case 'cancelled':
-      assertNoStatusPayload(value, ['result', 'error', 'inputRequests'])
-      return
+  const validators: Partial<Record<TaskStatus, () => void>> = {
+    working: () => assertNoStatusPayload(value, ['result', 'error', 'inputRequests']),
+    input_required: () => assertInputRequiredPayload(value, label),
+    completed: () => assertCompletedPayload(value, label),
+    failed: () => assertFailedPayload(value, label),
+    cancelled: () => assertNoStatusPayload(value, ['result', 'error', 'inputRequests'])
   }
+  validators[value.status as TaskStatus]?.()
+}
+
+function assertInputRequiredPayload(value: Record<string, unknown>, label: string): void {
+  if (!isRecord(value.inputRequests))
+    throw new TypeError(`${label}.inputRequests must be an object`)
+  assertTaskInputRequests(value.inputRequests, label)
+  assertNoStatusPayload(value, ['result', 'error'])
+}
+
+function assertCompletedPayload(value: Record<string, unknown>, label: string): void {
+  if (!isRecord(value.result)) throw new TypeError(`${label}.result must be an object`)
+  assertNoStatusPayload(value, ['error', 'inputRequests'])
+}
+
+function assertFailedPayload(value: Record<string, unknown>, label: string): void {
+  if (!isRecord(value.error)) throw new TypeError(`${label}.error must be an object`)
+  if (!Number.isInteger(value.error.code) || typeof value.error.message !== 'string') {
+    throw new TypeError(`${label}.error must include code and message`)
+  }
+  assertNoStatusPayload(value, ['result', 'inputRequests'])
 }
 
 function assertTaskInputRequests(requests: Record<string, unknown>, label: string): void {
   for (const [key, request] of Object.entries(requests)) {
-    if (!isRecord(request)) {
-      throw new TypeError(`${label}.inputRequests.${key} must be an object`)
-    }
-    if (
-      request.method !== 'elicitation/create' &&
-      request.method !== 'sampling/createMessage' &&
-      request.method !== 'roots/list'
-    ) {
-      throw new TypeError(`${label}.inputRequests.${key}.method is invalid`)
-    }
-    if (request.method === 'roots/list') {
-      if (request.params !== undefined) {
-        throw new TypeError(`${label}.inputRequests.${key}.params is not valid for roots/list`)
-      }
-    } else if (request.params !== undefined && !isRecord(request.params)) {
-      throw new TypeError(`${label}.inputRequests.${key}.params must be an object`)
-    }
+    assertTaskInputRequest(request, label, key)
+  }
+}
+
+function assertTaskInputRequest(request: unknown, label: string, key: string): void {
+  if (!isRecord(request)) throw new TypeError(`${label}.inputRequests.${key} must be an object`)
+  if (typeof request.method !== 'string' || !TASK_INPUT_METHODS.has(request.method)) {
+    throw new TypeError(`${label}.inputRequests.${key}.method is invalid`)
+  }
+  if (request.method === 'roots/list' && request.params !== undefined) {
+    throw new TypeError(`${label}.inputRequests.${key}.params is not valid for roots/list`)
+  }
+  if (
+    request.method !== 'roots/list' &&
+    request.params !== undefined &&
+    !isRecord(request.params)
+  ) {
+    throw new TypeError(`${label}.inputRequests.${key}.params must be an object`)
   }
 }
 

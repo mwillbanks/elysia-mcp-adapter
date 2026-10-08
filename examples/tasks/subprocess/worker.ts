@@ -46,6 +46,7 @@ try {
     _meta: {
       ...descriptorMeta,
       'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientInfo': { name: 'subprocess-worker', version: '1.0.0' },
       'io.modelcontextprotocol/clientCapabilities': {}
     }
   }
@@ -58,8 +59,12 @@ try {
     )
     .post(
       '/tasks/run',
-      async ({ body }) => {
+      async ({ body, set }) => {
         await Bun.sleep(body.delayMs)
+        if (body.value === 'tool-error') {
+          set.status = 422
+          return { message: 'Expected tool-level failure' }
+        }
         return { childPid: process.pid, value: body.value }
       },
       {
@@ -73,6 +78,7 @@ try {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': descriptor.method,
         'mcp-name': 'tasks.run'
@@ -86,21 +92,18 @@ try {
     })
   )
   const payload = (await response.json()) as {
-    result?: { isError?: boolean; structuredContent?: Record<string, unknown> }
-    error?: { message?: string }
+    result?: Record<string, unknown>
+    error?: { code?: number; message?: string; data?: unknown }
   }
-  if (
-    !response.ok ||
-    payload.error ||
-    payload.result?.isError ||
-    !payload.result?.structuredContent
-  ) {
-    const structuredMessage = payload.result?.structuredContent?.message
-    throw new Error(
-      payload.error?.message ??
-        (typeof structuredMessage === 'string' ? structuredMessage : undefined) ??
-        `Worker MCP call failed with ${response.status}`
+  if (!response.ok || payload.error || !payload.result) {
+    const failure = new Error(
+      payload.error?.message ?? `Worker MCP call failed with ${response.status}`
     )
+    Object.assign(failure, {
+      code: Number.isInteger(payload.error?.code) ? payload.error?.code : -32603,
+      data: payload.error?.data
+    })
+    throw failure
   }
   update('completed', payload.result)
 } catch (error) {
@@ -111,7 +114,13 @@ try {
     )
     .run(
       JSON.stringify({
-        code: -32603,
+        code:
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          Number.isInteger(error.code)
+            ? error.code
+            : -32603,
         message: error instanceof Error ? error.message : String(error)
       }),
       new Date().toISOString(),

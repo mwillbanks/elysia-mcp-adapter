@@ -19,6 +19,7 @@ ajv.addFormat('ObjectString', true)
 ajv.addFormat('ArrayString', true)
 
 const cache = new WeakMap<object, ValidateFunction>()
+const URI_SCHEMA: JsonSchema = Object.freeze({ type: 'string', format: 'uri' })
 
 export interface SchemaValidationResult {
   ok: boolean
@@ -56,6 +57,10 @@ export function validateJsonSchema(schema: JsonSchema, input: unknown): SchemaVa
       ]
     }
   }
+}
+
+export function isValidUri(input: unknown): input is string {
+  return typeof input === 'string' && validateJsonSchema(URI_SCHEMA, input).ok
 }
 
 function getValidator(schema: JsonSchema): ValidateFunction {

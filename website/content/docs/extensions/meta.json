@@ -1,4 +1,14 @@
 {
   "title": "MCP Extensions",
-  "pages": ["index", "tasks", "authorization", "apps", "security"]
+  "pages": [
+    "index",
+    "specification-inventory",
+    "server-card",
+    "tasks",
+    "authorization",
+    "apps",
+    "skills",
+    "experimental",
+    "security"
+  ]
 }

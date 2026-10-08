@@ -1,11 +1,15 @@
 import { isRecord } from '../internal.js'
+import { isBinaryMimeType, mimeTypeEssence } from '../schema/media-type.js'
 import type {
   McpContent,
+  McpPromptHandlerResult,
   McpPromptMessage,
   McpPromptResult,
   McpResourceContent,
+  McpResourceHandlerResult,
   McpResourceReadResult,
   McpResponseMarshalOptions,
+  McpToolHandlerResult,
   McpToolResult,
   NormalizedMcpPluginOptions
 } from '../types.js'
@@ -15,7 +19,7 @@ export async function marshalHttpResponseToToolResult(
   routeLabel: string,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpToolResult> {
+): Promise<McpToolHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
   const httpMetadata = marshal.includeHttpMetadata
@@ -42,6 +46,8 @@ export async function marshalHttpResponseToToolResult(
     }
   }
 
+  if (isInputRequiredResult(parsed.structured)) return parsed.structured
+
   if (parsed.binaryContent) {
     return {
       content: [parsed.binaryContent],
@@ -67,7 +73,7 @@ export async function marshalHttpResponseToResourceResult(
   uri: string,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpResourceReadResult> {
+): Promise<McpResourceHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
   const mimeType = response.headers.get('content-type')?.split(';')[0] || 'text/plain'
@@ -75,6 +81,8 @@ export async function marshalHttpResponseToResourceResult(
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} while reading resource ${uri}: ${parsed.text}`)
   }
+
+  if (isInputRequiredResult(parsed.structured)) return parsed.structured
 
   if (parsed.binaryResource) {
     return { contents: [{ ...parsed.binaryResource, uri, mimeType }] }
@@ -95,7 +103,7 @@ export async function marshalHttpResponseToPromptResult(
   response: Response,
   options: NormalizedMcpPluginOptions,
   override?: McpResponseMarshalOptions
-): Promise<McpPromptResult> {
+): Promise<McpPromptHandlerResult> {
   const marshal = { ...options.marshal, ...(override ?? {}) }
   const parsed = await readResponse(response, marshal)
 
@@ -106,7 +114,8 @@ export async function marshalHttpResponseToPromptResult(
   return coercePromptResult(parsed.structured ?? parsed.text)
 }
 
-export function coerceToolResult(value: unknown): McpToolResult {
+export function coerceToolResult(value: unknown): McpToolHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isToolResult(value)) return value
 
   if (typeof value === 'string') {
@@ -132,7 +141,8 @@ export function coerceResourceResult(
   value: unknown,
   uri: string,
   mimeType?: string
-): McpResourceReadResult {
+): McpResourceHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isResourceReadResult(value)) return value
 
   if (Array.isArray(value) && value.every(isResourceContent)) {
@@ -164,7 +174,8 @@ export function coerceResourceResult(
   }
 }
 
-export function coercePromptResult(value: unknown): McpPromptResult {
+export function coercePromptResult(value: unknown): McpPromptHandlerResult {
+  if (isInputRequiredResult(value)) return value
   if (isPromptResult(value)) return value
 
   if (Array.isArray(value) && value.every(isPromptMessage)) {
@@ -232,60 +243,76 @@ async function readResponse(
   binaryResource?: McpResourceContent
 }> {
   const contentType = response.headers.get('content-type') ?? ''
-  const mimeType = contentType.split(';')[0] || 'application/octet-stream'
-
-  if (isBinaryMimeType(mimeType)) {
-    if (marshal.binary === 'error') {
-      return {
-        text: `Binary response omitted. mimeType=${mimeType}`,
-        structured: {
-          omittedBinary: true,
-          mimeType
-        }
-      }
-    }
-
-    const buffer = await response.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-
-    if (mimeType.startsWith('image/')) {
-      return {
-        text: `[binary image: ${mimeType}; ${buffer.byteLength} bytes]`,
-        binaryContent: { type: 'image', data: base64, mimeType },
-        binaryResource: { uri: '', blob: base64, mimeType }
-      }
-    }
-
-    if (mimeType.startsWith('audio/')) {
-      return {
-        text: `[binary audio: ${mimeType}; ${buffer.byteLength} bytes]`,
-        binaryContent: { type: 'audio', data: base64, mimeType },
-        binaryResource: { uri: '', blob: base64, mimeType }
-      }
-    }
-
-    return {
-      text: `[binary data: ${mimeType}; ${buffer.byteLength} bytes]`,
-      binaryResource: { uri: '', blob: base64, mimeType }
-    }
-  }
+  const mimeType = mimeTypeEssence(contentType) || 'application/octet-stream'
+  if (isBinaryMimeType(mimeType)) return readBinaryResponse(response, mimeType, marshal.binary)
 
   const rawText = await response.text()
   const text = truncateUtf8(rawText, marshal.maxTextBytes)
 
-  if (mimeType === 'application/json' || mimeType.endsWith('+json')) {
-    try {
-      const structured = JSON.parse(rawText)
-      return {
-        text: truncateUtf8(stringifyForText(structured), marshal.maxTextBytes),
-        structured: limitStructured(structured, marshal.maxStructuredBytes)
-      }
-    } catch {
-      return { text }
+  if (!isJsonMimeType(mimeType)) return { text }
+  return parseJsonResponse(rawText, text, marshal)
+}
+
+async function readBinaryResponse(
+  response: Response,
+  mimeType: string,
+  mode: Required<McpResponseMarshalOptions>['binary']
+): Promise<{
+  text: string
+  structured?: unknown
+  binaryContent?: McpContent
+  binaryResource?: McpResourceContent
+}> {
+  if (mode === 'error') {
+    return {
+      text: `Binary response omitted. mimeType=${mimeType}`,
+      structured: { omittedBinary: true, mimeType }
     }
   }
+  const buffer = await response.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString('base64')
+  if (mimeType.startsWith('image/')) return imageBinaryResult(mimeType, buffer.byteLength, base64)
+  if (mimeType.startsWith('audio/')) return audioBinaryResult(mimeType, buffer.byteLength, base64)
+  return {
+    text: `[binary data: ${mimeType}; ${buffer.byteLength} bytes]`,
+    binaryResource: { uri: '', blob: base64, mimeType }
+  }
+}
 
-  return { text }
+function imageBinaryResult(mimeType: string, bytes: number, data: string) {
+  return {
+    text: `[binary image: ${mimeType}; ${bytes} bytes]`,
+    binaryContent: { type: 'image' as const, data, mimeType },
+    binaryResource: { uri: '', blob: data, mimeType }
+  }
+}
+
+function audioBinaryResult(mimeType: string, bytes: number, data: string) {
+  return {
+    text: `[binary audio: ${mimeType}; ${bytes} bytes]`,
+    binaryContent: { type: 'audio' as const, data, mimeType },
+    binaryResource: { uri: '', blob: data, mimeType }
+  }
+}
+
+function isJsonMimeType(mimeType: string): boolean {
+  return mimeType === 'application/json' || mimeType.endsWith('+json')
+}
+
+function parseJsonResponse(
+  rawText: string,
+  fallbackText: string,
+  marshal: Required<McpResponseMarshalOptions>
+): { text: string; structured?: unknown } {
+  try {
+    const structured = JSON.parse(rawText)
+    return {
+      text: truncateUtf8(stringifyForText(structured), marshal.maxTextBytes),
+      structured: limitStructured(structured, marshal.maxStructuredBytes)
+    }
+  } catch {
+    return { text: fallbackText }
+  }
 }
 
 function safeHeaders(headers: Headers): Record<string, string> {
@@ -316,24 +343,14 @@ function limitStructured(value: unknown, maxBytes: number): unknown {
   }
 }
 
-function isBinaryMimeType(mimeType: string): boolean {
-  if (!mimeType) return false
-  if (mimeType.startsWith('text/')) return false
-  if (mimeType === 'application/json' || mimeType.endsWith('+json')) return false
-  if (mimeType === 'application/xml' || mimeType.endsWith('+xml')) return false
-  if (mimeType === 'application/x-www-form-urlencoded') return false
-
-  return (
-    mimeType === 'application/octet-stream' ||
-    mimeType.startsWith('image/') ||
-    mimeType.startsWith('audio/') ||
-    mimeType.startsWith('video/') ||
-    mimeType.startsWith('application/')
-  )
-}
-
 function isToolResult(value: unknown): value is McpToolResult {
   return isRecord(value) && Array.isArray(value.content)
+}
+
+function isInputRequiredResult(
+  value: unknown
+): value is import('../types.js').McpInputRequiredResult {
+  return isRecord(value) && value.resultType === 'input_required'
 }
 
 function isResourceReadResult(value: unknown): value is McpResourceReadResult {

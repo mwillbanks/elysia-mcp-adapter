@@ -1,0 +1,77 @@
+---
+title: Modern Core Protocol
+description: Configure MCP 2026-07-28 MRTR, pagination, caching, completion, progress, cancellation, and subscriptions.
+icon: RefreshCcw
+---
+
+The adapter selects MCP `2026-07-28` by default. Every modern POST includes matching protocol and method headers. Calls and reads also include a target header. `_meta` requires the protocol version and client capabilities. Client information is optional and validated when present. `Accept` lists JSON and event streams.
+
+## Multi round-trip requests
+
+Tools, resource reads, and prompts can return `McpInputRequiredResult`. The client fulfills declared elicitation, sampling, or roots requests. It retries the original method with `inputResponses` and the exact `requestState`.
+
+```ts
+app.mcpTool('profile', (_input, context) => {
+  const answer = context.inputResponses?.profile
+  if (answer) return { answer, state: context.requestState }
+  return {
+    resultType: 'input_required',
+    inputRequests: {
+      profile: {
+        method: 'elicitation/create',
+        params: {
+          mode: 'form',
+          message: 'Confirm the profile',
+          requestedSchema: { type: 'object', properties: {} }
+        }
+      }
+    },
+    requestState: 'application state'
+  }
+})
+```
+
+Configure `core.continuation.signingKey` to bind state to its principal, expiry, method, request parameters, and selected variant. Set `singleUse: true` only with a `McpContinuationProvider`. The provider records consumption durably. Without signing configuration, handlers treat state as attacker-controlled.
+
+The adapter validates response envelopes and capability-gates each input request. Handlers can ignore unknown response keys. Missing required answers can produce another input-required result.
+
+Hosts decide whether to approve elicitation, sampling, or roots access. The adapter never executes these requests.
+
+Set `core.maxToolInputElements` to a positive safe integer to bound nested object members and array elements in tool input. The adapter checks the effective input before direct invocation and task scheduling. Omit it for unlimited input.
+
+Route-backed tools, resources, and prompts retain the same behavior through Elysia. Call `getMcpInvocationContext(request)` inside the route to read MRTR state, progress reporting, cancellation, and client metadata. The adapter removes this request-scoped association after `app.handle()` completes.
+
+## Pagination and caching
+
+Set `core.pagination` to enable signed cursors on all four list methods. Cursors bind the method, authorization principal, selected variant, and request parameters. Invalid, expired, tampered, or rebound cursors return `-32602`.
+
+Cache hints default to `private` with `ttlMs: 0`. `core.cache.policy` can choose another non-negative TTL or a reviewed public scope. MRTR retries omit cache hints.
+
+## Completion
+
+Add `complete` to a prompt or resource-template registration. The callback receives the reference, current argument, prior arguments, and invocation context. It returns at most 100 strings. The adapter advertises `completions` only when a callback exists.
+
+## Progress and cancellation
+
+When a modern request supplies a valid `progressToken`, the adapter returns request-scoped SSE. Call `context.reportProgress()` with strictly increasing values. The final JSON-RPC response closes the stream. Closing the response aborts `context.signal` and stops delivery.
+
+## Subscriptions
+
+Configure `core.subscriptions.provider` and each supported notification class. A `subscriptions/listen` stream acknowledges the accepted filter before any update. It emits only requested notifications and sends heartbeat comments. Server closure emits `notifications/cancelled`, then a completion result. Client closure aborts the provider without sending a response.
+
+A resource subscription includes the exact URI and valid descendant URIs with the same scheme and authority. The adapter rejects neighboring paths, cross-authority updates, and updates resolved to unauthorized readers. Providers remain responsible for authorizing source changes and emitting only resources owned by the accepted subscription.
+
+Task-status filters can share a subscription with core filters. Task streams never carry progress or logging notifications.
+
+See the runnable [modern core example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/core) for its minimal HTTP client.
+
+The MCP TypeScript client SDK v2.3 also supports this envelope. Integration tests use its modern Tasks
+operations and progress SSE parser, verify one access-token renewal after a challenge, and enforce
+the SDK's default same-origin redirect policy. Redirect and token storage decisions belong to the client;
+the adapter validates its own request origins, access-token audience, capabilities, and arguments.
+
+Client SDK `2.3.1` rejects a valid modern task-creation response with `UNSUPPORTED_RESULT_TYPE`.
+Both `callTool()` and generic `request()` create the task before the SDK rejects `resultType: 'task'`;
+supplying a result schema does not bypass its decoder. Generic requests can read and cancel modern tasks.
+Use the [Tasks example client](/docs/extensions/tasks/examples) for task creation until the SDK supports
+that discriminator. Avoid retrying a rejected creation blindly because the task already exists.

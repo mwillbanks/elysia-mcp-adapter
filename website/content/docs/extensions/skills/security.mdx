@@ -1,0 +1,21 @@
+---
+title: Skills security
+description: Separate server publication from host approval and execution.
+---
+
+The adapter authorizes discovery, direct lookup, resource reads, and directory reads. It denies
+encoded traversal, slash and backslash smuggling, cross-skill reads, and unpublished provider URIs.
+It never maps a skill URI to DNS, HTTP, or a local filesystem path.
+
+The host owns these decisions:
+
+- Label content with the host-assigned source server identity.
+- Obtain fresh approval for each skill, including nested skills.
+- Bind persisted approval to every manifest URI and digest.
+- Recompute size and SHA-256 after every resource read.
+- Treat changed resources and dynamic manifests as requiring fresh policy decisions.
+- Ignore or separately approve `allowed-tools` and every local execution request.
+- Keep any cache outside filesystem-skill discovery paths.
+
+Digests prove consistency between one server's manifest and its bytes. They do not establish trust,
+authorship, or safety. The adapter does not activate skills, retrieve evidence, or execute content.

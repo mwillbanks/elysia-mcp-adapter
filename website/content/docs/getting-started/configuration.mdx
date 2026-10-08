@@ -35,7 +35,14 @@ mcp({
     allowedOrigins: [],
     enableGetSse: false,
     enableDeleteSession: false,
-    protocolVersion: '2025-11-25'
+    protocolVersion: '2025-11-25',
+    protocolVersions: ['2026-07-28', '2025-11-25']
+  },
+  core: {
+    maxToolInputElements: 10000,
+    cache: {
+      default: { cacheScope: 'private', ttlMs: 0 }
+    }
   },
   diagnostics: {
     failOnMissingSchema: false
@@ -59,6 +66,16 @@ mcp({
 ## Schema diagnostics
 
 Set `diagnostics.failOnMissingSchema` to `true` when every exposed route must provide an inferable input schema. `mapJsonSchema(schema, context)` can normalize schemas for a specific MCP client after route inference or explicit schema selection.
+
+## Modern protocol options
+
+`2026-07-28` is the default protocol. `transport.protocolVersion` remains the legacy initialize response value. Restrict `transport.protocolVersions` to `['2025-11-25']` only for a legacy-only endpoint.
+
+`core.continuation` configures MRTR state signing and optional durable single-use consumption. `core.pagination` configures signed cursors and page size. `core.cache` controls cache hints. `core.subscriptions` declares notification support and supplies the application provider. These features remain opt-in, except private zero-TTL cache hints.
+
+`core.maxToolInputElements` optionally counts nested object members and array elements, then rejects oversized tool input before route dispatch or task creation. It must be a positive safe integer and is unlimited when omitted.
+
+`transport.allowedOrigins` accepts exact serialized origins. It also accepts explicit non-HTTP scheme patterns such as `chrome-extension://*`. Global, HTTP, HTTPS, malformed, credentialed, and opaque origin patterns are rejected during configuration.
 
 ## Per-route marshaling
 

@@ -1,0 +1,16 @@
+---
+title: Interceptors
+description: Register protocol interceptors and run deterministic local chains.
+---
+
+Enable `extensions.interceptors`, then register handlers with `.mcpInterceptor(definition, handler)`. Clients discover them with `interceptors/list` and invoke one with singular `interceptor/invoke`. The experimental source has used both plural and singular invocation names; this adapter implements the canonical singular method only.
+
+`executeInterceptorChain()` provides local execution without an external interceptor service. Pass the explicit `sending` direction to mutate before validation. Pass `receiving` to validate before mutation. The request or response phase selects a phase-specific `priorityHint`. Mutators run sequentially and atomically by ascending priority, with name order breaking ties.
+
+Validators run in parallel against separate structured clones, so one validator cannot change another validator's payload. Mutator output is also cloned before it becomes the next chain input. A validation result blocks only when `valid` is `false` and `severity` is `error`; `info`, `warn`, and omitted severity remain observable without blocking.
+
+Audit handlers shadow their result and never block. The returned audit outcomes report the interceptor, completed or failed status, severity, result, or error. Active failures close by default. Set `failOpen` only for a deliberate availability policy; its failure also appears as a warning audit outcome. `timeoutMs` aborts the handler signal and returns a protocol error. Hook overrides can narrow a registration but cannot broaden it.
+
+Handlers may omit result identity fields. The adapter supplies and validates the required `interceptor`, `type`, and `phase` fields on every wire result. A handler cannot claim another identity, type, or phase.
+
+The adapter does not discover or contact external interceptor services. Keep secrets and model-controlled credentials outside interceptor configuration.

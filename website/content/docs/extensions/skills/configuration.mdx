@@ -1,0 +1,63 @@
+---
+title: Skills configuration
+description: Configure providers, pagination, caching, directories, and binary resources.
+---
+
+`extensions.skills.provider` supports large catalogs without eagerly loading every skill. Its
+`list()` method receives an offset and page limit. `get()` resolves direct skill URIs. `read()` is
+called only after the adapter confirms that a published dynamic skill owns the requested URI.
+When `directoryRead` is enabled, providers must implement `readDirectory()` for dynamic manifests.
+The adapter computes directory results from static provider manifests without a callback.
+
+```ts
+mcp({
+  extensions: {
+    skills: {
+      version: 'current',
+      provider,
+      directoryRead: true,
+      pagination: {
+        pageSize: 50,
+        signingKey: process.env.MCP_SKILLS_CURSOR_KEY!
+      },
+      cache: { cacheScope: 'private', ttlMs: 0 },
+      authorization: { requiredScopes: ['skills:read'] }
+    }
+  }
+})
+```
+
+Cursors are signed and bound to the request, selected server variant, and verified principal.
+The default cache policy is private with zero TTL. Directory reads return direct children only,
+use `inode/directory` for directories, reject trailing slashes, and require explicit enablement.
+
+Static binary supporting files are denied unless their registration sets `allowBinary: true`.
+The check covers binary MIME types and invalid UTF-8 bytes, including ASCII content declared as
+`application/octet-stream`. Dynamic providers declare binary permission per source. `SKILL.md` is
+always valid UTF-8. Use `directories` to publish explicit empty directories without exposing a
+filesystem.
+
+Explicit dynamic skills use `readResource` and `readDirectory` together:
+
+```ts
+app.mcpSkill('skill://generated/SKILL.md', skillBytes, {
+  resources: 'dynamic',
+  directories: ['empty'],
+  readResource: (uri) => generateResource(uri),
+  readDirectory: (uri, page) => listGeneratedDirectChildren(uri, page)
+})
+```
+
+The adapter adds the registered `SKILL.md` and declared directories to dynamic directory results.
+The callback returns the remaining complete direct-child page. It must not repeat adapter-managed
+entries. Traversal, non-child entries, duplicate URIs, invalid sizes, and malformed pages fail
+closed. A dynamic explicit skill must provide `readDirectory` when the endpoint advertises
+directory reads. Nested static skills must publish the same complete file set as their enclosing
+manifest, which keeps one authorization owner for each nested namespace.
+
+Nested publications cannot mix static and dynamic resource manifests. The adapter rejects that
+configuration because it cannot prove a complete directory namespace or one authorization owner.
+Publish dynamic skills in disjoint URI namespaces.
+
+The 512-resource and 16 MiB values are interoperability recommendations. The adapter does not
+invent a mandatory server rejection above them.

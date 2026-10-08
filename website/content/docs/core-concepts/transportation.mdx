@@ -13,8 +13,10 @@ The adapter exposes MCP over HTTP at `POST /mcp` by default. It accepts JSON-RPC
 - `tools/list` and `tools/call`
 - `resources/list`, `resources/templates/list`, and `resources/read`
 - `prompts/list` and `prompts/get`
+- `completion/complete`
+- `subscriptions/listen`
 
-Notifications receive an empty `202` response. Batches are processed as JSON-RPC batches, and protocol errors are returned as JSON-RPC error objects.
+Modern requests use one POST per message and reject batches. Legacy `2025-11-25` requests retain batches and initialization. Accepted notifications receive an empty `202` response. Protocol errors use JSON-RPC error objects.
 
 ## Route-backed request lifecycle
 
@@ -96,9 +98,11 @@ No adapter-specific telemetry setup is required. Because route-backed tools call
 
 Export and sampling behavior remains owned by your OpenTelemetry configuration and collector.
 
-## Streaming and sessions
+## Modern streaming and legacy transport options
 
-`GET` Server-Sent Events and `DELETE` session termination are disabled by default. Enable them only when your client requires those transport methods:
+Modern request-scoped SSE carries progress notifications before the final response. `subscriptions/listen` provides long-lived change streams. Server closure sends `notifications/cancelled` and a completion result. Client closure cancels the request and aborts the handler or provider signal without a response.
+
+The removed GET stream and session-delete paths remain legacy compatibility options. They are disabled by default:
 
 ```ts
 mcp({

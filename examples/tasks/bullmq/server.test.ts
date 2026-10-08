@@ -1,15 +1,23 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
+import { type RedisFixture, startRedisFixture, waitFor } from '../test-support.js'
 import { BullMqTaskProvider } from './provider.js'
 import { createBullMqTaskApp } from './server.js'
 
 const providers: BullMqTaskProvider[] = []
+let redis: RedisFixture
+beforeAll(async () => {
+  redis = await startRedisFixture()
+})
+afterAll(async () => {
+  await redis.close()
+})
 afterEach(async () => {
   await Promise.all(providers.splice(0).map((provider) => provider[Symbol.asyncDispose]()))
 })
 
 describe('BullMQ Tasks server', () => {
   test('runs the registered tool scheduler and polls it through modern MCP', async () => {
-    const provider = new BullMqTaskProvider()
+    const provider = new BullMqTaskProvider({ redisUrl: redis.url })
     providers.push(provider)
     const app = createBullMqTaskApp(provider)
 
@@ -43,6 +51,7 @@ async function modernRpc(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': method,
         ...(typeof name === 'string' ? { 'mcp-name': name } : {})
@@ -68,10 +77,8 @@ async function modernRpc(
 }
 
 async function pollTask(app: ReturnType<typeof createBullMqTaskApp>, taskId: string) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  return waitFor(`MCP task ${taskId} to finish`, async () => {
     const task = await modernRpc(app, 'tasks/get', { taskId })
     if (task.result.status !== 'working') return task
-    await Bun.sleep(20)
-  }
-  throw new Error(`Task ${taskId} did not finish`)
+  })
 }

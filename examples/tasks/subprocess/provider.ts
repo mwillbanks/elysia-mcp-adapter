@@ -8,8 +8,10 @@ import type {
   TaskProvider,
   TaskProviderContext,
   TaskStatusListener,
-  TaskSubscription
+  TaskSubscription,
+  TaskSubscriptionContext
 } from '@mwillbanks/elysia-mcp-adapter'
+import { assertTaskInputResponse } from '@mwillbanks/elysia-mcp-adapter'
 
 interface TaskRow {
   task_id: string
@@ -39,8 +41,8 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
 
   constructor(readonly databasePath: string) {
     this.database = new Database(databasePath, { create: true })
-    this.database.exec('PRAGMA journal_mode = WAL')
     this.database.exec('PRAGMA busy_timeout = 5000')
+    this.database.exec('PRAGMA journal_mode = WAL')
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
@@ -142,28 +144,56 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
     inputResponses: TaskInputResponses,
     context: TaskProviderContext
   ): Promise<boolean> {
-    const task = await this.get(taskId, context)
-    if (!task || terminalStatuses.has(task.status)) return false
-    const entries = Object.entries(inputResponses)
-    const pendingKeys = new Set(
-      this.pendingInputRequests(taskId).map(({ request_key }) => request_key)
-    )
-    if (entries.some(([key]) => !pendingKeys.has(key))) return false
     const updateResponse = this.database.query(
       `UPDATE task_input_requests SET response = ?
-       WHERE task_id = ? AND request_key = ? AND response IS NULL`
+       WHERE task_id = ? AND request_key = ? AND response IS NULL
+         AND EXISTS (
+           SELECT 1 FROM tasks
+           WHERE task_id = ? AND principal_key = ?
+             AND status IN ('working', 'input_required')
+         )`
     )
-    const transaction = this.database.transaction(() => {
-      for (const [key, response] of entries) {
-        updateResponse.run(JSON.stringify(response), taskId, key)
+    const transaction = this.database.transaction((): boolean => {
+      const row = this.database
+        .query<TaskRow, [string, string]>(
+          'SELECT * FROM tasks WHERE task_id = ? AND principal_key = ?'
+        )
+        .get(taskId, principal(context))
+      if (!row) return false
+      if (terminalStatuses.has(row.status)) return true
+      const outstandingRequests = new Map(
+        this.pendingInputRequests(taskId).map((entry) => [entry.request_key, entry] as const)
+      )
+      const accepted = Object.entries(inputResponses).flatMap(([key, response]) => {
+        const outstanding = outstandingRequests.get(key)
+        if (!outstanding) return []
+        assertTaskInputResponse(
+          JSON.parse(outstanding.request) as TaskInputRequest,
+          response,
+          'task input response',
+          context.version
+        )
+        return [[key, response] as const]
+      })
+      for (const [key, response] of accepted) {
+        updateResponse.run(JSON.stringify(response), taskId, key, taskId, principal(context))
       }
       const pending = this.pendingInputRequests(taskId)
-      this.database
-        .query('UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?')
-        .run(pending.length === 0 ? 'working' : 'input_required', new Date().toISOString(), taskId)
+      const transitioned = this.database
+        .query(
+          `UPDATE tasks SET status = ?, updated_at = ?
+           WHERE task_id = ? AND principal_key = ?
+             AND status IN ('working', 'input_required')`
+        )
+        .run(
+          pending.length === 0 ? 'working' : 'input_required',
+          new Date().toISOString(),
+          taskId,
+          principal(context)
+        )
+      return transitioned.changes === 1
     })
-    transaction()
-    return true
+    return transaction.immediate()
   }
 
   async requestInput(
@@ -172,18 +202,30 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
     request: TaskInputRequest,
     context: TaskProviderContext
   ): Promise<boolean> {
-    const task = await this.get(taskId, context)
-    if (!task || terminalStatuses.has(task.status)) return false
-    const inserted = this.database
-      .query(
-        `INSERT OR IGNORE INTO task_input_requests (task_id, request_key, request)
-         VALUES (?, ?, ?)`
-      )
-      .run(taskId, key, JSON.stringify(request))
-    if (inserted.changes !== 1) return false
-    this.database
-      .query("UPDATE tasks SET status = 'input_required', updated_at = ? WHERE task_id = ?")
-      .run(new Date().toISOString(), taskId)
+    const transaction = this.database.transaction((): boolean => {
+      const task = this.database
+        .query<Pick<TaskRow, 'status'>, [string, string]>(
+          'SELECT status FROM tasks WHERE task_id = ? AND principal_key = ?'
+        )
+        .get(taskId, principal(context))
+      if (!task || terminalStatuses.has(task.status)) return false
+      const inserted = this.database
+        .query(
+          `INSERT OR IGNORE INTO task_input_requests (task_id, request_key, request)
+           VALUES (?, ?, ?)`
+        )
+        .run(taskId, key, JSON.stringify(request))
+      if (inserted.changes !== 1) return false
+      const transitioned = this.database
+        .query(
+          `UPDATE tasks SET status = 'input_required', updated_at = ?
+           WHERE task_id = ? AND principal_key = ?
+             AND status IN ('working', 'input_required')`
+        )
+        .run(new Date().toISOString(), taskId, principal(context))
+      return transitioned.changes === 1
+    })
+    if (!transaction.immediate()) return false
     const child = this.children.get(taskId)
     if (child) {
       child.kill('SIGTERM')
@@ -194,15 +236,26 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   }
 
   async cancel(taskId: string, context: TaskProviderContext): Promise<boolean> {
-    const task = await this.get(taskId, context)
-    if (!task) return false
-    if (terminalStatuses.has(task.status)) return true
-    this.database
-      .query(
-        `UPDATE tasks SET status = 'cancelled', result = NULL, error = NULL, updated_at = ?
-         WHERE task_id = ? AND principal_key = ?`
-      )
-      .run(new Date().toISOString(), taskId, principal(context))
+    const transaction = this.database.transaction((): 'missing' | 'terminal' | 'cancelled' => {
+      const task = this.database
+        .query<Pick<TaskRow, 'status'>, [string, string]>(
+          'SELECT status FROM tasks WHERE task_id = ? AND principal_key = ?'
+        )
+        .get(taskId, principal(context))
+      if (!task) return 'missing'
+      if (terminalStatuses.has(task.status)) return 'terminal'
+      const transitioned = this.database
+        .query(
+          `UPDATE tasks SET status = 'cancelled', result = NULL, error = NULL, updated_at = ?
+           WHERE task_id = ? AND principal_key = ?
+             AND status IN ('working', 'input_required')`
+        )
+        .run(new Date().toISOString(), taskId, principal(context))
+      return transitioned.changes === 1 ? 'cancelled' : 'terminal'
+    })
+    const outcome = transaction.immediate()
+    if (outcome === 'missing') return false
+    if (outcome === 'terminal') return true
     this.children.get(taskId)?.kill('SIGTERM')
     return true
   }
@@ -210,9 +263,17 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   listen(
     taskIds: readonly string[],
     listener: TaskStatusListener,
-    context: TaskProviderContext
+    context: TaskSubscriptionContext
   ): TaskSubscription {
     let closed = false
+    let running = false
+    let resolveDone!: () => void
+    let rejectDone!: (error: unknown) => void
+    const done = new Promise<void>((resolve, reject) => {
+      resolveDone = resolve
+      rejectDone = reject
+    })
+    void done.catch(() => undefined)
     const acceptedTaskIds = taskIds.filter((taskId) => {
       const row = this.database
         .query<{ count: number }, [string, string]>(
@@ -222,31 +283,48 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
       return (row?.count ?? 0) > 0
     })
     const seen = new Map<string, string>()
-    const timer = setInterval(async () => {
-      for (const taskId of acceptedTaskIds) {
-        const task = await this.get(taskId, context)
-        if (!task) continue
-        const fingerprint = `${task.status}:${task.lastUpdatedAt}`
-        if (seen.get(taskId) === fingerprint) continue
-        seen.set(taskId, fingerprint)
-        await listener(task)
-      }
-      if (
-        acceptedTaskIds.length > 0 &&
-        acceptedTaskIds.every((taskId) => {
-          const status = seen.get(taskId)?.split(':', 1)[0] as DetailedTask['status'] | undefined
-          return status ? terminalStatuses.has(status) : false
-        })
-      ) {
-        close()
-      }
-    }, 10)
-    const close = () => {
+    const close = (cause?: unknown) => {
       if (closed) return
       closed = true
+      context.signal?.removeEventListener('abort', onAbort)
       clearInterval(timer)
+      if (cause !== undefined) rejectDone(cause)
+      else resolveDone()
     }
-    return { acceptedTaskIds, close }
+    const onAbort = () => close()
+    const stopped = () => closed || Boolean(context.signal?.aborted)
+    const pollTask = async (taskId: string) => {
+      if (stopped()) return
+      const task = await this.get(taskId, context)
+      if (stopped() || !task) return
+      const fingerprint = `${task.status}:${task.lastUpdatedAt}`
+      if (seen.get(taskId) === fingerprint) return
+      seen.set(taskId, fingerprint)
+      await listener(task)
+    }
+    const allTerminal = () =>
+      acceptedTaskIds.length > 0 &&
+      acceptedTaskIds.every((taskId) => {
+        const status = seen.get(taskId)?.split(':', 1)[0] as DetailedTask['status'] | undefined
+        return status !== undefined && terminalStatuses.has(status)
+      })
+    const tick = async () => {
+      if (closed || running || context.signal?.aborted) return
+      running = true
+      try {
+        for (const taskId of acceptedTaskIds) await pollTask(taskId)
+        if (stopped()) return
+        if (allTerminal()) close()
+      } catch (error) {
+        close(error)
+      } finally {
+        running = false
+      }
+    }
+    const timer = setInterval(() => void tick(), 10)
+    context.signal?.addEventListener('abort', onAbort, { once: true })
+    if (context.signal?.aborted) close()
+    return { acceptedTaskIds, close, done }
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

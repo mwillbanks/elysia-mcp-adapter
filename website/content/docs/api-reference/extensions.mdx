@@ -1,6 +1,6 @@
 ---
 title: Extensions API
-description: Public Tasks, Authorization, Apps, and version-manifest contracts.
+description: Public Tasks, Authorization, Apps, Skills, and version-manifest contracts.
 icon: Blocks
 ---
 
@@ -15,6 +15,16 @@ All extension APIs are exported from `@mwillbanks/elysia-mcp-adapter`.
 <auto-type-table path="../../../../src/extensions/auth/types.ts" name="McpAuthOptions" />
 
 <auto-type-table path="../../../../src/types.ts" name="McpAppsOptions" />
+
+<auto-type-table path="../../../../src/extensions/skills/types.ts" name="McpSkillsOptions" />
+
+## Skills registration and provider
+
+<auto-type-table path="../../../../src/extensions/skills/types.ts" name="McpSkillRegistrationOptions" />
+
+<auto-type-table path="../../../../src/extensions/skills/types.ts" name="McpSkillProvider" />
+
+<auto-type-table path="../../../../src/extensions/skills/types.ts" name="McpSkill" />
 
 ## Tasks provider and controller
 
@@ -39,5 +49,39 @@ All extension APIs are exported from `@mwillbanks/elysia-mcp-adapter`.
 <auto-type-table path="../../../../src/extensions/apps/types.ts" name="McpAppsToolMeta" />
 
 <auto-type-table path="../../../../src/extensions/apps/types.ts" name="McpAppsResourceMeta" />
+
+### Server cards
+
+<auto-type-table path="../../../../src/extensions/server-card/types.ts" name="McpServerCardOptions" />
+
+## Experimental options
+
+These options are disabled by default. Pin their exported revision constants.
+
+### Interceptors
+
+<auto-type-table path="../../../../src/extensions/interceptors/types.ts" name="McpInterceptorsOptions" />
+
+<auto-type-table path="../../../../src/extensions/interceptors/types.ts" name="McpInterceptorDefinition" />
+
+### Server variants
+
+<auto-type-table path="../../../../src/extensions/variants/types.ts" name="McpVariantsOptions" />
+
+### Action and trust annotations
+
+<auto-type-table path="../../../../src/extensions/annotations/types.ts" name="McpActionMetadata" />
+
+<auto-type-table path="../../../../src/extensions/annotations/types.ts" name="McpTrustAnnotations" />
+
+### Events
+
+<auto-type-table path="../../../../src/extensions/events/types.ts" name="McpEventsOptions" />
+
+<auto-type-table path="../../../../src/extensions/events/types.ts" name="McpEventWebhookOptions" />
+
+<auto-type-table path="../../../../src/extensions/events/types.ts" name="McpEventDefinition" />
+
+<auto-type-table path="../../../../src/extensions/events/types.ts" name="McpWebhookSubscriptionProvider" />
 
 The exported `MCP_EXTENSION_SUPPORT` value records the supported aliases, immutable versions, inclusion dates, upstream revisions, package versions, and schema hashes.

@@ -9,3 +9,7 @@ to this page remain valid for compatibility.
 
 For client availability, always consult the canonical
 [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
+
+Experimental selectors pin reviewed Git revisions. They do not track branches, tags, or semver ranges. Upgrading a pin is a compatibility review, not a dependency update. Server variants remain legacy-only; configuring them with modern transport fails during option normalization.
+
+Events selects the immutable revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546`. It is opt-in and accepts only legacy `2025-11-25` transport configuration.
