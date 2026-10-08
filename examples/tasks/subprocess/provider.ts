@@ -291,28 +291,29 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
       else resolveDone()
     }
     const onAbort = () => close()
+    const stopped = () => closed || Boolean(context.signal?.aborted)
+    const pollTask = async (taskId: string) => {
+      if (stopped()) return
+      const task = await this.get(taskId, context)
+      if (stopped() || !task) return
+      const fingerprint = `${task.status}:${task.lastUpdatedAt}`
+      if (seen.get(taskId) === fingerprint) return
+      seen.set(taskId, fingerprint)
+      await listener(task)
+    }
+    const allTerminal = () =>
+      acceptedTaskIds.length > 0 &&
+      acceptedTaskIds.every((taskId) => {
+        const status = seen.get(taskId)?.split(':', 1)[0] as DetailedTask['status'] | undefined
+        return status !== undefined && terminalStatuses.has(status)
+      })
     const tick = async () => {
       if (closed || running || context.signal?.aborted) return
       running = true
       try {
-        for (const taskId of acceptedTaskIds) {
-          if (closed || context.signal?.aborted) return
-          const task = await this.get(taskId, context)
-          if (closed || context.signal?.aborted || !task) continue
-          const fingerprint = `${task.status}:${task.lastUpdatedAt}`
-          if (seen.get(taskId) === fingerprint) continue
-          seen.set(taskId, fingerprint)
-          await listener(task)
-        }
-        if (
-          acceptedTaskIds.length > 0 &&
-          acceptedTaskIds.every((taskId) => {
-            const status = seen.get(taskId)?.split(':', 1)[0] as DetailedTask['status'] | undefined
-            return status ? terminalStatuses.has(status) : false
-          })
-        ) {
-          close()
-        }
+        for (const taskId of acceptedTaskIds) await pollTask(taskId)
+        if (stopped()) return
+        if (allTerminal()) close()
       } catch (error) {
         close(error)
       } finally {

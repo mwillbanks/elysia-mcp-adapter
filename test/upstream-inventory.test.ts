@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   MCP_EXTENSION_LATEST_REVIEWED,
   MCP_EXTENSION_SUPPORT,
+  type McpLatestExtensionRecord,
   resolveLatestReviewedVersion
 } from '../src/extensions/manifest.js'
 
@@ -38,6 +39,7 @@ const expectedLatestKeys = [
   'skillsStable',
   'agentSkillsFormat',
   'serverCard',
+  'serverCardFinalSep',
   'serverCardDiscovery',
   'interceptors',
   'variants',
@@ -48,7 +50,8 @@ const expectedLatestKeys = [
   'ianaIpv4SpecialRegistry',
   'ianaIpv6SpecialRegistry',
   'actionMetadata',
-  'trustAnnotations'
+  'trustAnnotations',
+  'filesystems'
 ] as const
 
 const expectedDigests: Record<string, string> = {
@@ -84,6 +87,7 @@ const expectedDigests: Record<string, string> = {
   skillsStable: 'b8b4c2faf0ef38d72114b8ea2c4e29bbba1d30151b8dc3b476ca31f685de610c',
   agentSkillsFormat: 'b9079c0c10b7930e8c6a20ff2bc10cda2a3343c55185120e3f1116a1a529b220',
   serverCard: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042',
+  serverCardFinalSep: 'b7691eee6daa21f0b556e48f83b73f9cc8e61e9ea2da17c1aaf3aa169b348461',
   serverCardDiscovery: '633dacfe5bcdbb3ed2f177be7dd7f9943ed2484a5fdd13bd2b742f43a14c2786',
   interceptors: '1ccbb25046161f10e631ff4fce20742a816dd5fa018e466a7551cb8675200a35',
   variants: 'acb459c128b2b26af772f878919c40d7a7a0c23d364c594c08cf01e733b95d15',
@@ -94,7 +98,36 @@ const expectedDigests: Record<string, string> = {
   ianaIpv4SpecialRegistry: 'e3e39e76d00b1677335db8e9a805c7b9480ea2f4dc9e33f0b93cd3a905128d73',
   ianaIpv6SpecialRegistry: '775feea0621dec8735a44fbf30f762e721e8f0a1b3ab7eb341961a88cfce2139',
   actionMetadata: '985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f',
-  trustAnnotations: '3cc0123157d3ea4489729d8498489e12787297dcfe1f09a5bb02a4a6b0f55b7d'
+  trustAnnotations: '3cc0123157d3ea4489729d8498489e12787297dcfe1f09a5bb02a4a6b0f55b7d',
+  filesystems: 'feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993'
+}
+
+function assertContractIdentity(record: McpLatestExtensionRecord): void {
+  if (record.maturity === 'undefined') {
+    expect(record).not.toHaveProperty('identifier')
+    expect(record).not.toHaveProperty('protocolEra')
+    return
+  }
+  expect(record.identifier?.length ?? 0).toBeGreaterThan(0)
+  expect(record.protocolEra?.length ?? 0).toBeGreaterThan(0)
+}
+
+function assertSourceIntegrity(key: string, record: McpLatestExtensionRecord): void {
+  if (record.availability !== 'reviewed') {
+    expect(record.source).toBeUndefined()
+    expect(record.reason).toMatch(/authoritative MCP specification/u)
+    return
+  }
+  expect(record.source).toBeDefined()
+  const source = record.source
+  if (!source) throw new Error(`Reviewed source is missing for ${key}`)
+  expect(source.url ?? source.repository).toMatch(/^https:\/\//u)
+  if (source.repository) expect(source.revision).toMatch(/^[0-9a-z._-]+$/iu)
+  expect(source.path.length).toBeGreaterThan(0)
+  expect(source.sha256).toMatch(/^[0-9a-f]{64}$/u)
+  const expectedDigest = expectedDigests[key]
+  if (!expectedDigest) throw new Error(`Expected digest is missing for ${key}`)
+  expect(source.sha256).toBe(expectedDigest)
 }
 
 describe('upstream extension inventory', () => {
@@ -104,6 +137,10 @@ describe('upstream extension inventory', () => {
       '5f5440bb26a62e2cf3440b92da5a667efa03b267'
     )
     expect(MCP_EXTENSION_SUPPORT.apps.versions['2026-01-26'].source.packageVersion).toBe('1.7.5')
+    expect(MCP_EXTENSION_SUPPORT.serverCard.maturity).toBe('stable')
+    expect(
+      MCP_EXTENSION_SUPPORT.serverCard.versions['526201bbc80231daa40ffcdecfc9da4e54e5dc93'].status
+    ).toBe('experimental')
   })
 
   test('covers every reviewed extension and records immutable source integrity', () => {
@@ -113,26 +150,8 @@ describe('upstream extension inventory', () => {
     expect(Object.keys(expectedDigests).sort()).toEqual([...expectedLatestKeys].sort())
 
     for (const [key, record] of Object.entries(MCP_EXTENSION_LATEST_REVIEWED)) {
-      expect(record.identifier.length).toBeGreaterThan(0)
-      expect(record.protocolEra.length).toBeGreaterThan(0)
-      if (record.availability === 'reviewed') {
-        expect(record.source).toBeDefined()
-        if (!record.source) throw new Error(`Reviewed source is missing for ${key}`)
-        expect(
-          ('url' in record.source && record.source.url) ||
-            ('repository' in record.source && record.source.repository)
-        ).toMatch(/^https:\/\//u)
-        if ('repository' in record.source)
-          expect(record.source.revision).toMatch(/^[0-9a-z._-]+$/iu)
-        expect(record.source?.path.length).toBeGreaterThan(0)
-        expect(record.source?.sha256).toMatch(/^[0-9a-f]{64}$/u)
-        expect(String(record.source?.sha256)).toBe(String(expectedDigests[key]))
-      } else {
-        expect(record.source).toBeUndefined()
-        expect('reason' in record ? record.reason : undefined).toMatch(
-          /authoritative MCP specification/u
-        )
-      }
+      assertContractIdentity(record)
+      assertSourceIntegrity(key, record)
     }
   })
 
@@ -161,5 +180,21 @@ describe('upstream extension inventory', () => {
         MCP_EXTENSION_LATEST_REVIEWED
       )
     ).toThrow('Unsupported extension specification version')
+  })
+
+  test('records current upstream review state without inventing extension contracts', () => {
+    expect(MCP_EXTENSION_LATEST_REVIEWED.coreSchema.source.revision).toBe(
+      'c518f7a927cff918bce35d3522fcdb046d264d7c'
+    )
+    expect(MCP_EXTENSION_LATEST_REVIEWED.tasksStable.source.revision).toBe(
+      '93a4915aadf714f87ece5cd40c317bce24779cf5'
+    )
+    expect(MCP_EXTENSION_LATEST_REVIEWED.serverCard.maturity).toBe('stable')
+    expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).toMatchObject({
+      maturity: 'undefined',
+      availability: 'reviewed'
+    })
+    expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).not.toHaveProperty('identifier')
+    expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).not.toHaveProperty('protocolEra')
   })
 })

@@ -10,7 +10,17 @@ import {
   eventPrincipalKey,
   eventVariantKey
 } from './cursor.js'
+import { abortableDelay } from './delay.js'
 import { McpWebhookNetworkError, parseWebhookUrl } from './network.js'
+import {
+  eventRuntimeState,
+  nextWebhookLifecycleEpoch,
+  retireWebhookLifecycleEpoch,
+  type WebhookWorkerState,
+  webhookLifecycleEpoch,
+  webhookWorkers,
+  withWebhookLifecycleLock
+} from './runtime-state.js'
 import type {
   McpEventDefinition,
   McpEventDescriptor,
@@ -40,35 +50,9 @@ import {
   webhookControlMessageId
 } from './webhook.js'
 
-const EVENT_RUNTIME_STATES = new WeakMap<
-  AnyElysiaApp,
-  WeakMap<NormalizedMcpPluginOptions, EventRuntimeState>
->()
-
-interface EventRuntimeState {
-  workers: Map<string, WebhookWorkerState>
-  lifecycleLocks: Map<string, Promise<void>>
-  lifecycleEpochs: Map<string, bigint>
-  lifecycleCounter: bigint
-  pollLeases: Map<string, { timer: ReturnType<typeof setTimeout>; definition: McpEventDefinition }>
-}
-
 interface EventSource {
   definition: McpEventDefinition
   registration?: McpEventRegistration
-}
-
-interface WebhookWorkerState {
-  abort: AbortController
-  cursor: string | null
-  context: McpInvocationContext
-  definition: McpEventDefinition
-  done: Promise<void>
-  initialProcessed: Promise<void>
-  epoch: bigint
-  terminal: boolean
-  persisting?: Promise<void>
-  refreshGate?: Promise<void>
 }
 
 export class McpEventProtocolError extends Error {
@@ -97,63 +81,29 @@ export async function listEvents(
     ? decodeCursor(params.cursor, 'events/list', params, context, options, config.pagination)
     : 0
   const local = [...(getMcpRegistry(app, options).events?.values() ?? [])]
-  const visibleLocal: McpEventDefinition[] = []
-  for (const registration of local)
-    if (hasScopes(registration.definition.authorization, context))
-      visibleLocal.push(registration.definition)
+  const visibleLocal = local
+    .map(({ definition }) => definition)
+    .filter((definition) => hasScopes(definition.authorization, context))
   const pageSize = config.pagination?.pageSize
-  const output: McpEventDescriptor[] = []
-  let nextOffset: number | undefined
-  if (offset < visibleLocal.length) {
-    const end = Math.min(visibleLocal.length, offset + (pageSize ?? visibleLocal.length))
-    output.push(
-      ...visibleLocal
-        .slice(offset, end)
-        .map((definition) => configuredEventDescriptor(definition, config))
-        .filter((definition): definition is McpEventDescriptor => definition !== undefined)
-    )
-    if (end < visibleLocal.length || config.provider) nextOffset = end
-  } else if (config.provider) {
-    const providerOffset = offset - visibleLocal.length
-    const page = await config.provider.list(
-      { offset: providerOffset, limit: pageSize },
-      { ...context, request }
-    )
-    if (
-      !page ||
-      !Array.isArray(page.events) ||
-      (page.hasMore !== undefined && typeof page.hasMore !== 'boolean') ||
-      (pageSize !== undefined && page.events.length > pageSize) ||
-      (page.hasMore && page.events.length === 0)
-    )
-      throw internalError('Event provider returned an invalid page')
-    for (const definition of page.events) {
-      assertProviderDefinition(definition)
-      const localDefinition = local.find(
-        ({ definition: item }) => item.name === definition.name
-      )?.definition
-      if (localDefinition) {
-        if (
-          canonicalJson(eventDescriptor(localDefinition)) !==
-          canonicalJson(eventDescriptor(definition))
+  const page =
+    offset < visibleLocal.length
+      ? localEventPage(visibleLocal, offset, pageSize, config)
+      : await providerEventPage(
+          local,
+          visibleLocal.length,
+          offset,
+          pageSize,
+          config,
+          request,
+          context
         )
-          throw internalError('Event provider conflicts with an explicit event')
-        continue
-      }
-      const descriptor = configuredEventDescriptor(definition, config)
-      if (descriptor && hasScopes(definition.authorization, context)) output.push(descriptor)
-    }
-    if (page.hasMore) nextOffset = visibleLocal.length + providerOffset + page.events.length
-  } else if (offset > visibleLocal.length) {
-    throw invalidParams('Invalid events pagination cursor')
-  }
   return {
-    events: output,
-    ...(nextOffset !== undefined && config.pagination
+    events: page.events,
+    ...(page.nextOffset !== undefined && config.pagination
       ? {
           nextCursor: encodeCursor(
             'events/list',
-            nextOffset,
+            page.nextOffset,
             params,
             context,
             options,
@@ -162,6 +112,95 @@ export async function listEvents(
         }
       : {})
   }
+}
+
+interface EventListPage {
+  events: McpEventDescriptor[]
+  nextOffset?: number
+}
+
+function localEventPage(
+  visible: McpEventDefinition[],
+  offset: number,
+  pageSize: number | undefined,
+  config: NormalizedMcpEventsOptions
+): EventListPage {
+  const end = Math.min(visible.length, offset + (pageSize ?? visible.length))
+  const events = visible
+    .slice(offset, end)
+    .map((definition) => configuredEventDescriptor(definition, config))
+    .filter((definition): definition is McpEventDescriptor => definition !== undefined)
+  return end < visible.length || config.provider ? { events, nextOffset: end } : { events }
+}
+
+async function providerEventPage(
+  local: McpEventRegistration[],
+  localCount: number,
+  offset: number,
+  pageSize: number | undefined,
+  config: NormalizedMcpEventsOptions,
+  request: Request,
+  context: McpInvocationContext
+): Promise<EventListPage> {
+  if (!config.provider) {
+    if (offset > localCount) throw invalidParams('Invalid events pagination cursor')
+    return { events: [] }
+  }
+  const providerOffset = offset - localCount
+  const page = await config.provider.list(
+    { offset: providerOffset, limit: pageSize },
+    { ...context, request }
+  )
+  assertProviderPage(page, pageSize)
+  const events = providerDescriptors(page.events, local, config, context)
+  return page.hasMore
+    ? { events, nextOffset: localCount + providerOffset + page.events.length }
+    : { events }
+}
+
+function assertProviderPage(
+  page: Awaited<ReturnType<NonNullable<NormalizedMcpEventsOptions['provider']>['list']>>,
+  pageSize: number | undefined
+): void {
+  const invalid =
+    !page ||
+    !Array.isArray(page.events) ||
+    (page.hasMore !== undefined && typeof page.hasMore !== 'boolean') ||
+    (pageSize !== undefined && page.events.length > pageSize) ||
+    (page.hasMore === true && page.events.length === 0)
+  if (invalid) throw internalError('Event provider returned an invalid page')
+}
+
+function providerDescriptors(
+  definitions: readonly McpEventDefinition[],
+  local: McpEventRegistration[],
+  config: NormalizedMcpEventsOptions,
+  context: McpInvocationContext
+): McpEventDescriptor[] {
+  const localByName = new Map(local.map(({ definition }) => [definition.name, definition]))
+  const output: McpEventDescriptor[] = []
+  for (const definition of definitions) {
+    assertProviderDefinition(definition)
+    const localDefinition = localByName.get(definition.name)
+    if (localDefinition) assertMatchingDefinition(localDefinition, definition)
+    else addVisibleDescriptor(output, definition, config, context)
+  }
+  return output
+}
+
+function assertMatchingDefinition(local: McpEventDefinition, provided: McpEventDefinition): void {
+  if (canonicalJson(eventDescriptor(local)) !== canonicalJson(eventDescriptor(provided)))
+    throw internalError('Event provider conflicts with an explicit event')
+}
+
+function addVisibleDescriptor(
+  output: McpEventDescriptor[],
+  definition: McpEventDefinition,
+  config: NormalizedMcpEventsOptions,
+  context: McpInvocationContext
+): void {
+  const descriptor = configuredEventDescriptor(definition, config)
+  if (descriptor && hasScopes(definition.authorization, context)) output.push(descriptor)
 }
 
 export async function pollEvents(
@@ -207,163 +246,25 @@ export async function streamEvents(
   const relay = () => abort.abort(context.signal?.reason)
   if (context.signal?.aborted) abort.abort(context.signal.reason)
   else context.signal?.addEventListener('abort', relay, { once: true })
-  let cleanup: (() => Promise<void>) | undefined
-  let cleaned = false
+  let session: EventStreamSession | undefined
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const send = (value: unknown) =>
-        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`))
-      const meta = { 'io.modelcontextprotocol/subscriptionId': parentId }
-      let cursor = prepared.initial || initial.truncated ? initial.cursor : prepared.request.cursor
-      let heartbeat: ReturnType<typeof setInterval> | undefined
-      const encodedCursor = () =>
-        encodeEventCursor(
-          cursor,
-          prepared.request.name,
-          prepared.request.arguments,
-          context.authorization,
-          prepared.variant,
-          eventOptions(options).cursor
-        )
-      const sendOccurrence = (occurrence: McpEventOccurrence, replayable: boolean) => {
-        if (replayable && occurrence.cursor == null)
-          throw internalError('Replayable push events require per-event cursors')
-        cursor = occurrence.cursor ?? null
-        send(
-          eventNotification('event', {
-            ...occurrence,
-            cursor: encodedCursor(),
-            _meta: { ...occurrence._meta, ...meta }
-          })
-        )
-      }
-      cleanup = async () => {
-        if (cleaned) return
-        cleaned = true
-        if (heartbeat) clearInterval(heartbeat)
-        abort.abort('Event stream closed')
-        context.signal?.removeEventListener('abort', relay)
-        await prepared.source.definition.onUnsubscribe?.(
-          prepared.request.arguments,
-          String(parentId),
-          context
-        )
-      }
-      void (async () => {
-        let serverClosed = false
-        try {
-          send({
-            jsonrpc: '2.0',
-            method: 'notifications/events/active',
-            params: {
-              cursor: encodedCursor(),
-              truncated: initial.truncated ?? false,
-              _meta: meta
-            }
-          })
-          for (const occurrence of initial.events)
-            sendOccurrence(occurrence, initial.cursor !== null)
-          if (initial.events.length === 0) cursor = initial.cursor
-          heartbeat = setInterval(() => {
-            if (abort.signal.aborted) return
-            try {
-              send(
-                eventNotification('heartbeat', {
-                  cursor: encodedCursor(),
-                  _meta: meta
-                })
-              )
-            } catch {
-              abort.abort('Event stream heartbeat failed')
-            }
-          }, eventOptions(options).heartbeatMs)
-          heartbeat.unref?.()
-          let nextPollMs = initial.nextPollMs ?? eventOptions(options).pollIntervalMs
-          while (!abort.signal.aborted) {
-            const delay = Math.min(nextPollMs, eventOptions(options).heartbeatMs)
-            await abortableDelay(delay, abort.signal)
-            let current: EventSource
-            try {
-              current = await resolveEventSource(app, prepared.request.name, context, options)
-              await authorizeEvent(current.definition, prepared.request.arguments, context)
-            } catch (error) {
-              const termination = terminationForResolution(error)
-              send(eventNotification('terminated', { error: termination, _meta: meta }))
-              serverClosed = true
-              break
-            }
-            const schemaChange = incompatibleEventSchema(
-              originalDescriptor,
-              eventDescriptor(current.definition)
-            )
-            if (
-              originalDescriptor.delivery.some(
-                (mode) => !current.definition.delivery.includes(mode)
-              ) ||
-              schemaChange
-            ) {
-              send(
-                eventNotification('terminated', {
-                  error: {
-                    code: -32014,
-                    message: 'Unsupported',
-                    data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
-                  },
-                  _meta: meta
-                })
-              )
-              serverClosed = true
-              break
-            }
-            try {
-              const result = await pollSource(
-                current,
-                { ...prepared.request, cursor },
-                { ...context, signal: abort.signal },
-                options
-              )
-              if (result.terminated) {
-                send(eventNotification('terminated', { error: result.terminated, _meta: meta }))
-                serverClosed = true
-                break
-              }
-              nextPollMs = result.nextPollMs ?? eventOptions(options).pollIntervalMs
-              if (result.truncated) {
-                cursor = result.cursor
-                send(
-                  eventNotification('active', {
-                    cursor: encodedCursor(),
-                    truncated: true,
-                    _meta: meta
-                  })
-                )
-              }
-              for (const occurrence of result.events)
-                sendOccurrence(occurrence, result.cursor !== null)
-              if (result.events.length === 0) cursor = result.cursor
-            } catch (_error) {
-              if (abort.signal.aborted) break
-              send(
-                eventNotification('error', {
-                  error: { code: -32603, message: 'UpstreamError' },
-                  _meta: meta
-                })
-              )
-            }
-          }
-          if (serverClosed && !abort.signal.aborted) {
-            send({ jsonrpc: '2.0', id: parentId, result: { _meta: {} } })
-            controller.close()
-          }
-        } catch {
-          if (!abort.signal.aborted) controller.error(new Error('Event stream failed'))
-        } finally {
-          await cleanup?.()
-        }
-      })()
+      session = createEventStreamSession(
+        app,
+        parentId,
+        options,
+        context,
+        prepared,
+        initial,
+        originalDescriptor,
+        abort,
+        relay,
+        controller
+      )
+      void runEventStream(session)
     },
     async cancel() {
-      await cleanup?.()
+      if (session) await cleanupEventStream(session)
     }
   })
   return new Response(stream, {
@@ -375,272 +276,690 @@ export async function streamEvents(
   })
 }
 
+interface EventStreamSession {
+  app: AnyElysiaApp
+  parentId: string | number
+  options: NormalizedMcpPluginOptions
+  context: McpInvocationContext
+  prepared: Awaited<ReturnType<typeof prepareEventRequest>>
+  initial: McpEventPollResult
+  originalDescriptor: McpEventDescriptor
+  abort: AbortController
+  relay: () => void
+  controller: ReadableStreamDefaultController<Uint8Array>
+  meta: Record<string, string | number>
+  cursor: string | null
+  heartbeat?: ReturnType<typeof setInterval>
+  cleaned: boolean
+}
+
+function createEventStreamSession(
+  app: AnyElysiaApp,
+  parentId: string | number,
+  options: NormalizedMcpPluginOptions,
+  context: McpInvocationContext,
+  prepared: Awaited<ReturnType<typeof prepareEventRequest>>,
+  initial: McpEventPollResult,
+  originalDescriptor: McpEventDescriptor,
+  abort: AbortController,
+  relay: () => void,
+  controller: ReadableStreamDefaultController<Uint8Array>
+): EventStreamSession {
+  return {
+    app,
+    parentId,
+    options,
+    context,
+    prepared,
+    initial,
+    originalDescriptor,
+    abort,
+    relay,
+    controller,
+    meta: { 'io.modelcontextprotocol/subscriptionId': parentId },
+    cursor: prepared.initial || initial.truncated ? initial.cursor : prepared.request.cursor,
+    cleaned: false
+  }
+}
+
+async function runEventStream(session: EventStreamSession): Promise<void> {
+  let serverClosed = false
+  try {
+    initializeEventStream(session)
+    let nextPollMs = session.initial.nextPollMs ?? eventOptions(session.options).pollIntervalMs
+    while (!session.abort.signal.aborted) {
+      const tick = await pollEventStream(session, nextPollMs)
+      if (tick.stop) {
+        serverClosed = tick.serverClosed
+        break
+      }
+      nextPollMs = tick.nextPollMs
+    }
+    if (serverClosed && !session.abort.signal.aborted) closeEventStream(session)
+  } catch {
+    if (!session.abort.signal.aborted) session.controller.error(new Error('Event stream failed'))
+  } finally {
+    await cleanupEventStream(session)
+  }
+}
+
+function initializeEventStream(session: EventStreamSession): void {
+  sendEventStream(session, {
+    jsonrpc: '2.0',
+    method: 'notifications/events/active',
+    params: {
+      cursor: encodedEventStreamCursor(session),
+      truncated: session.initial.truncated ?? false,
+      _meta: session.meta
+    }
+  })
+  for (const occurrence of session.initial.events)
+    sendEventStreamOccurrence(session, occurrence, session.initial.cursor !== null)
+  if (session.initial.events.length === 0) session.cursor = session.initial.cursor
+  startEventStreamHeartbeat(session)
+}
+
+interface EventStreamTick {
+  stop: boolean
+  serverClosed: boolean
+  nextPollMs: number
+}
+
+async function pollEventStream(
+  session: EventStreamSession,
+  nextPollMs: number
+): Promise<EventStreamTick> {
+  const config = eventOptions(session.options)
+  await abortableDelay(Math.min(nextPollMs, config.heartbeatMs), session.abort.signal)
+  const current = await resolveEventStreamSource(session)
+  if (!current) return { stop: true, serverClosed: true, nextPollMs }
+  if (!validateEventStreamSource(session, current))
+    return { stop: true, serverClosed: true, nextPollMs }
+  return pollCurrentEventStreamSource(session, current, nextPollMs)
+}
+
+async function resolveEventStreamSource(session: EventStreamSession): Promise<EventSource | null> {
+  try {
+    const current = await resolveEventSource(
+      session.app,
+      session.prepared.request.name,
+      session.context,
+      session.options
+    )
+    await authorizeEvent(current.definition, session.prepared.request.arguments, session.context)
+    return current
+  } catch (error) {
+    sendEventStream(
+      session,
+      eventNotification('terminated', {
+        error: terminationForResolution(error),
+        _meta: session.meta
+      })
+    )
+    return null
+  }
+}
+
+function validateEventStreamSource(session: EventStreamSession, current: EventSource): boolean {
+  const schemaChange = incompatibleEventSchema(
+    session.originalDescriptor,
+    eventDescriptor(current.definition)
+  )
+  const deliveryRemoved = session.originalDescriptor.delivery.some(
+    (mode) => !current.definition.delivery.includes(mode)
+  )
+  if (!deliveryRemoved && !schemaChange) return true
+  sendEventStream(
+    session,
+    eventNotification('terminated', {
+      error: {
+        code: -32014,
+        message: 'Unsupported',
+        data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
+      },
+      _meta: session.meta
+    })
+  )
+  return false
+}
+
+async function pollCurrentEventStreamSource(
+  session: EventStreamSession,
+  current: EventSource,
+  previousNextPollMs: number
+): Promise<EventStreamTick> {
+  try {
+    const result = await pollSource(
+      current,
+      { ...session.prepared.request, cursor: session.cursor },
+      { ...session.context, signal: session.abort.signal },
+      session.options
+    )
+    if (result.terminated) {
+      sendEventStream(
+        session,
+        eventNotification('terminated', { error: result.terminated, _meta: session.meta })
+      )
+      return { stop: true, serverClosed: true, nextPollMs: previousNextPollMs }
+    }
+    applyEventStreamPollResult(session, result)
+    return {
+      stop: false,
+      serverClosed: false,
+      nextPollMs: result.nextPollMs ?? eventOptions(session.options).pollIntervalMs
+    }
+  } catch {
+    if (session.abort.signal.aborted)
+      return { stop: true, serverClosed: false, nextPollMs: previousNextPollMs }
+    sendEventStream(
+      session,
+      eventNotification('error', {
+        error: { code: -32603, message: 'UpstreamError' },
+        _meta: session.meta
+      })
+    )
+    return { stop: false, serverClosed: false, nextPollMs: previousNextPollMs }
+  }
+}
+
+function applyEventStreamPollResult(session: EventStreamSession, result: McpEventPollResult): void {
+  if (result.truncated) {
+    session.cursor = result.cursor
+    sendEventStream(
+      session,
+      eventNotification('active', {
+        cursor: encodedEventStreamCursor(session),
+        truncated: true,
+        _meta: session.meta
+      })
+    )
+  }
+  for (const occurrence of result.events)
+    sendEventStreamOccurrence(session, occurrence, result.cursor !== null)
+  if (result.events.length === 0) session.cursor = result.cursor
+}
+
+function sendEventStreamOccurrence(
+  session: EventStreamSession,
+  occurrence: McpEventOccurrence,
+  replayable: boolean
+): void {
+  if (replayable && occurrence.cursor == null)
+    throw internalError('Replayable push events require per-event cursors')
+  session.cursor = occurrence.cursor ?? null
+  sendEventStream(
+    session,
+    eventNotification('event', {
+      ...occurrence,
+      cursor: encodedEventStreamCursor(session),
+      _meta: { ...occurrence._meta, ...session.meta }
+    })
+  )
+}
+
+function startEventStreamHeartbeat(session: EventStreamSession): void {
+  session.heartbeat = setInterval(() => {
+    if (session.abort.signal.aborted) return
+    try {
+      sendEventStream(
+        session,
+        eventNotification('heartbeat', {
+          cursor: encodedEventStreamCursor(session),
+          _meta: session.meta
+        })
+      )
+    } catch {
+      session.abort.abort('Event stream heartbeat failed')
+    }
+  }, eventOptions(session.options).heartbeatMs)
+  session.heartbeat.unref?.()
+}
+
+function encodedEventStreamCursor(session: EventStreamSession): string | null {
+  return encodeEventCursor(
+    session.cursor,
+    session.prepared.request.name,
+    session.prepared.request.arguments,
+    session.context.authorization,
+    session.prepared.variant,
+    eventOptions(session.options).cursor
+  )
+}
+
+function sendEventStream(session: EventStreamSession, value: unknown): void {
+  session.controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`))
+}
+
+function closeEventStream(session: EventStreamSession): void {
+  sendEventStream(session, { jsonrpc: '2.0', id: session.parentId, result: { _meta: {} } })
+  session.controller.close()
+}
+
+async function cleanupEventStream(session: EventStreamSession): Promise<void> {
+  if (session.cleaned) return
+  session.cleaned = true
+  if (session.heartbeat) clearInterval(session.heartbeat)
+  session.abort.abort('Event stream closed')
+  session.context.signal?.removeEventListener('abort', session.relay)
+  await session.prepared.source.definition.onUnsubscribe?.(
+    session.prepared.request.arguments,
+    String(session.parentId),
+    session.context
+  )
+}
+
 export async function subscribeEventsWebhook(
   app: AnyElysiaApp,
   params: Record<string, unknown>,
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  const config = eventOptions(options)
-  const webhook = config.webhook
-  if (!webhook) throw unsupported('deliveryMode', 'webhook')
-  const principal = eventPrincipalKey(context.authorization)
-  if (!principal) throw forbidden()
+  const { config, webhook, principal } = webhookRequestEnvironment(options, context)
   const prepared = await prepareEventRequest(app, params, 'webhook', options, context)
-  const delivery = params.delivery
-  if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery))
-    throw invalidParams('Webhook delivery is required')
-  const deliveryValue = delivery as Record<string, unknown>
-  if (deliveryValue.mode !== 'webhook' || typeof deliveryValue.url !== 'string')
-    throw invalidParams('Webhook delivery is invalid')
-  try {
-    parseWebhookUrl(deliveryValue.url)
-  } catch {
-    throw invalidParams('Webhook URL is invalid')
-  }
-  try {
-    assertWebhookSecret(deliveryValue.secret)
-  } catch (error) {
-    throw invalidParams(error instanceof Error ? error.message : 'Webhook secret is invalid')
-  }
-  const deliveryUrl = deliveryValue.url
-  const deliverySecret = deliveryValue.secret
+  const delivery = parseWebhookDelivery(params.delivery)
   const identity = deriveWebhookSubscriptionIdentity(
     principal,
-    deliveryUrl,
+    delivery.url,
     prepared.request.name,
     prepared.request.arguments,
     config.cursor.signingKey,
     prepared.variant
   )
-  return withWebhookLifecycleLock(app, options, identity.id, async () => {
-    const existing = await webhook.provider.get(identity.key)
-    if (
-      existing &&
-      (existing.key !== identity.key ||
-        existing.id !== identity.id ||
-        existing.principal !== principal ||
-        existing.url !== deliveryUrl ||
-        existing.name !== prepared.request.name ||
-        canonicalJson(existing.arguments) !== canonicalJson(prepared.request.arguments) ||
-        existing.variant !== prepared.variant)
-    )
-      throw internalError('Webhook provider returned an invalid subscription owner')
-    const ttl = webhookGrant(params.ttlMs, webhook)
-    const now = new Date()
-    const refreshBefore = ttl === null ? null : new Date(now.getTime() + ttl).toISOString()
-    const workers = webhookWorkers(app, options)
-    const live = workers.get(identity.id)
-    let cursor: string | null
-    let truncated = false
-    let record: McpWebhookSubscriptionRecord
-    if (existing) {
-      cursor = live?.cursor ?? decodePreparedCursor(prepared)
-      truncated = !live && prepared.cursorExpired
-      record = {
-        ...existing,
-        maxAgeMs: prepared.request.maxAgeMs,
-        secret: deliverySecret,
-        ...(existing.secret !== deliverySecret
-          ? {
-              previousSecret: existing.secret,
-              previousSecretExpiresAt: Date.now() + webhook.secretRotationGraceMs
-            }
-          : {}),
-        refreshBefore,
-        active: true,
-        updatedAt: now.toISOString(),
-        deliveryStatus: existing.deliveryStatus
-          ? { ...existing.deliveryStatus, active: true }
-          : undefined
-      }
-    } else {
-      cursor = decodePreparedCursor(prepared)
-      truncated = prepared.cursorExpired
-      record = {
-        key: identity.key,
-        id: identity.id,
-        principal,
-        name: prepared.request.name,
-        arguments: structuredClone(prepared.request.arguments),
-        maxAgeMs: prepared.request.maxAgeMs,
-        url: deliveryUrl,
-        secret: deliverySecret,
-        refreshBefore,
-        verified: false,
-        active: true,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        variant: prepared.variant
-      }
-    }
-    try {
-      await verifyWebhookEndpoint(record, context, webhook, { app, options })
-    } catch (error) {
-      const reason =
-        error instanceof McpWebhookVerificationError || error instanceof McpWebhookNetworkError
-          ? error.reason
-          : 'connection_refused'
-      throw new McpEventProtocolError(-32015, 'CallbackEndpointError', { reason })
-    }
-    record.verified = true
-    let responseCursor = cursor
-    let responseTruncated = truncated
-    let initialResult: McpEventPollResult | undefined
-    let activePrimed = false
-    let awaitInitialForSafeCursor = false
-    const applyInitialResult = (
-      result: McpEventPollResult,
-      safeCursor: string | null,
-      initial: boolean,
-      cursorExpired: boolean
-    ) => {
-      if (result.terminated) throw eventError(result.terminated)
-      responseTruncated = cursorExpired || (result.truncated ?? false)
-      if (initial || result.events.length === 0) {
-        responseCursor = result.cursor
-        cursor = result.cursor
-        initialResult = undefined
-        return
-      }
-      responseCursor = safeCursor
-      cursor = safeCursor
-      awaitInitialForSafeCursor = (result.truncated ?? false) && result.events.length > 0
-      result.truncated = false
-      initialResult = result
-    }
-    if (live && !live.terminal) {
-      const safeCursor = live.cursor
-      const result = await pollSource(
-        prepared.source,
-        { ...prepared.request, cursor: safeCursor },
-        context,
-        options
-      )
-      applyInitialResult(result, safeCursor, false, false)
-      activePrimed = true
-    }
-    let releaseRefresh: (() => void) | undefined
-    if (live) {
-      live.refreshGate = new Promise<void>((resolve) => {
-        releaseRefresh = resolve
-      })
-      try {
-        await live.persisting
-      } catch (error) {
-        live.refreshGate = undefined
-        releaseRefresh?.()
-        throw error
-      }
-    }
-    let stored: Awaited<ReturnType<typeof webhook.provider.upsert>>
-    try {
-      stored = await webhook.provider.upsert(record, {
-        maxSubscriptionsPerPrincipal: webhook.maxSubscriptionsPerPrincipal
-      })
-      if ('limitExceeded' in stored)
-        throw new McpEventProtocolError(-32013, 'ResourceExhausted', {
-          limit: 'subscriptions',
-          max: webhook.maxSubscriptionsPerPrincipal
-        })
-      if (
-        stored.record.key !== record.key ||
-        stored.record.id !== record.id ||
-        stored.record.principal !== record.principal ||
-        stored.record.url !== record.url ||
-        stored.record.name !== record.name ||
-        stored.record.variant !== record.variant ||
-        stored.record.maxAgeMs !== record.maxAgeMs ||
-        canonicalJson(stored.record.arguments) !== canonicalJson(record.arguments)
-      )
-        throw internalError('Webhook provider changed subscription ownership')
-      record = stored.record
-    } catch (error) {
-      if (live) live.refreshGate = undefined
-      releaseRefresh?.()
-      throw error
-    }
-    if (live) {
-      live.abort.abort('Webhook subscription refreshed')
-      releaseRefresh?.()
-      await live.done
-      if (!activePrimed) {
-        cursor = live.cursor
-        responseCursor = cursor
-      }
-      if (live.terminal && activePrimed) {
-        activePrimed = false
-        initialResult = undefined
-        awaitInitialForSafeCursor = false
-        cursor = decodePreparedCursor(prepared)
-        responseCursor = cursor
-        responseTruncated = prepared.cursorExpired
-      }
-    }
-    if (!workers.has(record.id)) {
-      const epoch = nextWebhookLifecycleEpoch(app, options, record.id)
-      if (live?.terminal) {
-        try {
-          await live.definition.onUnsubscribe?.(record.arguments, record.id, live.context)
-        } catch {
-          // A completed terminal lifecycle does not prevent a new explicit subscription.
+  const request: WebhookSubscriptionRequest = {
+    app,
+    params,
+    options,
+    context,
+    config,
+    webhook,
+    principal,
+    prepared,
+    delivery,
+    identity
+  }
+  return withWebhookLifecycleLock(app, options, identity.id, () => subscribeWebhookLocked(request))
+}
+
+interface WebhookDeliveryInput {
+  url: string
+  secret: string
+}
+
+interface WebhookSubscriptionRequest {
+  app: AnyElysiaApp
+  params: Record<string, unknown>
+  options: NormalizedMcpPluginOptions
+  context: McpInvocationContext
+  config: NormalizedMcpEventsOptions
+  webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>
+  principal: string
+  prepared: Awaited<ReturnType<typeof prepareEventRequest>>
+  delivery: WebhookDeliveryInput
+  identity: { key: string; id: string }
+}
+
+interface WebhookSubscriptionFlow extends WebhookSubscriptionRequest {
+  existing: McpWebhookSubscriptionRecord | null
+  live?: WebhookWorkerState
+  record: McpWebhookSubscriptionRecord
+  refreshBefore: string | null
+  cursor: string | null
+  responseCursor: string | null
+  responseTruncated: boolean
+  initialResult?: McpEventPollResult
+  activePrimed: boolean
+  awaitInitialForSafeCursor: boolean
+  lifecycleSubscribed: boolean
+  releaseRefresh?: () => void
+}
+
+function parseWebhookDelivery(value: unknown): WebhookDeliveryInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw invalidParams('Webhook delivery is required')
+  const delivery = value as Record<string, unknown>
+  if (delivery.mode !== 'webhook' || typeof delivery.url !== 'string')
+    throw invalidParams('Webhook delivery is invalid')
+  try {
+    parseWebhookUrl(delivery.url)
+  } catch {
+    throw invalidParams('Webhook URL is invalid')
+  }
+  return { url: delivery.url, secret: parseWebhookSecret(delivery.secret) }
+}
+
+function parseWebhookSecret(value: unknown): string {
+  try {
+    assertWebhookSecret(value)
+    return value
+  } catch (error) {
+    throw invalidParams(error instanceof Error ? error.message : 'Webhook secret is invalid')
+  }
+}
+
+async function subscribeWebhookLocked(
+  request: WebhookSubscriptionRequest
+): Promise<Record<string, unknown>> {
+  const flow = await createWebhookSubscriptionFlow(request)
+  await verifySubscriptionEndpoint(flow)
+  await primeLiveWebhook(flow)
+  await beginWebhookRefresh(flow)
+  await storeWebhookSubscription(flow)
+  await finishWebhookRefresh(flow)
+  await ensureWebhookWorker(flow)
+  return webhookSubscriptionResult(flow)
+}
+
+async function createWebhookSubscriptionFlow(
+  request: WebhookSubscriptionRequest
+): Promise<WebhookSubscriptionFlow> {
+  const existing = await request.webhook.provider.get(request.identity.key)
+  assertWebhookSubscriptionOwner(existing, request)
+  const ttl = webhookGrant(request.params.ttlMs, request.webhook)
+  const now = new Date()
+  const refreshBefore = ttl === null ? null : new Date(now.getTime() + ttl).toISOString()
+  const live = webhookWorkers(request.app, request.options).get(request.identity.id)
+  const cursor = live?.cursor ?? decodePreparedCursor(request.prepared)
+  const record = existing
+    ? refreshWebhookSubscriptionRecord(existing, request, refreshBefore, now)
+    : newWebhookSubscriptionRecord(request, refreshBefore, now)
+  return {
+    ...request,
+    existing,
+    live,
+    record,
+    refreshBefore,
+    cursor,
+    responseCursor: cursor,
+    responseTruncated: !live && request.prepared.cursorExpired,
+    activePrimed: false,
+    awaitInitialForSafeCursor: false,
+    lifecycleSubscribed: false
+  }
+}
+
+function assertWebhookSubscriptionOwner(
+  existing: McpWebhookSubscriptionRecord | null,
+  request: WebhookSubscriptionRequest
+): void {
+  if (!existing) return
+  const valid =
+    existing.key === request.identity.key &&
+    existing.id === request.identity.id &&
+    existing.principal === request.principal &&
+    existing.url === request.delivery.url &&
+    existing.name === request.prepared.request.name &&
+    canonicalJson(existing.arguments) === canonicalJson(request.prepared.request.arguments) &&
+    existing.variant === request.prepared.variant
+  if (!valid) throw internalError('Webhook provider returned an invalid subscription owner')
+}
+
+function refreshWebhookSubscriptionRecord(
+  existing: McpWebhookSubscriptionRecord,
+  request: WebhookSubscriptionRequest,
+  refreshBefore: string | null,
+  now: Date
+): McpWebhookSubscriptionRecord {
+  const rotated =
+    existing.secret === request.delivery.secret
+      ? {}
+      : {
+          previousSecret: existing.secret,
+          previousSecretExpiresAt: Date.now() + request.webhook.secretRotationGraceMs
         }
-      }
-      let subscribed = false
-      try {
-        if (!live || live.terminal) {
-          await prepared.source.definition.onSubscribe?.(record.arguments, record.id, context)
-          subscribed = true
-          const result = await pollSource(prepared.source, prepared.request, context, options)
-          applyInitialResult(
-            result,
-            prepared.request.cursor,
-            prepared.initial,
-            prepared.cursorExpired
-          )
-        }
-      } catch (error) {
-        await webhook.provider.delete(record.key)
-        if (subscribed)
-          try {
-            await prepared.source.definition.onUnsubscribe?.(record.arguments, record.id, context)
-          } catch {
-            // Failed setup remains failed after best-effort lifecycle cleanup.
-          }
-        retireWebhookLifecycleEpoch(app, options, record.id, epoch)
-        if (error instanceof McpEventProtocolError) throw error
-        throw internalError('Event subscription setup failed')
-      }
-      const worker = startWebhookWorker(
-        app,
-        record,
-        cursor,
-        context,
-        prepared.source.definition,
-        epoch,
-        options,
-        initialResult
-      )
-      if (awaitInitialForSafeCursor) {
-        await worker.initialProcessed
-        responseCursor = worker.cursor
-      }
-    }
-    return {
-      id: record.id,
-      refreshBefore,
-      cursor: encodeEventCursor(
-        responseCursor,
-        record.name,
-        record.arguments,
-        context.authorization,
-        record.variant,
-        config.cursor
-      ),
-      truncated: responseTruncated,
-      ...(existing?.deliveryStatus ? { deliveryStatus: record.deliveryStatus } : {})
-    }
+  return {
+    ...existing,
+    maxAgeMs: request.prepared.request.maxAgeMs,
+    secret: request.delivery.secret,
+    ...rotated,
+    refreshBefore,
+    active: true,
+    updatedAt: now.toISOString(),
+    deliveryStatus: existing.deliveryStatus
+      ? { ...existing.deliveryStatus, active: true }
+      : undefined
+  }
+}
+
+function newWebhookSubscriptionRecord(
+  request: WebhookSubscriptionRequest,
+  refreshBefore: string | null,
+  now: Date
+): McpWebhookSubscriptionRecord {
+  return {
+    key: request.identity.key,
+    id: request.identity.id,
+    principal: request.principal,
+    name: request.prepared.request.name,
+    arguments: structuredClone(request.prepared.request.arguments),
+    maxAgeMs: request.prepared.request.maxAgeMs,
+    url: request.delivery.url,
+    secret: request.delivery.secret,
+    refreshBefore,
+    verified: false,
+    active: true,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    variant: request.prepared.variant
+  }
+}
+
+async function verifySubscriptionEndpoint(flow: WebhookSubscriptionFlow): Promise<void> {
+  try {
+    await verifyWebhookEndpoint(flow.record, flow.context, flow.webhook, {
+      app: flow.app,
+      options: flow.options
+    })
+  } catch (error) {
+    const reason =
+      error instanceof McpWebhookVerificationError || error instanceof McpWebhookNetworkError
+        ? error.reason
+        : 'connection_refused'
+    throw new McpEventProtocolError(-32015, 'CallbackEndpointError', { reason })
+  }
+  flow.record.verified = true
+}
+
+async function primeLiveWebhook(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (!flow.live || flow.live.terminal) return
+  const safeCursor = flow.live.cursor
+  const result = await pollSource(
+    flow.prepared.source,
+    { ...flow.prepared.request, cursor: safeCursor },
+    flow.context,
+    flow.options
+  )
+  applyWebhookInitialResult(flow, result, safeCursor, false, false)
+  flow.activePrimed = true
+}
+
+function applyWebhookInitialResult(
+  flow: WebhookSubscriptionFlow,
+  result: McpEventPollResult,
+  safeCursor: string | null,
+  initial: boolean,
+  cursorExpired: boolean
+): void {
+  if (result.terminated) throw eventError(result.terminated)
+  flow.responseTruncated = cursorExpired || (result.truncated ?? false)
+  if (initial || result.events.length === 0) {
+    flow.responseCursor = result.cursor
+    flow.cursor = result.cursor
+    flow.initialResult = undefined
+    return
+  }
+  flow.responseCursor = safeCursor
+  flow.cursor = safeCursor
+  flow.awaitInitialForSafeCursor = (result.truncated ?? false) && result.events.length > 0
+  result.truncated = false
+  flow.initialResult = result
+}
+
+async function beginWebhookRefresh(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (!flow.live) return
+  flow.live.refreshGate = new Promise<void>((resolve) => {
+    flow.releaseRefresh = resolve
   })
+  try {
+    await flow.live.persisting
+  } catch (error) {
+    flow.live.refreshGate = undefined
+    flow.releaseRefresh?.()
+    throw error
+  }
+}
+
+async function storeWebhookSubscription(flow: WebhookSubscriptionFlow): Promise<void> {
+  try {
+    const stored = await flow.webhook.provider.upsert(flow.record, {
+      maxSubscriptionsPerPrincipal: flow.webhook.maxSubscriptionsPerPrincipal
+    })
+    if ('limitExceeded' in stored)
+      throw new McpEventProtocolError(-32013, 'ResourceExhausted', {
+        limit: 'subscriptions',
+        max: flow.webhook.maxSubscriptionsPerPrincipal
+      })
+    assertStoredWebhookSubscription(stored.record, flow.record)
+    flow.record = stored.record
+  } catch (error) {
+    if (flow.live) flow.live.refreshGate = undefined
+    flow.releaseRefresh?.()
+    throw error
+  }
+}
+
+function assertStoredWebhookSubscription(
+  stored: McpWebhookSubscriptionRecord,
+  expected: McpWebhookSubscriptionRecord
+): void {
+  const valid =
+    stored.key === expected.key &&
+    stored.id === expected.id &&
+    stored.principal === expected.principal &&
+    stored.url === expected.url &&
+    stored.name === expected.name &&
+    stored.variant === expected.variant &&
+    stored.maxAgeMs === expected.maxAgeMs &&
+    canonicalJson(stored.arguments) === canonicalJson(expected.arguments)
+  if (!valid) throw internalError('Webhook provider changed subscription ownership')
+}
+
+async function finishWebhookRefresh(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (!flow.live) return
+  flow.live.abort.abort('Webhook subscription refreshed')
+  flow.releaseRefresh?.()
+  await flow.live.done
+  if (!flow.activePrimed) {
+    flow.cursor = flow.live.cursor
+    flow.responseCursor = flow.cursor
+  }
+  if (flow.live.terminal && flow.activePrimed) resetTerminatedWebhookRefresh(flow)
+}
+
+function resetTerminatedWebhookRefresh(flow: WebhookSubscriptionFlow): void {
+  flow.activePrimed = false
+  flow.initialResult = undefined
+  flow.awaitInitialForSafeCursor = false
+  flow.cursor = decodePreparedCursor(flow.prepared)
+  flow.responseCursor = flow.cursor
+  flow.responseTruncated = flow.prepared.cursorExpired
+}
+
+async function ensureWebhookWorker(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (webhookWorkers(flow.app, flow.options).has(flow.record.id)) return
+  const epoch = nextWebhookLifecycleEpoch(flow.app, flow.options, flow.record.id)
+  await unsubscribeTerminatedWebhook(flow)
+  try {
+    await initializeWebhookLifecycle(flow)
+  } catch (error) {
+    await rollbackWebhookLifecycle(flow, epoch)
+    if (error instanceof McpEventProtocolError) throw error
+    throw internalError('Event subscription setup failed')
+  }
+  const worker = startWebhookWorker(
+    flow.app,
+    flow.record,
+    flow.cursor,
+    flow.context,
+    flow.prepared.source.definition,
+    epoch,
+    flow.options,
+    flow.initialResult
+  )
+  if (flow.awaitInitialForSafeCursor) {
+    await worker.initialProcessed
+    flow.responseCursor = worker.cursor
+  }
+}
+
+async function unsubscribeTerminatedWebhook(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (!flow.live?.terminal) return
+  try {
+    await flow.live.definition.onUnsubscribe?.(
+      flow.record.arguments,
+      flow.record.id,
+      flow.live.context
+    )
+  } catch {
+    // A completed terminal lifecycle does not prevent a new explicit subscription.
+  }
+}
+
+async function initializeWebhookLifecycle(flow: WebhookSubscriptionFlow): Promise<void> {
+  if (flow.live && !flow.live.terminal) return
+  await flow.prepared.source.definition.onSubscribe?.(
+    flow.record.arguments,
+    flow.record.id,
+    flow.context
+  )
+  flow.lifecycleSubscribed = true
+  const result = await pollSource(
+    flow.prepared.source,
+    flow.prepared.request,
+    flow.context,
+    flow.options
+  )
+  applyWebhookInitialResult(
+    flow,
+    result,
+    flow.prepared.request.cursor,
+    flow.prepared.initial,
+    flow.prepared.cursorExpired
+  )
+}
+
+async function rollbackWebhookLifecycle(
+  flow: WebhookSubscriptionFlow,
+  epoch: bigint
+): Promise<void> {
+  await flow.webhook.provider.delete(flow.record.key)
+  if (flow.lifecycleSubscribed)
+    try {
+      await flow.prepared.source.definition.onUnsubscribe?.(
+        flow.record.arguments,
+        flow.record.id,
+        flow.context
+      )
+    } catch {
+      // Failed setup remains failed after best-effort lifecycle cleanup.
+    }
+  retireWebhookLifecycleEpoch(flow.app, flow.options, flow.record.id, epoch)
+}
+
+function webhookSubscriptionResult(flow: WebhookSubscriptionFlow): Record<string, unknown> {
+  return {
+    id: flow.record.id,
+    refreshBefore: flow.refreshBefore,
+    cursor: encodeEventCursor(
+      flow.responseCursor,
+      flow.record.name,
+      flow.record.arguments,
+      flow.context.authorization,
+      flow.record.variant,
+      flow.config.cursor
+    ),
+    truncated: flow.responseTruncated,
+    ...(flow.existing?.deliveryStatus ? { deliveryStatus: flow.record.deliveryStatus } : {})
+  }
 }
 
 export async function unsubscribeEventsWebhook(
@@ -649,74 +968,141 @@ export async function unsubscribeEventsWebhook(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, never>> {
-  const config = eventOptions(options)
-  const webhook = config.webhook
-  if (!webhook) throw unsupported('deliveryMode', 'webhook')
-  const principal = eventPrincipalKey(context.authorization)
-  if (!principal) throw forbidden()
-  if (
-    typeof params.name !== 'string' ||
-    !params.arguments ||
-    typeof params.arguments !== 'object' ||
-    Array.isArray(params.arguments) ||
-    !params.delivery ||
-    typeof params.delivery !== 'object' ||
-    Array.isArray(params.delivery) ||
-    typeof (params.delivery as Record<string, unknown>).url !== 'string'
+  const { config, webhook, principal } = webhookRequestEnvironment(options, context)
+  const tuple = parseWebhookUnsubscribeTuple(params)
+  const identity = deriveWebhookSubscriptionIdentity(
+    principal,
+    tuple.url,
+    tuple.name,
+    tuple.arguments,
+    config.cursor.signingKey,
+    eventVariantKey(context.meta)
   )
-    throw invalidParams('Webhook unsubscribe tuple is invalid')
-  const url = (params.delivery as Record<string, unknown>).url as string
+  const request: WebhookUnsubscribeRequest = {
+    app,
+    options,
+    context,
+    webhook,
+    principal,
+    tuple,
+    identity
+  }
+  return withWebhookLifecycleLock(app, options, identity.id, () =>
+    unsubscribeWebhookLocked(request)
+  )
+}
+
+interface WebhookUnsubscribeTuple {
+  name: string
+  arguments: Record<string, unknown>
+  url: string
+}
+
+interface WebhookUnsubscribeRequest {
+  app: AnyElysiaApp
+  options: NormalizedMcpPluginOptions
+  context: McpInvocationContext
+  webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>
+  principal: string
+  tuple: WebhookUnsubscribeTuple
+  identity: { key: string; id: string }
+}
+
+function parseWebhookUnsubscribeTuple(params: Record<string, unknown>): WebhookUnsubscribeTuple {
+  if (typeof params.name !== 'string') throw invalidParams('Webhook unsubscribe tuple is invalid')
+  const arguments_ = requiredWebhookTupleObject(params.arguments)
+  const delivery = requiredWebhookTupleObject(params.delivery)
+  const url = delivery.url
+  if (typeof url !== 'string') throw invalidParams('Webhook unsubscribe tuple is invalid')
   try {
     parseWebhookUrl(url)
   } catch {
     throw invalidParams('Webhook URL is invalid')
   }
-  const identity = deriveWebhookSubscriptionIdentity(
-    principal,
-    url,
-    params.name,
-    params.arguments as Record<string, unknown>,
-    config.cursor.signingKey,
-    eventVariantKey(context.meta)
-  )
-  return withWebhookLifecycleLock(app, options, identity.id, async () => {
-    const record = await webhook.provider.get(identity.key)
-    if (
-      !record ||
-      record.key !== identity.key ||
-      record.id !== identity.id ||
-      record.principal !== principal ||
-      record.url !== url ||
-      record.name !== params.name ||
-      record.variant !== eventVariantKey(context.meta) ||
-      canonicalJson(record.arguments) !== canonicalJson(params.arguments)
-    )
-      throw new McpEventProtocolError(-32011, 'NotFound', { kind: 'subscription' })
-    const worker = webhookWorkers(app, options).get(record.id)
-    const teardownDefinition = worker?.definition
-    const teardownContext = worker?.context ?? context
-    const retirementEpoch = nextWebhookLifecycleEpoch(app, options, record.id)
+  return {
+    name: params.name,
+    arguments: arguments_,
+    url
+  }
+}
+
+function requiredWebhookTupleObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw invalidParams('Webhook unsubscribe tuple is invalid')
+  return value as Record<string, unknown>
+}
+
+function webhookRequestEnvironment(
+  options: NormalizedMcpPluginOptions,
+  context: McpInvocationContext
+): {
+  config: NormalizedMcpEventsOptions
+  webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>
+  principal: string
+} {
+  const config = eventOptions(options)
+  const webhook = config.webhook
+  if (!webhook) throw unsupported('deliveryMode', 'webhook')
+  const principal = eventPrincipalKey(context.authorization)
+  if (!principal) throw forbidden()
+  return { config, webhook, principal }
+}
+
+async function unsubscribeWebhookLocked(
+  request: WebhookUnsubscribeRequest
+): Promise<Record<string, never>> {
+  const record = await request.webhook.provider.get(request.identity.key)
+  assertUnsubscribeRecord(record, request)
+  const worker = webhookWorkers(request.app, request.options).get(record.id)
+  const definition = worker?.definition
+  const teardownContext = worker?.context ?? request.context
+  const epoch = nextWebhookLifecycleEpoch(request.app, request.options, record.id)
+  try {
+    worker?.abort.abort('Webhook subscription removed')
+    await worker?.done
+    webhookWorkers(request.app, request.options).delete(record.id)
+    await deleteWebhookSubscription(request, record, definition, teardownContext)
+  } finally {
+    retireWebhookLifecycleEpoch(request.app, request.options, record.id, epoch)
+  }
+  return {}
+}
+
+function assertUnsubscribeRecord(
+  record: McpWebhookSubscriptionRecord | null,
+  request: WebhookUnsubscribeRequest
+): asserts record is McpWebhookSubscriptionRecord {
+  const valid =
+    !!record &&
+    record.key === request.identity.key &&
+    record.id === request.identity.id &&
+    record.principal === request.principal &&
+    record.url === request.tuple.url &&
+    record.name === request.tuple.name &&
+    record.variant === eventVariantKey(request.context.meta) &&
+    canonicalJson(record.arguments) === canonicalJson(request.tuple.arguments)
+  if (!valid) throw new McpEventProtocolError(-32011, 'NotFound', { kind: 'subscription' })
+}
+
+async function deleteWebhookSubscription(
+  request: WebhookUnsubscribeRequest,
+  record: McpWebhookSubscriptionRecord,
+  definition: McpEventDefinition | undefined,
+  context: McpInvocationContext
+): Promise<void> {
+  try {
+    await request.webhook.provider.delete(record.key)
+  } finally {
     try {
-      worker?.abort.abort('Webhook subscription removed')
-      await worker?.done
-      webhookWorkers(app, options).delete(record.id)
-      try {
-        await webhook.provider.delete(record.key)
-      } finally {
-        try {
-          const definition =
-            teardownDefinition ??
-            (await resolveEventSource(app, record.name, context, options)).definition
-          await definition.onUnsubscribe?.(record.arguments, record.id, teardownContext)
-        } catch {
-          // Removal is complete even when the event type no longer exists.
-        }
-      }
-    } finally {
-      retireWebhookLifecycleEpoch(app, options, record.id, retirementEpoch)
+      const current =
+        definition ??
+        (await resolveEventSource(request.app, record.name, request.context, request.options))
+          .definition
+      await current.onUnsubscribe?.(record.arguments, record.id, context)
+    } catch {
+      // Removal is complete even when the event type no longer exists.
     }
-    return {}
-  })
+  }
 }
 
 export function recoverWebhookSubscriptions(
@@ -727,63 +1113,110 @@ export function recoverWebhookSubscriptions(
   const webhook = config?.webhook
   if (!webhook) return
   queueMicrotask(() => {
-    void (async () => {
-      const records = await webhook.provider.list()
-      if (!records) return
-      for await (const record of records) {
-        try {
-          if (!record.verified || !record.active) continue
-          if (
-            record.maxAgeMs !== undefined &&
-            (!Number.isSafeInteger(record.maxAgeMs) || record.maxAgeMs < 0)
-          )
-            continue
-          parseWebhookUrl(record.url)
-          assertWebhookSecret(record.secret)
-          const identity = deriveWebhookSubscriptionIdentity(
-            record.principal,
-            record.url,
-            record.name,
-            record.arguments,
-            config.cursor.signingKey,
-            record.variant
-          )
-          if (identity.key !== record.key || identity.id !== record.id) continue
-          await withWebhookLifecycleLock(app, options, record.id, async () => {
-            const current = await webhook.provider.get(record.key)
-            if (!current?.verified || !current.active) return
-            if (
-              current.key !== identity.key ||
-              current.id !== identity.id ||
-              current.principal !== record.principal ||
-              current.variant !== record.variant
-            )
-              return
-            if (webhookWorkers(app, options).has(current.id)) return
-            const authorization = await webhook.provider.authorizeDelivery(current)
-            if (!authorization || eventPrincipalKey(authorization) !== current.principal) return
-            const context: McpInvocationContext = {
-              request: new Request('https://localhost/mcp'),
-              protocolVersion: LEGACY_PROTOCOL_VERSION,
-              authorization,
-              meta: current.variant
-                ? { 'io.modelcontextprotocol/server-variant': current.variant }
-                : undefined
-            }
-            const source = await resolveEventSource(app, current.name, context, options)
-            await authorizeEvent(source.definition, current.arguments, context)
-            await source.definition.onSubscribe?.(current.arguments, current.id, context)
-            const epoch = nextWebhookLifecycleEpoch(app, options, current.id)
-            startWebhookWorker(app, current, null, context, source.definition, epoch, options)
-          })
-        } catch {
-          // One corrupt or unauthorized durable record must not block recovery of others.
-        }
-      }
-    })().catch(() => {
+    void recoverDurableWebhookSubscriptions(app, options, config, webhook).catch(() => {
       // Recovery failures remain isolated from plugin installation.
     })
   })
+}
+
+async function recoverDurableWebhookSubscriptions(
+  app: AnyElysiaApp,
+  options: NormalizedMcpPluginOptions,
+  config: NormalizedMcpEventsOptions,
+  webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>
+): Promise<void> {
+  const records = await webhook.provider.list()
+  if (!records) return
+  for await (const record of records)
+    await recoverDurableWebhookRecord(app, options, config, record)
+}
+
+async function recoverDurableWebhookRecord(
+  app: AnyElysiaApp,
+  options: NormalizedMcpPluginOptions,
+  config: NormalizedMcpEventsOptions,
+  record: McpWebhookSubscriptionRecord
+): Promise<void> {
+  try {
+    const identity = validateRecoveredWebhookRecord(record, config)
+    if (!identity) return
+    await withWebhookLifecycleLock(app, options, record.id, () =>
+      recoverWebhookLocked(app, options, record, identity)
+    )
+  } catch {
+    // One corrupt or unauthorized durable record must not block recovery of others.
+  }
+}
+
+function validateRecoveredWebhookRecord(
+  record: McpWebhookSubscriptionRecord,
+  config: NormalizedMcpEventsOptions
+): { key: string; id: string } | null {
+  if (!record.verified || !record.active) return null
+  if (
+    record.maxAgeMs !== undefined &&
+    (!Number.isSafeInteger(record.maxAgeMs) || record.maxAgeMs < 0)
+  )
+    return null
+  parseWebhookUrl(record.url)
+  assertWebhookSecret(record.secret)
+  const identity = deriveWebhookSubscriptionIdentity(
+    record.principal,
+    record.url,
+    record.name,
+    record.arguments,
+    config.cursor.signingKey,
+    record.variant
+  )
+  return identity.key === record.key && identity.id === record.id ? identity : null
+}
+
+async function recoverWebhookLocked(
+  app: AnyElysiaApp,
+  options: NormalizedMcpPluginOptions,
+  record: McpWebhookSubscriptionRecord,
+  identity: { key: string; id: string }
+): Promise<void> {
+  const webhook = eventOptions(options).webhook
+  if (!webhook) return
+  const current = await webhook.provider.get(record.key)
+  if (!validCurrentRecoveryRecord(current, record, identity)) return
+  if (webhookWorkers(app, options).has(current.id)) return
+  const authorization = await webhook.provider.authorizeDelivery(current)
+  if (!authorization || eventPrincipalKey(authorization) !== current.principal) return
+  const context = recoveredWebhookContext(current, authorization)
+  const source = await resolveEventSource(app, current.name, context, options)
+  await authorizeEvent(source.definition, current.arguments, context)
+  await source.definition.onSubscribe?.(current.arguments, current.id, context)
+  const epoch = nextWebhookLifecycleEpoch(app, options, current.id)
+  startWebhookWorker(app, current, null, context, source.definition, epoch, options)
+}
+
+function validCurrentRecoveryRecord(
+  current: McpWebhookSubscriptionRecord | null,
+  original: McpWebhookSubscriptionRecord,
+  identity: { key: string; id: string }
+): current is McpWebhookSubscriptionRecord {
+  return (
+    !!current?.verified &&
+    current.active &&
+    current.key === identity.key &&
+    current.id === identity.id &&
+    current.principal === original.principal &&
+    current.variant === original.variant
+  )
+}
+
+function recoveredWebhookContext(
+  record: McpWebhookSubscriptionRecord,
+  authorization: NonNullable<McpInvocationContext['authorization']>
+): McpInvocationContext {
+  return {
+    request: new Request('https://localhost/mcp'),
+    protocolVersion: LEGACY_PROTOCOL_VERSION,
+    authorization,
+    meta: record.variant ? { 'io.modelcontextprotocol/server-variant': record.variant } : undefined
+  }
 }
 
 function startWebhookWorker(
@@ -804,7 +1237,7 @@ function startWebhookWorker(
   const abort = new AbortController()
   let resolveInitial = () => {}
   let rejectInitial = (_error: unknown) => {}
-  let initialSettled = preparedInitialResult === undefined
+  const initialSettled = preparedInitialResult === undefined
   const initialProcessed = initialSettled
     ? Promise.resolve()
     : new Promise<void>((resolve, reject) => {
@@ -825,236 +1258,380 @@ function startWebhookWorker(
     terminal: false
   }
   workers.set(initialRecord.id, state)
-  state.done = (async () => {
-    let record = initialRecord
-    let initializing = initialCursor === null && !preparedInitialResult
-    let initialResult = preparedInitialResult
-    let originalDescriptor: McpEventDescriptor | undefined
-    let terminalCleanup = false
-    try {
-      while (!abort.signal.aborted) {
-        if (record.refreshBefore !== null && Date.parse(record.refreshBefore) <= Date.now()) {
-          terminalCleanup = true
-          state.terminal = true
-          break
-        }
-        const authorization = await webhook.provider.authorizeDelivery(record)
-        if (!authorization || eventPrincipalKey(authorization) !== record.principal) {
-          await terminateWebhook(record, forbiddenError(), webhook, abort.signal)
-          terminalCleanup = true
-          state.terminal = true
-          break
-        }
-        const context: McpInvocationContext = {
-          ...state.context,
-          signal: abort.signal,
-          authorization,
-          meta: record.variant
-            ? { ...state.context.meta, 'io.modelcontextprotocol/server-variant': record.variant }
-            : state.context.meta
-        }
-        let source: EventSource
-        try {
-          source = await resolveEventSource(app, record.name, context, options)
-          await authorizeEvent(source.definition, record.arguments, context)
-        } catch (error) {
-          await terminateWebhook(record, terminationForResolution(error), webhook, abort.signal)
-          terminalCleanup = true
-          state.terminal = true
-          break
-        }
-        const currentDescriptor = eventDescriptor(source.definition)
-        const schemaChange = originalDescriptor
-          ? incompatibleEventSchema(originalDescriptor, currentDescriptor)
-          : null
-        if (
-          originalDescriptor &&
-          (originalDescriptor.delivery.some((mode) => !currentDescriptor.delivery.includes(mode)) ||
-            schemaChange)
-        ) {
-          await terminateWebhook(
-            record,
-            {
-              code: -32014,
-              message: 'Unsupported',
-              data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
-            },
-            webhook,
-            abort.signal
-          )
-          terminalCleanup = true
-          state.terminal = true
-          break
-        }
-        originalDescriptor ??= currentDescriptor
-        state.definition = source.definition
-        state.context = { ...context, signal: undefined }
-        let processingPreparedResult = false
-        try {
-          processingPreparedResult = initialResult !== undefined
-          const result =
-            initialResult ??
-            (await pollSource(
-              source,
-              {
-                name: record.name,
-                arguments: record.arguments,
-                cursor: state.cursor,
-                maxAgeMs: Math.min(record.maxAgeMs ?? config.maxAgeMs, config.maxAgeMs),
-                maxEvents: config.maxEvents
-              },
-              context,
-              options
-            ))
-          initialResult = undefined
-          if (result.terminated) {
-            if (processingPreparedResult && !initialSettled) {
-              initialSettled = true
-              rejectInitial(eventError(result.terminated))
-            }
-            await terminateWebhook(record, result.terminated, webhook, abort.signal)
-            terminalCleanup = true
-            state.terminal = true
-            break
-          }
-          if (initializing) {
-            result.events = []
-            result.hasMore = false
-            result.truncated = false
-            initializing = false
-          }
-          const delayedGap = (result.truncated ?? false) && result.events.length > 0
-          if (result.truncated && !delayedGap) {
-            const fresh = encodeEventCursor(
-              result.cursor,
-              record.name,
-              record.arguments,
-              authorization,
-              record.variant,
-              config.cursor
-            )
-            await deliverWebhook(
-              record,
-              { type: 'gap', cursor: fresh },
-              webhookControlMessageId('gap'),
-              webhook,
-              abort.signal
-            )
-            state.cursor = result.cursor
-          }
-          for (const occurrence of result.events) {
-            if (result.cursor !== null && occurrence.cursor == null)
-              throw internalError('Replayable webhook events require per-event cursors')
-            const safeCursor = encodeEventCursor(
-              state.cursor,
-              record.name,
-              record.arguments,
-              authorization,
-              record.variant,
-              config.cursor
-            )
-            const delivery = await deliverWebhook(
-              record,
-              { ...occurrence, cursor: safeCursor },
-              occurrence.eventId,
-              webhook,
-              abort.signal,
-              async () => {
-                const currentAuthorization = await webhook.provider.authorizeDelivery(record)
-                if (
-                  !currentAuthorization ||
-                  eventPrincipalKey(currentAuthorization) !== record.principal
-                )
-                  return false
-                return isEventAuthorizedForDelivery(source.definition, record.arguments, {
-                  ...context,
-                  authorization: currentAuthorization
-                })
-              }
-            )
-            state.cursor = occurrence.cursor ?? null
-            record = updateDeliveryStatus(record, delivery.lastError)
-          }
-          state.cursor = result.cursor
-          if (delayedGap) {
-            const fresh = encodeEventCursor(
-              state.cursor,
-              record.name,
-              record.arguments,
-              authorization,
-              record.variant,
-              config.cursor
-            )
-            await deliverWebhook(
-              record,
-              { type: 'gap', cursor: fresh },
-              webhookControlMessageId('gap'),
-              webhook,
-              abort.signal
-            )
-          }
-          if (processingPreparedResult && !initialSettled) {
-            initialSettled = true
-            resolveInitial()
-          }
-          if (abort.signal.aborted) break
-          await state.refreshGate
-          if (abort.signal.aborted) break
-          const persisting = persistWebhookRecord(record, webhook)
-          state.persisting = persisting
-          try {
-            await persisting
-          } finally {
-            if (state.persisting === persisting) state.persisting = undefined
-          }
-        } catch (error) {
-          if (processingPreparedResult && !initialSettled) {
-            initialSettled = true
-            rejectInitial(error)
-          }
-          if (abort.signal.aborted) break
-          if (error instanceof McpWebhookDeliveryRevokedError) {
-            await terminateWebhook(record, forbiddenError(), webhook, abort.signal)
-            terminalCleanup = true
-            state.terminal = true
-            break
-          }
-          if (error instanceof McpEventProtocolError && error.code === -32603) {
-            await terminateWebhook(
-              record,
-              { code: -32603, message: 'UpstreamError' },
-              webhook,
-              abort.signal
-            )
-            terminalCleanup = true
-            state.terminal = true
-            break
-          }
-        }
-        await abortableDelay(config.pollIntervalMs, abort.signal)
-      }
-    } catch {
-      if (!initialSettled) {
-        initialSettled = true
-        rejectInitial(internalError('UpstreamError'))
-      }
-      if (!abort.signal.aborted) {
-        terminalCleanup = true
-        state.terminal = true
-      }
-    } finally {
-      if (!initialSettled) {
-        initialSettled = true
-        rejectInitial(internalError('UpstreamError'))
-      }
-      if (workers.get(record.id)?.abort === abort) workers.delete(record.id)
-      if (terminalCleanup)
-        scheduleWebhookTerminalCleanup(app, options, record, state, webhook).catch(() => {
-          // Terminal cleanup failures remain isolated from request processing.
-        })
-    }
-  })()
+  const worker: WebhookWorkerLoop = {
+    app,
+    options,
+    config,
+    webhook,
+    workers,
+    state,
+    record: initialRecord,
+    initializing: initialCursor === null && !preparedInitialResult,
+    initialResult: preparedInitialResult,
+    initialSettled,
+    resolveInitial,
+    rejectInitial,
+    terminalCleanup: false
+  }
+  state.done = runWebhookWorker(worker)
   return state
+}
+
+interface WebhookWorkerLoop {
+  app: AnyElysiaApp
+  options: NormalizedMcpPluginOptions
+  config: NormalizedMcpEventsOptions
+  webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>
+  workers: Map<string, WebhookWorkerState>
+  state: WebhookWorkerState
+  record: McpWebhookSubscriptionRecord
+  initializing: boolean
+  initialResult?: McpEventPollResult
+  initialSettled: boolean
+  resolveInitial: () => void
+  rejectInitial: (error: unknown) => void
+  originalDescriptor?: McpEventDescriptor
+  terminalCleanup: boolean
+}
+
+async function runWebhookWorker(worker: WebhookWorkerLoop): Promise<void> {
+  try {
+    while (!worker.state.abort.signal.aborted) {
+      const cycle = await runWebhookWorkerCycle(worker)
+      if (cycle === 'terminal') break
+      await abortableDelay(worker.config.pollIntervalMs, worker.state.abort.signal)
+    }
+  } catch {
+    rejectUnsettledWebhookInitial(worker, internalError('UpstreamError'))
+    if (!worker.state.abort.signal.aborted) markWebhookWorkerTerminal(worker)
+  } finally {
+    rejectUnsettledWebhookInitial(worker, internalError('UpstreamError'))
+    if (worker.workers.get(worker.record.id)?.abort === worker.state.abort)
+      worker.workers.delete(worker.record.id)
+    if (worker.terminalCleanup) scheduleTerminalWebhookCleanup(worker)
+  }
+}
+
+async function runWebhookWorkerCycle(worker: WebhookWorkerLoop): Promise<'continue' | 'terminal'> {
+  if (webhookRecordExpired(worker.record)) {
+    markWebhookWorkerTerminal(worker)
+    return 'terminal'
+  }
+  const context = await authorizeWebhookWorkerCycle(worker)
+  if (!context) return 'terminal'
+  const source = await resolveWebhookWorkerSource(worker, context)
+  if (!source) return 'terminal'
+  if (!(await acceptWebhookWorkerDescriptor(worker, source))) return 'terminal'
+  worker.state.definition = source.definition
+  worker.state.context = { ...context, signal: undefined }
+  return processWebhookWorkerBatchSafely(worker, source, context)
+}
+
+function webhookRecordExpired(record: McpWebhookSubscriptionRecord): boolean {
+  return record.refreshBefore !== null && Date.parse(record.refreshBefore) <= Date.now()
+}
+
+async function authorizeWebhookWorkerCycle(
+  worker: WebhookWorkerLoop
+): Promise<McpInvocationContext | null> {
+  const authorization = await worker.webhook.provider.authorizeDelivery(worker.record)
+  if (!authorization || eventPrincipalKey(authorization) !== worker.record.principal) {
+    await terminateWebhook(
+      worker.record,
+      forbiddenError(),
+      worker.webhook,
+      worker.state.abort.signal
+    )
+    markWebhookWorkerTerminal(worker)
+    return null
+  }
+  return {
+    ...worker.state.context,
+    signal: worker.state.abort.signal,
+    authorization,
+    meta: worker.record.variant
+      ? {
+          ...worker.state.context.meta,
+          'io.modelcontextprotocol/server-variant': worker.record.variant
+        }
+      : worker.state.context.meta
+  }
+}
+
+async function resolveWebhookWorkerSource(
+  worker: WebhookWorkerLoop,
+  context: McpInvocationContext
+): Promise<EventSource | null> {
+  try {
+    const source = await resolveEventSource(worker.app, worker.record.name, context, worker.options)
+    await authorizeEvent(source.definition, worker.record.arguments, context)
+    return source
+  } catch (error) {
+    await terminateWebhook(
+      worker.record,
+      terminationForResolution(error),
+      worker.webhook,
+      worker.state.abort.signal
+    )
+    markWebhookWorkerTerminal(worker)
+    return null
+  }
+}
+
+async function acceptWebhookWorkerDescriptor(
+  worker: WebhookWorkerLoop,
+  source: EventSource
+): Promise<boolean> {
+  const current = eventDescriptor(source.definition)
+  if (!worker.originalDescriptor) {
+    worker.originalDescriptor = current
+    return true
+  }
+  const schemaChange = incompatibleEventSchema(worker.originalDescriptor, current)
+  const deliveryRemoved = worker.originalDescriptor.delivery.some(
+    (mode) => !current.delivery.includes(mode)
+  )
+  if (!schemaChange && !deliveryRemoved) return true
+  await terminateWebhook(
+    worker.record,
+    {
+      code: -32014,
+      message: 'Unsupported',
+      data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
+    },
+    worker.webhook,
+    worker.state.abort.signal
+  )
+  markWebhookWorkerTerminal(worker)
+  return false
+}
+
+async function processWebhookWorkerBatchSafely(
+  worker: WebhookWorkerLoop,
+  source: EventSource,
+  context: McpInvocationContext
+): Promise<'continue' | 'terminal'> {
+  const processingPreparedResult = worker.initialResult !== undefined
+  try {
+    const result = await webhookWorkerPollResult(worker, source, context)
+    if (result.terminated) {
+      rejectPreparedWebhookInitial(worker, processingPreparedResult, eventError(result.terminated))
+      await terminateWebhook(
+        worker.record,
+        result.terminated,
+        worker.webhook,
+        worker.state.abort.signal
+      )
+      markWebhookWorkerTerminal(worker)
+      return 'terminal'
+    }
+    await processWebhookPollResult(worker, source, context, result)
+    resolvePreparedWebhookInitial(worker, processingPreparedResult)
+    if (worker.state.abort.signal.aborted) return 'terminal'
+    await worker.state.refreshGate
+    if (worker.state.abort.signal.aborted) return 'terminal'
+    await persistWebhookWorkerRecord(worker)
+    return 'continue'
+  } catch (error) {
+    rejectPreparedWebhookInitial(worker, processingPreparedResult, error)
+    return handleWebhookWorkerBatchError(worker, error)
+  }
+}
+
+async function webhookWorkerPollResult(
+  worker: WebhookWorkerLoop,
+  source: EventSource,
+  context: McpInvocationContext
+): Promise<McpEventPollResult> {
+  const prepared = worker.initialResult
+  worker.initialResult = undefined
+  return (
+    prepared ??
+    pollSource(
+      source,
+      {
+        name: worker.record.name,
+        arguments: worker.record.arguments,
+        cursor: worker.state.cursor,
+        maxAgeMs: Math.min(
+          worker.record.maxAgeMs ?? worker.config.maxAgeMs,
+          worker.config.maxAgeMs
+        ),
+        maxEvents: worker.config.maxEvents
+      },
+      context,
+      worker.options
+    )
+  )
+}
+
+async function processWebhookPollResult(
+  worker: WebhookWorkerLoop,
+  source: EventSource,
+  context: McpInvocationContext,
+  result: McpEventPollResult
+): Promise<void> {
+  suppressInitialWebhookReplay(worker, result)
+  const delayedGap = (result.truncated ?? false) && result.events.length > 0
+  if (result.truncated && !delayedGap) {
+    await deliverWebhookGap(worker, result.cursor, context)
+    worker.state.cursor = result.cursor
+  }
+  for (const occurrence of result.events)
+    await deliverWebhookOccurrence(worker, source, context, occurrence, result.cursor !== null)
+  worker.state.cursor = result.cursor
+  if (delayedGap) await deliverWebhookGap(worker, worker.state.cursor, context)
+}
+
+function suppressInitialWebhookReplay(worker: WebhookWorkerLoop, result: McpEventPollResult): void {
+  if (!worker.initializing) return
+  result.events = []
+  result.hasMore = false
+  result.truncated = false
+  worker.initializing = false
+}
+
+async function deliverWebhookGap(
+  worker: WebhookWorkerLoop,
+  cursor: string | null,
+  context: McpInvocationContext
+): Promise<void> {
+  const fresh = encodeEventCursor(
+    cursor,
+    worker.record.name,
+    worker.record.arguments,
+    context.authorization,
+    worker.record.variant,
+    worker.config.cursor
+  )
+  await deliverWebhook(
+    worker.record,
+    { type: 'gap', cursor: fresh },
+    webhookControlMessageId('gap'),
+    worker.webhook,
+    worker.state.abort.signal
+  )
+}
+
+async function deliverWebhookOccurrence(
+  worker: WebhookWorkerLoop,
+  source: EventSource,
+  context: McpInvocationContext,
+  occurrence: McpEventOccurrence,
+  replayable: boolean
+): Promise<void> {
+  if (replayable && occurrence.cursor == null)
+    throw internalError('Replayable webhook events require per-event cursors')
+  const safeCursor = encodeEventCursor(
+    worker.state.cursor,
+    worker.record.name,
+    worker.record.arguments,
+    context.authorization,
+    worker.record.variant,
+    worker.config.cursor
+  )
+  const delivery = await deliverWebhook(
+    worker.record,
+    { ...occurrence, cursor: safeCursor },
+    occurrence.eventId,
+    worker.webhook,
+    worker.state.abort.signal,
+    () => authorizeWebhookDeliveryAttempt(worker, source, context)
+  )
+  worker.state.cursor = occurrence.cursor ?? null
+  worker.record = updateDeliveryStatus(worker.record, delivery.lastError)
+}
+
+async function authorizeWebhookDeliveryAttempt(
+  worker: WebhookWorkerLoop,
+  source: EventSource,
+  context: McpInvocationContext
+): Promise<boolean> {
+  const authorization = await worker.webhook.provider.authorizeDelivery(worker.record)
+  if (!authorization || eventPrincipalKey(authorization) !== worker.record.principal) return false
+  return isEventAuthorizedForDelivery(source.definition, worker.record.arguments, {
+    ...context,
+    authorization
+  })
+}
+
+async function persistWebhookWorkerRecord(worker: WebhookWorkerLoop): Promise<void> {
+  const persisting = persistWebhookRecord(worker.record, worker.webhook)
+  worker.state.persisting = persisting
+  try {
+    await persisting
+  } finally {
+    if (worker.state.persisting === persisting) worker.state.persisting = undefined
+  }
+}
+
+async function handleWebhookWorkerBatchError(
+  worker: WebhookWorkerLoop,
+  error: unknown
+): Promise<'continue' | 'terminal'> {
+  if (worker.state.abort.signal.aborted) return 'terminal'
+  if (error instanceof McpWebhookDeliveryRevokedError) {
+    await terminateWebhook(
+      worker.record,
+      forbiddenError(),
+      worker.webhook,
+      worker.state.abort.signal
+    )
+    markWebhookWorkerTerminal(worker)
+    return 'terminal'
+  }
+  if (error instanceof McpEventProtocolError && error.code === -32603) {
+    await terminateWebhook(
+      worker.record,
+      { code: -32603, message: 'UpstreamError' },
+      worker.webhook,
+      worker.state.abort.signal
+    )
+    markWebhookWorkerTerminal(worker)
+    return 'terminal'
+  }
+  return 'continue'
+}
+
+function resolvePreparedWebhookInitial(
+  worker: WebhookWorkerLoop,
+  processingPreparedResult: boolean
+): void {
+  if (!processingPreparedResult || worker.initialSettled) return
+  worker.initialSettled = true
+  worker.resolveInitial()
+}
+
+function rejectPreparedWebhookInitial(
+  worker: WebhookWorkerLoop,
+  processingPreparedResult: boolean,
+  error: unknown
+): void {
+  if (!processingPreparedResult) return
+  rejectUnsettledWebhookInitial(worker, error)
+}
+
+function rejectUnsettledWebhookInitial(worker: WebhookWorkerLoop, error: unknown): void {
+  if (worker.initialSettled) return
+  worker.initialSettled = true
+  worker.rejectInitial(error)
+}
+
+function markWebhookWorkerTerminal(worker: WebhookWorkerLoop): void {
+  worker.terminalCleanup = true
+  worker.state.terminal = true
+}
+
+function scheduleTerminalWebhookCleanup(worker: WebhookWorkerLoop): void {
+  scheduleWebhookTerminalCleanup(
+    worker.app,
+    worker.options,
+    worker.record,
+    worker.state,
+    worker.webhook
+  ).catch(() => {
+    // Terminal cleanup failures remain isolated from request processing.
+  })
 }
 
 async function isEventAuthorizedForDelivery(
@@ -1182,58 +1759,82 @@ async function prepareEventRequest(
 }> {
   const config = eventOptions(options)
   await authorizeExtension(config, context)
+  const parsed = parseEventRequestParameters(params, config)
+  const source = await resolveEventSource(app, parsed.name, context, options)
+  if (!source.definition.delivery.includes(mode)) throw unsupported('deliveryMode', mode)
+  try {
+    assertEventArguments(source.definition, parsed.arguments)
+  } catch (error) {
+    throw invalidParams(error instanceof Error ? error.message : 'Invalid event arguments')
+  }
+  await authorizeEvent(source.definition, parsed.arguments, context)
+  const variant = eventVariantKey(context.meta)
+  const decoded = decodeRequestCursor(params.cursor, parsed, context, variant, config)
+  return {
+    source,
+    request: {
+      name: parsed.name,
+      arguments: structuredClone(parsed.arguments),
+      cursor: decoded.cursor,
+      maxAgeMs: parsed.maxAgeMs,
+      maxEvents: parsed.maxEvents
+    },
+    initial: params.cursor === undefined || params.cursor === null || decoded.expired,
+    cursorExpired: decoded.expired,
+    variant
+  }
+}
+
+interface ParsedEventRequest {
+  name: string
+  arguments: Record<string, unknown>
+  maxEvents: number
+  maxAgeMs: number
+}
+
+function parseEventRequestParameters(
+  params: Record<string, unknown>,
+  config: NormalizedMcpEventsOptions
+): ParsedEventRequest {
   if (typeof params.name !== 'string' || params.name.length === 0)
     throw invalidParams('Event name is required')
   const arguments_ = params.arguments ?? {}
   if (!arguments_ || typeof arguments_ !== 'object' || Array.isArray(arguments_))
     throw invalidParams('Event arguments must be an object')
-  const maxEvents = params.maxEvents ?? config.maxEvents
-  const maxAgeMs = params.maxAgeMs ?? config.maxAgeMs
-  if (
-    !Number.isSafeInteger(maxEvents) ||
-    Number(maxEvents) <= 0 ||
-    Number(maxEvents) > config.maxEvents
-  )
-    throw invalidParams('Event maxEvents is invalid')
-  if (!Number.isSafeInteger(maxAgeMs) || Number(maxAgeMs) < 0 || Number(maxAgeMs) > config.maxAgeMs)
-    throw invalidParams('Event maxAgeMs is invalid')
-  const source = await resolveEventSource(app, params.name, context, options)
-  if (!source.definition.delivery.includes(mode)) throw unsupported('deliveryMode', mode)
-  try {
-    assertEventArguments(source.definition, arguments_)
-  } catch (error) {
-    throw invalidParams(error instanceof Error ? error.message : 'Invalid event arguments')
+  return {
+    name: params.name,
+    arguments: arguments_ as Record<string, unknown>,
+    maxEvents: boundedInteger(params.maxEvents, config.maxEvents, 1, 'Event maxEvents is invalid'),
+    maxAgeMs: boundedInteger(params.maxAgeMs, config.maxAgeMs, 0, 'Event maxAgeMs is invalid')
   }
-  await authorizeEvent(source.definition, arguments_, context)
-  const variant = eventVariantKey(context.meta)
-  let cursor: string | null
-  let cursorExpired = false
+}
+
+function boundedInteger(value: unknown, maximum: number, minimum: number, message: string): number {
+  const selected = value ?? maximum
+  if (!Number.isSafeInteger(selected) || Number(selected) < minimum || Number(selected) > maximum)
+    throw invalidParams(message)
+  return Number(selected)
+}
+
+function decodeRequestCursor(
+  value: unknown,
+  request: ParsedEventRequest,
+  context: McpInvocationContext,
+  variant: string | undefined,
+  config: NormalizedMcpEventsOptions
+): { cursor: string | null; expired: boolean } {
   try {
     const decoded = decodeEventCursor(
-      params.cursor,
-      params.name,
-      arguments_,
+      value,
+      request.name,
+      request.arguments,
       context.authorization,
       variant,
       config.cursor
     )
-    cursor = decoded.expired ? null : decoded.cursor
-    cursorExpired = decoded.expired
+    return { cursor: decoded.expired ? null : decoded.cursor, expired: decoded.expired }
   } catch {
     throw invalidParams('Invalid event cursor')
-  }
-  return {
-    source,
-    request: {
-      name: params.name,
-      arguments: structuredClone(arguments_),
-      cursor,
-      maxAgeMs: Number(maxAgeMs),
-      maxEvents: Number(maxEvents)
-    } as McpEventPollRequest,
-    initial: params.cursor === undefined || params.cursor === null || cursorExpired,
-    cursorExpired,
-    variant
   }
 }
 
@@ -1356,90 +1957,6 @@ function configuredEventDescriptor(
   return descriptor.delivery.length > 0 ? descriptor : undefined
 }
 
-function eventRuntimeState(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
-): EventRuntimeState {
-  let byOptions = EVENT_RUNTIME_STATES.get(app)
-  if (!byOptions) {
-    byOptions = new WeakMap()
-    EVENT_RUNTIME_STATES.set(app, byOptions)
-  }
-  let state = byOptions.get(options)
-  if (!state) {
-    state = {
-      workers: new Map(),
-      lifecycleLocks: new Map(),
-      lifecycleEpochs: new Map(),
-      lifecycleCounter: 0n,
-      pollLeases: new Map()
-    }
-    byOptions.set(options, state)
-  }
-  return state
-}
-
-function webhookWorkers(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
-): Map<string, WebhookWorkerState> {
-  return eventRuntimeState(app, options).workers
-}
-
-async function withWebhookLifecycleLock<T>(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  id: string,
-  operation: () => Promise<T>
-): Promise<T> {
-  const locks = eventRuntimeState(app, options).lifecycleLocks
-  const previous = locks.get(id) ?? Promise.resolve()
-  let release = () => {}
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  const tail = previous.catch(() => {}).then(() => gate)
-  locks.set(id, tail)
-  await previous.catch(() => {})
-  try {
-    return await operation()
-  } finally {
-    release()
-    if (locks.get(id) === tail) locks.delete(id)
-  }
-}
-
-function nextWebhookLifecycleEpoch(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  id: string
-): bigint {
-  const state = eventRuntimeState(app, options)
-  const epoch = state.lifecycleCounter + 1n
-  state.lifecycleCounter = epoch
-  state.lifecycleEpochs.set(id, epoch)
-  return epoch
-}
-
-function webhookLifecycleEpoch(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  id: string
-): bigint {
-  return eventRuntimeState(app, options).lifecycleEpochs.get(id) ?? 0n
-}
-
-function retireWebhookLifecycleEpoch(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  id: string,
-  epoch: bigint
-): void {
-  const state = eventRuntimeState(app, options)
-  if (state.lifecycleEpochs.get(id) !== epoch || state.workers.has(id)) return
-  state.lifecycleEpochs.delete(id)
-}
-
 async function scheduleWebhookTerminalCleanup(
   app: AnyElysiaApp,
   options: NormalizedMcpPluginOptions,
@@ -1516,22 +2033,4 @@ function internalError(message: string): McpEventProtocolError {
 
 function eventError(error: McpEventError): McpEventProtocolError {
   return new McpEventProtocolError(error.code, error.message, error.data)
-}
-
-function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason)
-      return
-    }
-    let timer: ReturnType<typeof setTimeout>
-    const finish = (callback: () => void) => {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', onAbort)
-      callback()
-    }
-    const onAbort = () => finish(() => reject(signal.reason))
-    timer = setTimeout(() => finish(resolve), ms)
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
 }

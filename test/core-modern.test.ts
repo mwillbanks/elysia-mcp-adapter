@@ -9,6 +9,7 @@ import {
   type McpServerNotification,
   mcp
 } from '../src/index.js'
+import { within } from './events-test-helpers.js'
 import coreSchema from './fixtures/core-2026-07-28.schema.json' with { type: 'json' }
 import { modernRpc } from './helpers.js'
 
@@ -324,24 +325,31 @@ describe('modern core MRTR', () => {
     )
     expect(bobPage.body.error.code).toBe(-32602)
 
-    const expiring = new Elysia()
-      .use(mcp({ allowedRoutes: [], core: { continuation: { signingKey, ttlMs: 1 } } }))
-      .mcpTool('expires', (_input, context) =>
-        context.requestState
-          ? 'unexpected'
-          : { resultType: 'input_required' as const, requestState: 'short' }
-      )
-    const expiringFirst = await modernRpc(expiring, 'tools/call', {
-      name: 'expires',
-      arguments: {}
-    })
-    await Bun.sleep(5)
-    const expired = await modernRpc(expiring, 'tools/call', {
-      name: 'expires',
-      arguments: {},
-      requestState: expiringFirst.body.result.requestState
-    })
-    expect(expired.body.error.code).toBe(-32602)
+    const originalNow = Date.now
+    let now = originalNow()
+    Date.now = () => now
+    try {
+      const expiring = new Elysia()
+        .use(mcp({ allowedRoutes: [], core: { continuation: { signingKey, ttlMs: 1 } } }))
+        .mcpTool('expires', (_input, context) =>
+          context.requestState
+            ? 'unexpected'
+            : { resultType: 'input_required' as const, requestState: 'short' }
+        )
+      const expiringFirst = await modernRpc(expiring, 'tools/call', {
+        name: 'expires',
+        arguments: {}
+      })
+      now += 2
+      const expired = await modernRpc(expiring, 'tools/call', {
+        name: 'expires',
+        arguments: {},
+        requestState: expiringFirst.body.result.requestState
+      })
+      expect(expired.body.error.code).toBe(-32602)
+    } finally {
+      Date.now = originalNow
+    }
   })
 
   test('supports sampling and roots retries while renewing missing inputs', async () => {
@@ -1066,6 +1074,10 @@ describe('modern core utilities', () => {
 
   test('streams monotonic progress and propagates stream cancellation', async () => {
     let aborted = false
+    let resolveAbort: (() => void) | undefined
+    const abortObserved = new Promise<void>((resolve) => {
+      resolveAbort = resolve
+    })
     const app = new Elysia()
       .use(mcp({ allowedRoutes: [] }))
       .mcpTool('work', async (_input, context) => {
@@ -1076,6 +1088,7 @@ describe('modern core utilities', () => {
             'abort',
             () => {
               aborted = true
+              resolveAbort?.()
               clearTimeout(timer)
               resolve()
             },
@@ -1091,23 +1104,36 @@ describe('modern core utilities', () => {
     expect(completedText).toContain('notifications/progress')
     expect(completedText).toContain('"resultType":"complete"')
 
-    const response = await progressRequest(app, 'cancel-me')
+    const cancelAbort = new AbortController()
+    const response = await progressRequest(app, 'cancel-me', cancelAbort.signal)
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Expected SSE body')
-    await reader.read()
-    await reader.cancel()
-    await Bun.sleep(0)
-    expect(aborted).toBe(true)
+    try {
+      await within(reader.read(), 'initial progress event')
+      await within(reader.cancel(), 'progress reader cancellation')
+      await within(abortObserved, 'progress handler cancellation')
+      expect(aborted).toBe(true)
+    } finally {
+      cancelAbort.abort('Test cleanup')
+      await within(reader.cancel(), 'progress reader cleanup').catch(() => undefined)
+    }
 
     aborted = false
     const incomingAbort = new AbortController()
     const incomingResponse = await progressRequest(app, 'incoming-cancel', incomingAbort.signal)
     const incomingReader = incomingResponse.body?.getReader()
     if (!incomingReader) throw new Error('Expected SSE body')
-    await incomingReader.read()
-    incomingAbort.abort('HTTP client disconnected')
-    await incomingReader.read()
-    expect(aborted).toBe(true)
+    try {
+      await within(incomingReader.read(), 'incoming cancellation readiness')
+      incomingAbort.abort('HTTP client disconnected')
+      await within(incomingReader.read(), 'incoming cancellation completion')
+      expect(aborted).toBe(true)
+    } finally {
+      incomingAbort.abort('Test cleanup')
+      await within(incomingReader.cancel(), 'incoming progress reader cleanup').catch(
+        () => undefined
+      )
+    }
 
     const invalidToken = await modernRpc(app, 'tools/call', {
       name: 'work',
@@ -1232,6 +1258,10 @@ describe('modern core utilities', () => {
     for (const mode of ['failure', 'cancel'] as const) {
       let returned = 0
       let providerAborted = false
+      let resolveCleanup: (() => void) | undefined
+      const cleanupObserved = new Promise<void>((resolve) => {
+        resolveCleanup = resolve
+      })
       const app = new Elysia().use(
         mcp({
           allowedRoutes: [],
@@ -1267,6 +1297,7 @@ describe('modern core utilities', () => {
                     },
                     return: async () => {
                       returned += 1
+                      resolveCleanup?.()
                       throw new Error('cleanup failed')
                     }
                   }
@@ -1277,25 +1308,37 @@ describe('modern core utilities', () => {
           }
         })
       )
-      const response = await subscriptionRequest(app, { toolsListChanged: true })
-      if (mode === 'failure') {
-        const text = await response.text()
-        expect(text).toContain('Subscription provider failed')
-      } else {
-        const reader = response.body?.getReader()
-        if (!reader) throw new Error('Expected subscription stream')
-        await reader.read()
-        await reader.cancel()
+      const abort = new AbortController()
+      const response = await subscriptionRequest(app, { toolsListChanged: true }, {}, abort.signal)
+      const reader = mode === 'cancel' ? response.body?.getReader() : undefined
+      try {
+        if (mode === 'failure') {
+          const text = await within(response.text(), 'failed subscription completion')
+          expect(text).toContain('Subscription provider failed')
+        } else {
+          if (!reader) throw new Error('Expected subscription stream')
+          await within(reader.read(), 'subscription cancellation readiness')
+          await within(reader.cancel(), 'subscription reader cancellation')
+        }
+        await within(cleanupObserved, 'subscription provider cleanup')
+        expect(providerAborted).toBe(true)
+        expect(returned).toBe(1)
+      } finally {
+        abort.abort('Test cleanup')
+        if (reader) {
+          await within(reader.cancel(), 'subscription reader cleanup').catch(() => undefined)
+        }
       }
-      await Bun.sleep(0)
-      expect(providerAborted).toBe(true)
-      expect(returned).toBe(1)
     }
   })
 
   test('filters unauthorized resources and aborts pending subscription providers', async () => {
     let accepted: readonly string[] = []
     let cleaned = false
+    let resolveCleanup: (() => void) | undefined
+    const cleanupObserved = new Promise<void>((resolve) => {
+      resolveCleanup = resolve
+    })
     const app = new Elysia()
       .use(
         mcp({
@@ -1327,6 +1370,7 @@ describe('modern core utilities', () => {
                       })
                     } finally {
                       cleaned = true
+                      resolveCleanup?.()
                     }
                   })()
                 }
@@ -1348,14 +1392,20 @@ describe('modern core utilities', () => {
     )
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Expected subscription stream')
-    const acknowledgment = new TextDecoder().decode((await reader.read()).value)
-    expect(acknowledgment).toContain('file:///public')
-    expect(acknowledgment).not.toContain('file:///secret')
-    expect(accepted).toEqual(['file:///public'])
-    incomingAbort.abort('HTTP client disconnected')
-    await Bun.sleep(0)
-    expect(cleaned).toBe(true)
-    await reader.cancel()
+    try {
+      const acknowledgment = new TextDecoder().decode(
+        (await within(reader.read(), 'resource subscription acknowledgment')).value
+      )
+      expect(acknowledgment).toContain('file:///public')
+      expect(acknowledgment).not.toContain('file:///secret')
+      expect(accepted).toEqual(['file:///public'])
+      incomingAbort.abort('HTTP client disconnected')
+      await within(cleanupObserved, 'resource subscription cleanup')
+      expect(cleaned).toBe(true)
+    } finally {
+      incomingAbort.abort('Test cleanup')
+      await within(reader.cancel(), 'resource subscription reader cleanup').catch(() => undefined)
+    }
   })
 })
 

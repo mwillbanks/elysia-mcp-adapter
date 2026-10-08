@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { jsonRequest, request } from './client.js'
-import { app, cancellationObserved } from './server.js'
+import { app, cancellationDone, cancellationObserved } from './server.js'
 
 describe('modern core example', () => {
   test('runs MRTR, completion, pagination, progress, and subscriptions', async () => {
@@ -47,7 +47,7 @@ describe('modern core example', () => {
       'Waiting for cancellation'
     )
     await reader.cancel()
-    await Bun.sleep(0)
+    await cancellationDone
     expect(cancellationObserved).toBe(true)
 
     const subscription = await request(app, 'subscriptions/listen', {

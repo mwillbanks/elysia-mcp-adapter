@@ -1433,7 +1433,10 @@ describe('experimental server contracts', () => {
       { subscriptionId },
       { 'mcp-session-id': sessionId }
     )
-    expect(unsubscribed.body.result).toEqual({})
+    expect(unsubscribed.body.error).toMatchObject({
+      code: -32602,
+      message: 'Unknown resource subscription'
+    })
     await reader?.cancel()
   })
 

@@ -1,12 +1,11 @@
 import { Database } from 'bun:sqlite'
-import { oauthProvider } from '@better-auth/oauth-provider'
 import { sso } from '@better-auth/sso'
-import { type McpAuthPrincipal, mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { betterAuth } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
-import { verifyJwsAccessToken } from 'better-auth/oauth2'
 import { jwt } from 'better-auth/plugins'
 import { Elysia } from 'elysia'
+import { exampleAccessTokenVerifier, exampleOAuthProvider } from '../access-tokens.js'
 
 const ENTERPRISE_BASE_URL = 'http://localhost:43102/api/auth'
 const ENTERPRISE_RESOURCE = 'http://localhost:43102/mcp'
@@ -82,51 +81,18 @@ export async function createEnterpriseExample(options: EnterpriseExampleOptions 
         }
       }),
       jwt(),
-      oauthProvider({
-        loginPage: '/sign-in',
-        consentPage: '/consent',
-        silenceWarnings: { oauthAuthServerConfig: true },
-        clientPrivileges: ({ action, session, user }) =>
-          Boolean(
-            session?.userId === user?.id &&
-              (action === 'create' || action === 'configure-client-credentials-scopes')
-          ),
-        scopes: ['mcp:read'],
-        validAudiences: [ENTERPRISE_RESOURCE],
-        resources: [ENTERPRISE_RESOURCE],
-        clientRegistrationDefaultResources: [ENTERPRISE_RESOURCE],
-        clientCredentialGrantDefaultScopes: ['mcp:read'],
-        customAccessTokenClaims: ({ resources }) => ({
-          'https://example.local/token-kind': 'access_token',
-          resource: resources?.[0]
-        })
-      })
+      exampleOAuthProvider(ENTERPRISE_RESOURCE, ['mcp:read'])
     ]
   }
 
   await (await getMigrations(authOptions)).runMigrations()
   const auth = betterAuth(authOptions)
 
-  const verifyForMcp = async (token: string): Promise<McpAuthPrincipal> => {
-    const payload = await verifyJwsAccessToken(token, {
-      jwksFetch: `${ENTERPRISE_BASE_URL}/jwks`,
-      verifyOptions: { issuer: ENTERPRISE_BASE_URL, audience: ENTERPRISE_RESOURCE }
-    })
-    if (payload['https://example.local/token-kind'] !== 'access_token' || !payload.exp) {
-      throw new Error('SAML assertions, ID tokens, and ID-JAGs are not MCP access tokens')
-    }
-    const scopes = typeof payload.scope === 'string' ? payload.scope.split(' ').filter(Boolean) : []
-    if (!scopes.includes('mcp:read')) throw new Error('Access token lacks the mcp:read scope')
-    return {
-      tokenType: 'access_token',
-      subject: payload.sub,
-      issuer: payload.iss,
-      audience: payload.aud ?? [],
-      expiresAt: payload.exp,
-      scopes,
-      clientId: typeof payload.client_id === 'string' ? payload.client_id : undefined
-    }
-  }
+  const verifyForMcp = exampleAccessTokenVerifier({
+    issuer: ENTERPRISE_BASE_URL,
+    resource: ENTERPRISE_RESOURCE,
+    invalidTokenMessage: 'SAML assertions, ID tokens, and ID-JAGs are not MCP access tokens'
+  })
 
   const app = new Elysia()
     .use(

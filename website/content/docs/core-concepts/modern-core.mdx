@@ -37,6 +37,8 @@ The adapter validates response envelopes and capability-gates each input request
 
 Hosts decide whether to approve elicitation, sampling, or roots access. The adapter never executes these requests.
 
+Set `core.maxToolInputElements` to a positive safe integer to bound nested object members and array elements in tool input. The adapter checks the effective input before direct invocation and task scheduling. Omit it for unlimited input.
+
 Route-backed tools, resources, and prompts retain the same behavior through Elysia. Call `getMcpInvocationContext(request)` inside the route to read MRTR state, progress reporting, cancellation, and client metadata. The adapter removes this request-scoped association after `app.handle()` completes.
 
 ## Pagination and caching
@@ -62,3 +64,14 @@ A resource subscription includes the exact URI and valid descendant URIs with th
 Task-status filters can share a subscription with core filters. Task streams never carry progress or logging notifications.
 
 See the runnable [modern core example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/core) for its minimal HTTP client.
+
+The MCP TypeScript client SDK v2.3 also supports this envelope. Integration tests use its modern Tasks
+operations and progress SSE parser, verify one access-token renewal after a challenge, and enforce
+the SDK's default same-origin redirect policy. Redirect and token storage decisions belong to the client;
+the adapter validates its own request origins, access-token audience, capabilities, and arguments.
+
+Client SDK `2.3.1` rejects a valid modern task-creation response with `UNSUPPORTED_RESULT_TYPE`.
+Both `callTool()` and generic `request()` create the task before the SDK rejects `resultType: 'task'`;
+supplying a result schema does not bypass its decoder. Generic requests can read and cancel modern tasks.
+Use the [Tasks example client](/docs/extensions/tasks/examples) for task creation until the SDK supports
+that discriminator. Avoid retrying a rejected creation blindly because the task already exists.

@@ -1,7 +1,11 @@
 import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
-import { isValidUri } from '../schema/validate.js'
 import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
+import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
+import { McpProtocolError } from './protocol-error.js'
+import { requestTargetName } from './protocol-routing.js'
+
+export { McpProtocolError } from './protocol-error.js'
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28' as const
 const LEGACY_PROTOCOL_VERSION = '2025-11-25' as const
@@ -16,17 +20,6 @@ export interface McpRequestProtocolContext {
   clientCapabilities: Record<string, unknown>
   clientInfo?: McpClientInfo
   meta?: Record<string, unknown>
-}
-
-export class McpProtocolError extends Error {
-  constructor(
-    readonly code: number,
-    message: string,
-    readonly status = 400,
-    readonly data?: unknown
-  ) {
-    super(message)
-  }
 }
 
 export function resolveRequestProtocol(
@@ -106,34 +99,6 @@ function assertAcceptHeader(request: Request): void {
   )
 }
 
-function assertClientInfo(value: unknown): asserts value is McpClientInfo {
-  if (
-    isRecord(value) &&
-    typeof value.name === 'string' &&
-    value.name.length > 0 &&
-    typeof value.version === 'string' &&
-    value.version.length > 0 &&
-    (value.title === undefined || typeof value.title === 'string') &&
-    (value.description === undefined || typeof value.description === 'string') &&
-    (value.websiteUrl === undefined || isValidUri(value.websiteUrl)) &&
-    (value.icons === undefined || (Array.isArray(value.icons) && value.icons.every(isIcon)))
-  ) {
-    return
-  }
-  throw new McpProtocolError(-32020, 'clientInfo must match the MCP implementation schema', 400)
-}
-
-function isIcon(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    isValidUri(value.src) &&
-    (value.mimeType === undefined || typeof value.mimeType === 'string') &&
-    (value.sizes === undefined ||
-      (Array.isArray(value.sizes) && value.sizes.every((size) => typeof size === 'string'))) &&
-    (value.theme === undefined || value.theme === 'dark' || value.theme === 'light')
-  )
-}
-
 function assertProtocolVersionEnvelope(headerVersion: string | null, metaVersion: unknown): void {
   const modernEnvelope =
     headerVersion === MODERN_PROTOCOL_VERSION || metaVersion === MODERN_PROTOCOL_VERSION
@@ -155,7 +120,7 @@ function assertRoutingHeaders(request: Request, payload: JsonRpcRequest): void {
     throw new McpProtocolError(-32020, 'Mcp-Method header must match the JSON-RPC method', 400)
   }
 
-  const expectedName = methodName(payload)
+  const expectedName = requestTargetName(payload)
   const headerName = request.headers.get('mcp-name')
   const decodedName = headerName === null ? null : decodeMcpHeaderValue(headerName, 'Mcp-Name')
   if (expectedName !== undefined && decodedName !== expectedName) {
@@ -163,60 +128,6 @@ function assertRoutingHeaders(request: Request, payload: JsonRpcRequest): void {
   }
   if (expectedName === undefined && headerName !== null) {
     throw new McpProtocolError(-32020, 'Mcp-Name is not valid for this method', 400)
-  }
-}
-
-function assertClientCapabilities(value: unknown): asserts value is Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new McpProtocolError(
-      -32020,
-      'Modern MCP requests require client capabilities in request _meta',
-      400
-    )
-  }
-  for (const capability of ['elicitation', 'roots', 'sampling']) {
-    if (value[capability] !== undefined && !isRecord(value[capability])) {
-      throw new McpProtocolError(-32020, `clientCapabilities.${capability} must be an object`, 400)
-    }
-  }
-  const elicitation = value.elicitation
-  if (isRecord(elicitation)) {
-    for (const mode of ['form', 'url']) {
-      if (elicitation[mode] !== undefined && !isRecord(elicitation[mode])) {
-        throw new McpProtocolError(
-          -32020,
-          `clientCapabilities.elicitation.${mode} must be an object`,
-          400
-        )
-      }
-    }
-  }
-  const sampling = value.sampling
-  if (isRecord(sampling)) {
-    for (const feature of ['context', 'tools']) {
-      if (sampling[feature] !== undefined && !isRecord(sampling[feature])) {
-        throw new McpProtocolError(
-          -32020,
-          `clientCapabilities.sampling.${feature} must be an object`,
-          400
-        )
-      }
-    }
-  }
-  const roots = value.roots
-  if (
-    isRecord(roots) &&
-    roots.listChanged !== undefined &&
-    typeof roots.listChanged !== 'boolean'
-  ) {
-    throw new McpProtocolError(-32020, 'clientCapabilities.roots.listChanged must be boolean', 400)
-  }
-  for (const namespace of ['experimental', 'extensions']) {
-    const container = value[namespace]
-    if (container === undefined) continue
-    if (!isRecord(container) || Object.values(container).some((entry) => !isRecord(entry))) {
-      throw new McpProtocolError(-32020, `clientCapabilities.${namespace} must map to objects`, 400)
-    }
   }
 }
 
@@ -240,28 +151,6 @@ export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
     },
     instructions: options.server.instructions
   }
-}
-
-function methodName(payload: JsonRpcRequest): string | undefined {
-  const params = isRecord(payload.params) ? payload.params : {}
-  if (payload.method === 'tools/call' || payload.method === 'prompts/get') {
-    return typeof params.name === 'string' ? params.name : undefined
-  }
-  if (
-    payload.method === 'resources/read' ||
-    payload.method === 'resources/directory/read' ||
-    payload.method === 'skills/get'
-  ) {
-    return typeof params.uri === 'string' ? params.uri : undefined
-  }
-  if (
-    payload.method === 'tasks/get' ||
-    payload.method === 'tasks/update' ||
-    payload.method === 'tasks/cancel'
-  ) {
-    return typeof params.taskId === 'string' ? params.taskId : undefined
-  }
-  return undefined
 }
 
 export function decodeMcpHeaderValue(value: string, headerName: string): string {

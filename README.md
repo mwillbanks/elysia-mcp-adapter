@@ -154,6 +154,7 @@ The `core` option configures published `2026-07-28` utilities:
 ```ts
 mcp({
   core: {
+    maxToolInputElements: 10_000,
     continuation: { signingKey: process.env.MCP_CONTINUATION_KEY! },
     pagination: { pageSize: 100, signingKey: process.env.MCP_CURSOR_KEY! },
     cache: { default: { cacheScope: 'private', ttlMs: 0 } },
@@ -163,6 +164,12 @@ mcp({
 ```
 
 Tools, resource reads, and prompts can return `McpInputRequiredResult`. Invocation contexts expose validated `inputResponses`, restored `requestState`, client metadata, an abort signal, and `reportProgress()`. Route handlers read the same request-scoped values with `getMcpInvocationContext(request)`. Prompt and resource-template registrations accept completion callbacks. Pagination and subscriptions remain disabled until configured. Signing keys must contain at least 32 bytes. Single-use continuations require an application provider.
+
+`core.maxToolInputElements` optionally rejects oversized nested tool inputs before route handlers or task providers run. It counts object members and array elements and leaves input unlimited when omitted. `transport.allowedOrigins` accepts exact serialized origins and explicit non-HTTP scheme patterns such as `chrome-extension://*`. HTTP, HTTPS, and global wildcards remain forbidden.
+
+The MCP client SDK `2.3.1` interoperates with modern discovery, progress SSE, prompts, and task reads
+and cancellation. It rejects valid task-creation responses after creating the task because its decoder
+does not accept `resultType: 'task'`. Use the minimal Tasks clients for creation and avoid blind retries.
 
 Unversioned requests select the modern default and must include its complete envelope. Send `MCP-Protocol-Version: 2025-11-25`, or configure `protocolVersions: ['2025-11-25']`, for legacy clients. Hosts approve and fulfill elicitation, sampling, and roots requests before retrying the original operation.
 
@@ -178,11 +185,15 @@ The repository includes tested, package-root examples for every extension:
 - [Experimental extensions](./examples/experimental/) exercises server cards, interceptors, server variants, resource subscriptions, action metadata, and trust annotations.
 - [Events](./examples/events/) demonstrates replay polling, event-only SSE, durable Bun SQLite subscriptions, and verified webhooks.
 
+### Server Cards
+
+Server Cards are a finalized MCP extension. They publish advisory discovery metadata at `GET /mcp/server-card`. They use `application/mcp-server-card+json`, CORS, ETags, and conditional caching. Use HTTPS in production. Loopback HTTP is development-only. Cards must not contain credentials, private topology, or primitive catalogs. Clients decide whether and when to fetch them.
+
+`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. Its nested version record retains `status: 'experimental'` because that immutable record describes the originally reviewed schema snapshot.
+
 ### Experimental extension policy
 
 Experimental extensions are off by default. Enable each feature explicitly and pin its exported revision constant. Revision selectors are immutable reviewed commits, not semver ranges. Server variants require legacy `2025-11-25`; modern protocol configuration rejects them. Other experiments use modern transport methods where the draft defines them.
-
-Server cards publish advisory discovery metadata at `GET /mcp/server-card`. They use `application/mcp-server-card+json`, CORS, ETags, and conditional caching. Use HTTPS in production. Loopback HTTP is development-only. Cards must not contain credentials, private topology, or primitive catalogs. Clients decide whether and when to fetch them.
 
 Interceptors expose canonical `interceptors/list` and singular `interceptor/invoke`. Pass `sending` to `executeInterceptorChain()` to mutate before validation. Pass `receiving` to validate before mutation. Validators run in parallel against isolated payload clones. Mutators run sequentially and use the phase-specific `priorityHint`, then name ordering for ties. Only `severity: 'error'` blocks. Audit mode never blocks and returns completed or failed outcomes for observability. Failures close by default; `failOpen` is explicit, and timeouts abort the local handler. Every wire result includes its interceptor, type, and phase. The adapter never contacts external interceptor services.
 
@@ -193,6 +204,8 @@ Action metadata describes destinations, sources, sensitivity, outcome, and revie
 Events are legacy-only and pinned to revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546`. The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
+
+The experimental Filesystems repository currently defines no wire contract. The adapter exposes no filesystem methods and monitors its pinned README for future normative changes.
 
 ## Documentation
 
@@ -218,11 +231,17 @@ bun install
 bun run lint
 bun run typecheck
 bun test
+bun test --coverage --coverage-reporter=lcov
 bun run fallow
 bun run build
 ```
 
 Documentation development runs independently from `website/` with `bun install` and `bun run dev`.
+
+`bun run fallow` checks dependencies, duplication, and health for the adapter and website independently.
+Every finding fails the gate under the default thresholds. CI records measured Bun coverage separately
+from Fallow's estimated coverage. Installation, builds, tests, and packed-consumer checks use Bun;
+the declared Node.js compatibility floor is checked statically.
 
 ## License
 

@@ -24,33 +24,10 @@ export class StandardWebhookReceiver {
     secrets: readonly string[],
     now = Date.now()
   ): WebhookVerification {
-    const id = headers.get('webhook-id')
-    const timestamp = headers.get('webhook-timestamp')
-    const signatureHeader = headers.get('webhook-signature')
-    if (!id || !timestamp || !signatureHeader || !/^(0|[1-9]\d*)$/u.test(timestamp))
+    const envelope = verifiedEnvelope(headers, now, this.#timestampToleranceSeconds)
+    if (!envelope || !validSignature(body, envelope, secrets))
       return { accepted: false, duplicate: false }
-    const timestampSeconds = Number(timestamp)
-    if (
-      !Number.isSafeInteger(timestampSeconds) ||
-      Math.abs(now / 1000 - timestampSeconds) > this.#timestampToleranceSeconds
-    )
-      return { accepted: false, duplicate: false }
-
-    const signed = Buffer.concat([Buffer.from(`${id}.${timestamp}.`), body])
-    const candidates = signatureHeader.split(' ').filter(Boolean)
-    const valid = secrets.some((secret) => {
-      const expected = Buffer.from(
-        `v1,${createHmac('sha256', Buffer.from(secret.replace(/^whsec_/, ''), 'base64'))
-          .update(signed)
-          .digest('base64')}`
-      )
-      return candidates.some((candidate) => {
-        const received = Buffer.from(candidate)
-        return received.byteLength === expected.byteLength && timingSafeEqual(received, expected)
-      })
-    })
-    if (!valid) return { accepted: false, duplicate: false }
-
+    const { id } = envelope
     this.#prune(now)
     const duplicate = (this.#seen.get(id) ?? 0) > now
     if (!duplicate) {
@@ -68,6 +45,44 @@ export class StandardWebhookReceiver {
   #prune(now: number) {
     for (const [id, expiresAt] of this.#seen) if (expiresAt <= now) this.#seen.delete(id)
   }
+}
+
+interface SignedEnvelope {
+  id: string
+  timestamp: string
+  signatures: string[]
+}
+
+function verifiedEnvelope(
+  headers: Headers,
+  now: number,
+  tolerance: number
+): SignedEnvelope | undefined {
+  const id = headers.get('webhook-id')
+  const timestamp = headers.get('webhook-timestamp')
+  const signatures = headers.get('webhook-signature')
+  if (!id || !timestamp || !signatures || !/^(0|[1-9]\d*)$/u.test(timestamp)) return
+  const seconds = Number(timestamp)
+  if (!Number.isSafeInteger(seconds) || Math.abs(now / 1000 - seconds) > tolerance) return
+  return { id, timestamp, signatures: signatures.split(' ').filter(Boolean) }
+}
+
+function validSignature(
+  body: Uint8Array,
+  envelope: SignedEnvelope,
+  secrets: readonly string[]
+): boolean {
+  const signed = Buffer.concat([Buffer.from(`${envelope.id}.${envelope.timestamp}.`), body])
+  return secrets.some((secret) => {
+    const digest = createHmac('sha256', Buffer.from(secret.replace(/^whsec_/, ''), 'base64'))
+      .update(signed)
+      .digest('base64')
+    const expected = Buffer.from(`v1,${digest}`)
+    return envelope.signatures.some((candidate) => {
+      const received = Buffer.from(candidate)
+      return received.byteLength === expected.byteLength && timingSafeEqual(received, expected)
+    })
+  })
 }
 
 export function challengeResponse(body: Uint8Array) {

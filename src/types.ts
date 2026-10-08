@@ -38,13 +38,6 @@ import type { McpVariantsOptions } from './extensions/variants/index.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
 
-export type JsonPrimitive = string | number | boolean | null
-export type JsonValue = JsonPrimitive | JsonObject | JsonArray
-export interface JsonObject {
-  [key: string]: JsonValue
-}
-export interface JsonArray extends Array<JsonValue> {}
-
 export type JsonSchema = Record<string, unknown>
 
 export type McpRouteKind = 'tool' | 'resource' | 'prompt'
@@ -282,6 +275,8 @@ export interface McpSubscriptionOptions {
 }
 
 export interface McpCoreOptions {
+  /** Reject tool inputs whose nested object members and array elements exceed this limit. */
+  maxToolInputElements?: number
   continuation?: McpContinuationOptions
   pagination?: McpPaginationOptions
   cache?: McpCacheOptions
@@ -457,6 +452,7 @@ export interface NormalizedMcpPluginOptions
     events?: NormalizedMcpEventsOptions
   }
   core: {
+    maxToolInputElements?: number
     continuation?: McpContinuationOptions & { ttlMs: number; singleUse: boolean }
     pagination?: McpPaginationOptions & { cursorTtlMs: number }
     cache: {

@@ -27,8 +27,7 @@ async function verifyNoGitPrepare(): Promise<void> {
     scripts?: { prepare?: unknown }
   }
   const prepare = workspaceManifest.scripts?.prepare
-  if (typeof prepare !== 'string' || !/^bun(?:\s|$)/u.test(prepare))
-    throw new Error('The root prepare lifecycle must execute with Bun')
+  assertBunPrepare(prepare)
   const instrumentedPrepare = `${prepare} && bun -e "await Bun.write('prepare-ran','yes')"`
   await Bun.write(
     join(directory, 'package.json'),
@@ -39,6 +38,11 @@ async function verifyNoGitPrepare(): Promise<void> {
     throw new Error('The no-Git prepare lifecycle did not run')
 }
 
+function assertBunPrepare(prepare: unknown): asserts prepare is string {
+  if (typeof prepare !== 'string' || !/^bun(?:\s|$)/u.test(prepare))
+    throw new Error('The root prepare lifecycle must execute with Bun')
+}
+
 async function verifyStaticNodeCompatibility(): Promise<void> {
   const manifest = (await Bun.file(join(workspace, 'package.json')).json()) as {
     engines?: { node?: string }
@@ -47,9 +51,13 @@ async function verifyStaticNodeCompatibility(): Promise<void> {
     throw new Error('The published Node.js compatibility floor must remain >=20.11')
   for (const path of new Bun.Glob('dist/**/*.js').scanSync(workspace)) {
     const source = await Bun.file(join(workspace, path)).text()
-    if (/\bBun\b/u.test(source))
-      throw new Error(`Published runtime contains a Bun-only API reference: ${path}`)
+    assertCompatibleRuntime(source, path)
   }
+}
+
+function assertCompatibleRuntime(source: string, path: string): void {
+  if (/\bBun\b/u.test(source))
+    throw new Error(`Published runtime contains a Bun-only API reference: ${path}`)
 }
 
 async function verifyConsumer(

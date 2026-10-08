@@ -1,5 +1,5 @@
 import { validateJsonSchema } from '../../schema/validate.js'
-import { canonicalJson } from './cursor.js'
+import { isAdditiveSchema } from './schema-compatibility.js'
 import type {
   McpEventDefinition,
   McpEventDescriptor,
@@ -8,6 +8,8 @@ import type {
 } from './types.js'
 
 const DELIVERY = new Set(['poll', 'push', 'webhook'])
+const ISO_8601_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/
 
 export function assertEventDefinition(value: McpEventDefinition): void {
   if (!value || typeof value !== 'object') throw new TypeError('Event definition is invalid')
@@ -15,17 +17,20 @@ export function assertEventDefinition(value: McpEventDefinition): void {
     throw new TypeError('Event name is required')
   if (typeof value.description !== 'string' || value.description.length === 0)
     throw new TypeError('Event description is required')
-  if (
-    !Array.isArray(value.delivery) ||
-    value.delivery.length === 0 ||
-    value.delivery.some((mode) => !DELIVERY.has(mode)) ||
-    new Set(value.delivery).size !== value.delivery.length
-  )
-    throw new TypeError('Event delivery modes are invalid')
+  if (!validDeliveryModes(value.delivery)) throw new TypeError('Event delivery modes are invalid')
   assertSchema(value.inputSchema, 'inputSchema')
   assertSchema(value.payloadSchema, 'payloadSchema')
   if (value._meta !== undefined && !isObject(value._meta))
     throw new TypeError('Event _meta must be an object')
+}
+
+function validDeliveryModes(value: unknown): value is McpEventDefinition['delivery'] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((mode) => DELIVERY.has(mode)) &&
+    new Set(value).size === value.length
+  )
 }
 
 export function assertEventArguments(
@@ -33,8 +38,8 @@ export function assertEventArguments(
   arguments_: unknown
 ): asserts arguments_ is Record<string, unknown> {
   if (!isObject(arguments_)) throw new TypeError('Event arguments must be an object')
-  const validation = validateJsonSchema(definition.inputSchema, arguments_)
-  if (!validation.ok) throw new TypeError('Event arguments do not match inputSchema')
+  if (!validateJsonSchema(definition.inputSchema, arguments_).ok)
+    throw new TypeError('Event arguments do not match inputSchema')
 }
 
 export function assertEventPollResult(
@@ -44,31 +49,38 @@ export function assertEventPollResult(
 ): void {
   if (!isObject(result) || !Array.isArray(result.events))
     throw new TypeError('Event provider returned an invalid poll result')
+  assertPollResultPage(result, limit)
+  if (result.terminated !== undefined) assertTerminationError(result.terminated)
+  for (const occurrence of result.events) assertEventOccurrence(definition, occurrence)
+}
+
+function assertPollResultPage(result: McpEventPollResult, limit: number): void {
   if (result.events.length > limit) throw new TypeError('Event provider exceeded maxEvents')
   if (result.cursor !== null && typeof result.cursor !== 'string')
     throw new TypeError('Event provider returned an invalid cursor')
-  if (result.truncated !== undefined && typeof result.truncated !== 'boolean')
-    throw new TypeError('Event provider returned an invalid truncated flag')
-  if (result.hasMore !== undefined && typeof result.hasMore !== 'boolean')
-    throw new TypeError('Event provider returned an invalid hasMore flag')
+  assertPollResultFlags(result)
   if (
     result.nextPollMs !== undefined &&
     (!Number.isSafeInteger(result.nextPollMs) || result.nextPollMs < 0)
   )
     throw new TypeError('Event provider returned an invalid nextPollMs')
-  if (result.terminated !== undefined) {
-    if (
-      !isObject(result.terminated) ||
-      !Number.isSafeInteger(result.terminated.code) ||
-      typeof result.terminated.message !== 'string' ||
-      (result.terminated.data !== undefined && !isObject(result.terminated.data)) ||
-      Object.keys(result.terminated).some(
-        (key) => key !== 'code' && key !== 'message' && key !== 'data'
-      )
-    )
-      throw new TypeError('Event provider returned an invalid termination error')
-  }
-  for (const occurrence of result.events) assertEventOccurrence(definition, occurrence)
+}
+
+function assertPollResultFlags(result: McpEventPollResult): void {
+  if (result.truncated !== undefined && typeof result.truncated !== 'boolean')
+    throw new TypeError('Event provider returned an invalid truncated flag')
+  if (result.hasMore !== undefined && typeof result.hasMore !== 'boolean')
+    throw new TypeError('Event provider returned an invalid hasMore flag')
+}
+
+function assertTerminationError(value: unknown): void {
+  if (!isObject(value)) throw new TypeError('Event provider returned an invalid termination error')
+  const valid =
+    Number.isSafeInteger(value.code) &&
+    typeof value.message === 'string' &&
+    (value.data === undefined || isObject(value.data)) &&
+    Object.keys(value).every((key) => key === 'code' || key === 'message' || key === 'data')
+  if (!valid) throw new TypeError('Event provider returned an invalid termination error')
 }
 
 export function assertEventOccurrence(
@@ -82,9 +94,16 @@ export function assertEventOccurrence(
     throw new TypeError('Event occurrence name does not match its definition')
   if (typeof occurrence.timestamp !== 'string' || !isIso8601DateTime(occurrence.timestamp))
     throw new TypeError('Event occurrence timestamp is invalid')
+  assertOccurrencePayload(definition, occurrence)
+}
+
+function assertOccurrencePayload(
+  definition: McpEventDefinition,
+  occurrence: McpEventOccurrence
+): void {
   if (!isObject(occurrence.data)) throw new TypeError('Event occurrence data must be an object')
-  const validation = validateJsonSchema(definition.payloadSchema, occurrence.data)
-  if (!validation.ok) throw new TypeError('Event occurrence data does not match payloadSchema')
+  if (!validateJsonSchema(definition.payloadSchema, occurrence.data).ok)
+    throw new TypeError('Event occurrence data does not match payloadSchema')
   if (
     occurrence.cursor !== undefined &&
     occurrence.cursor !== null &&
@@ -95,29 +114,43 @@ export function assertEventOccurrence(
     throw new TypeError('Event occurrence _meta is invalid')
 }
 
-const ISO_8601_DATE_TIME =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/
-
 function isIso8601DateTime(value: string): boolean {
   const match = ISO_8601_DATE_TIME.exec(value)
   if (!match) return false
-
   const year = Number(match[1])
   const month = Number(match[2])
   const day = Number(match[3])
   const hour = Number(match[4])
   const minute = Number(match[5])
   const second = Number(match[6])
-  const offsetHour = match[8] === undefined ? 0 : Number(match[8])
-  const offsetMinute = match[9] === undefined ? 0 : Number(match[9])
+  const offsetHour = Number(match[8] ?? 0)
+  const offsetMinute = Number(match[9] ?? 0)
+  if (!validClock(month, hour, minute, second, offsetHour, offsetMinute)) return false
+  return day >= 1 && day <= daysInMonth(year, month)
+}
 
-  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return false
-  if (offsetHour > 23 || offsetMinute > 59) return false
+function validClock(
+  month: number,
+  hour: number,
+  minute: number,
+  second: number,
+  offsetHour: number,
+  offsetMinute: number
+): boolean {
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
+  )
+}
 
+function daysInMonth(year: number, month: number): number {
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-  const maximumDay = daysInMonth[month - 1]
-  return maximumDay !== undefined && day >= 1 && day <= maximumDay
+  return [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] ?? 0
 }
 
 export function eventDescriptor(definition: McpEventDefinition): McpEventDescriptor {
@@ -149,174 +182,6 @@ export function incompatibleEventSchema(
   if (!isAdditiveSchema(previous.payloadSchema, current.payloadSchema, 'output'))
     return 'payloadSchema'
   return null
-}
-
-function isAdditiveSchema(
-  previous: unknown,
-  current: unknown,
-  direction: 'input' | 'output'
-): boolean {
-  if (schemaValueEqual(previous, current)) return true
-  if (previous === false) return current === true
-  if (previous === true || !isObject(previous) || !isObject(current)) return false
-
-  const keys = new Set([...Object.keys(previous), ...Object.keys(current)])
-  for (const key of keys) {
-    const before = previous[key]
-    const after = current[key]
-    if (schemaValueEqual(before, after)) continue
-
-    if (SCHEMA_ANNOTATIONS.has(key)) continue
-    if (key === 'properties') {
-      if (!isAdditiveProperties(before, after, direction)) return false
-      continue
-    }
-    if (key === 'required') {
-      if (!isAdditiveRequired(before, after, direction)) return false
-      continue
-    }
-    if (key === 'enum') {
-      if (!isEnumWidening(before, after)) return false
-      continue
-    }
-    if (key === 'additionalProperties' || key === 'items') {
-      if (!isRelaxedSubschema(before, after, direction)) return false
-      continue
-    }
-    if (key === 'patternProperties') {
-      if (!isAdditivePatternProperties(before, after, direction)) return false
-      continue
-    }
-    if (LOWER_BOUND_KEYWORDS.has(key)) {
-      if (!isRelaxedLowerBound(before, after)) return false
-      continue
-    }
-    if (UPPER_BOUND_KEYWORDS.has(key)) {
-      if (!isRelaxedUpperBound(before, after)) return false
-      continue
-    }
-    if (key === 'uniqueItems') {
-      if (!(before === true && (after === false || after === undefined))) return false
-      continue
-    }
-    if (key === 'pattern' || key === 'format') {
-      if (after !== undefined) return false
-      continue
-    }
-
-    // Changed composition, conditional, reference, identity, and unknown assertion
-    // keywords fail closed because their compatibility cannot be inferred safely.
-    return false
-  }
-  return true
-}
-
-function schemaValueEqual(left: unknown, right: unknown): boolean {
-  if (left === undefined || right === undefined) return left === right
-  return canonicalJson(left) === canonicalJson(right)
-}
-
-const SCHEMA_ANNOTATIONS = new Set([
-  'title',
-  'description',
-  '$comment',
-  'default',
-  'examples',
-  'deprecated',
-  'readOnly',
-  'writeOnly'
-])
-const LOWER_BOUND_KEYWORDS = new Set([
-  'minimum',
-  'exclusiveMinimum',
-  'minLength',
-  'minItems',
-  'minProperties',
-  'minContains'
-])
-const UPPER_BOUND_KEYWORDS = new Set([
-  'maximum',
-  'exclusiveMaximum',
-  'maxLength',
-  'maxItems',
-  'maxProperties',
-  'maxContains'
-])
-
-function isAdditiveProperties(
-  previous: unknown,
-  current: unknown,
-  direction: 'input' | 'output'
-): boolean {
-  const previousProperties = previous === undefined ? {} : previous
-  if (!isObject(previousProperties) || !isObject(current)) return false
-  for (const [name, schema] of Object.entries(previousProperties)) {
-    const replacement = current[name]
-    if (!isAdditiveSchema(schema, replacement, direction)) return false
-  }
-  return true
-}
-
-function isAdditiveRequired(
-  previous: unknown,
-  current: unknown,
-  direction: 'input' | 'output'
-): boolean {
-  const before = stringSet(previous)
-  const after = stringSet(current)
-  if (!before || !after) return false
-  if (direction === 'input') return [...after].every((name) => before.has(name))
-  return before.size === after.size && [...before].every((name) => after.has(name))
-}
-
-function isEnumWidening(previous: unknown, current: unknown): boolean {
-  if (!Array.isArray(previous)) return false
-  if (current === undefined) return true
-  if (!Array.isArray(current)) return false
-  const values = new Set(current.map((value) => canonicalJson(value)))
-  return previous.every((value) => values.has(canonicalJson(value)))
-}
-
-function isRelaxedSubschema(
-  previous: unknown,
-  current: unknown,
-  direction: 'input' | 'output'
-): boolean {
-  if (previous === false) return current !== false
-  if (previous === undefined || previous === true) return current === undefined || current === true
-  if (!isObject(previous)) return false
-  if (current === undefined || current === true) return true
-  return isObject(current) && isAdditiveSchema(previous, current, direction)
-}
-
-function isAdditivePatternProperties(
-  previous: unknown,
-  current: unknown,
-  direction: 'input' | 'output'
-): boolean {
-  if (!isObject(previous) || !isObject(current)) return false
-  if (Object.keys(previous).length !== Object.keys(current).length) return false
-  for (const [pattern, schema] of Object.entries(previous)) {
-    const replacement = current[pattern]
-    if (!isAdditiveSchema(schema, replacement, direction)) return false
-  }
-  return true
-}
-
-function isRelaxedLowerBound(previous: unknown, current: unknown): boolean {
-  if (typeof previous !== 'number') return false
-  return current === undefined || (typeof current === 'number' && current <= previous)
-}
-
-function isRelaxedUpperBound(previous: unknown, current: unknown): boolean {
-  if (typeof previous !== 'number') return false
-  return current === undefined || (typeof current === 'number' && current >= previous)
-}
-
-function stringSet(value: unknown): Set<string> | null {
-  if (value === undefined) return new Set()
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) return null
-  return new Set(value)
 }
 
 function assertSchema(value: unknown, label: string): void {

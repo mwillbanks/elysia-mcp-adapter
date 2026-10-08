@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { AnyElysiaApp, McpInvocationContext, NormalizedMcpPluginOptions } from '../../types.js'
 import { canonicalJson } from './cursor.js'
+import { abortableDelay } from './delay.js'
 import {
   McpWebhookNetworkError,
   parseWebhookUrl,
@@ -242,39 +243,124 @@ export async function deliverWebhook(
   if (body.byteLength > options.maxRequestBytes)
     return { acknowledged: false, abandoned: true, lastError: 'http_4xx', attempts: 0 }
   const startedAt = Date.now()
-  let attempts = 0
-  let lastError: McpWebhookLastError | null = null
-  while (attempts < options.maxAttempts && Date.now() - startedAt <= options.maxRetryElapsedMs) {
-    attempts++
-    try {
-      if (authorizeAttempt && !(await authorizeAttempt()))
-        throw new McpWebhookDeliveryRevokedError()
-      const remaining = options.maxRetryElapsedMs - (Date.now() - startedAt)
-      if (remaining <= 0) break
-      const response = await sendWebhookAttempt(
-        record,
-        body,
-        messageId,
-        { ...options, requestTimeoutMs: Math.min(options.requestTimeoutMs, remaining) },
-        signal
-      )
-      if (response.status >= 200 && response.status < 300)
-        return { acknowledged: true, abandoned: false, lastError: null, attempts }
-      lastError = response.status >= 500 ? 'http_5xx' : 'http_4xx'
-      if (response.status === 410 || response.status === 413)
-        return { acknowledged: false, abandoned: true, lastError, attempts }
-    } catch (error) {
-      if (error instanceof McpWebhookDeliveryRevokedError) throw error
-      if (signal?.aborted) throw signal.reason ?? new Error('Webhook delivery cancelled')
-      lastError = error instanceof McpWebhookNetworkError ? error.reason : 'connection_refused'
-    }
-    if (attempts >= options.maxAttempts) break
-    const delay = options.retryBaseMs * 2 ** (attempts - 1)
-    if (Date.now() - startedAt + delay > options.maxRetryElapsedMs) break
-    await abortableDelay(delay, signal)
+  const state: DeliveryAttemptState = { attempts: 0, lastError: null }
+  while (canAttemptDelivery(state, startedAt, options)) {
+    const outcome = await performDeliveryAttempt(
+      record,
+      body,
+      messageId,
+      options,
+      startedAt,
+      state,
+      signal,
+      authorizeAttempt
+    )
+    if (outcome === 'acknowledged')
+      return { acknowledged: true, abandoned: false, lastError: null, attempts: state.attempts }
+    if (outcome === 'abandoned')
+      return {
+        acknowledged: false,
+        abandoned: true,
+        lastError: state.lastError,
+        attempts: state.attempts
+      }
+    if (!(await waitForRetry(state, startedAt, options, signal))) break
   }
   if (signal?.aborted) throw signal.reason ?? new Error('Webhook delivery cancelled')
-  return { acknowledged: false, abandoned: true, lastError, attempts }
+  return {
+    acknowledged: false,
+    abandoned: true,
+    lastError: state.lastError,
+    attempts: state.attempts
+  }
+}
+
+interface DeliveryAttemptState {
+  attempts: number
+  lastError: McpWebhookLastError | null
+}
+
+function canAttemptDelivery(
+  state: DeliveryAttemptState,
+  startedAt: number,
+  options: NonNullable<NormalizedMcpEventsOptions['webhook']>
+): boolean {
+  return state.attempts < options.maxAttempts && Date.now() - startedAt <= options.maxRetryElapsedMs
+}
+
+async function performDeliveryAttempt(
+  record: McpWebhookSubscriptionRecord,
+  body: Uint8Array,
+  messageId: string,
+  options: NonNullable<NormalizedMcpEventsOptions['webhook']>,
+  startedAt: number,
+  state: DeliveryAttemptState,
+  signal?: AbortSignal,
+  authorizeAttempt?: () => boolean | Promise<boolean>
+): Promise<'acknowledged' | 'abandoned' | 'retry'> {
+  state.attempts++
+  try {
+    return await sendAuthorizedDeliveryAttempt(
+      record,
+      body,
+      messageId,
+      options,
+      startedAt,
+      state,
+      signal,
+      authorizeAttempt
+    )
+  } catch (error) {
+    if (error instanceof McpWebhookDeliveryRevokedError) throw error
+    if (signal?.aborted) throw signal.reason ?? new Error('Webhook delivery cancelled')
+    state.lastError = error instanceof McpWebhookNetworkError ? error.reason : 'connection_refused'
+    return 'retry'
+  }
+}
+
+async function sendAuthorizedDeliveryAttempt(
+  record: McpWebhookSubscriptionRecord,
+  body: Uint8Array,
+  messageId: string,
+  options: NonNullable<NormalizedMcpEventsOptions['webhook']>,
+  startedAt: number,
+  state: DeliveryAttemptState,
+  signal?: AbortSignal,
+  authorizeAttempt?: () => boolean | Promise<boolean>
+): Promise<'acknowledged' | 'abandoned' | 'retry'> {
+  if (authorizeAttempt && !(await authorizeAttempt())) throw new McpWebhookDeliveryRevokedError()
+  const remaining = options.maxRetryElapsedMs - (Date.now() - startedAt)
+  if (remaining <= 0) return 'abandoned'
+  const response = await sendWebhookAttempt(
+    record,
+    body,
+    messageId,
+    { ...options, requestTimeoutMs: Math.min(options.requestTimeoutMs, remaining) },
+    signal
+  )
+  return classifyDeliveryResponse(response.status, state)
+}
+
+function classifyDeliveryResponse(
+  status: number,
+  state: DeliveryAttemptState
+): 'acknowledged' | 'abandoned' | 'retry' {
+  if (status >= 200 && status < 300) return 'acknowledged'
+  state.lastError = status >= 500 ? 'http_5xx' : 'http_4xx'
+  return status === 410 || status === 413 ? 'abandoned' : 'retry'
+}
+
+async function waitForRetry(
+  state: DeliveryAttemptState,
+  startedAt: number,
+  options: NonNullable<NormalizedMcpEventsOptions['webhook']>,
+  signal?: AbortSignal
+): Promise<boolean> {
+  if (state.attempts >= options.maxAttempts) return false
+  const delay = options.retryBaseMs * 2 ** (state.attempts - 1)
+  if (Date.now() - startedAt + delay > options.maxRetryElapsedMs) return false
+  await abortableDelay(delay, signal)
+  return true
 }
 
 export function webhookControlMessageId(type: string): string {
@@ -348,22 +434,4 @@ function constantTimeStringEqual(left: string, right: string): boolean {
   const leftBytes = Buffer.from(left)
   const rightBytes = Buffer.from(right)
   return leftBytes.byteLength === rightBytes.byteLength && timingSafeEqual(leftBytes, rightBytes)
-}
-
-function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason)
-      return
-    }
-    let timer: ReturnType<typeof setTimeout>
-    const finish = (callback: () => void) => {
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', onAbort)
-      callback()
-    }
-    const onAbort = () => finish(() => reject(signal?.reason))
-    timer = setTimeout(() => finish(resolve), ms)
-    signal?.addEventListener('abort', onAbort, { once: true })
-  })
 }

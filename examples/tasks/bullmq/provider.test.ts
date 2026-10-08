@@ -1,8 +1,16 @@
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import type { DetailedTask, TaskProviderContext } from '@mwillbanks/elysia-mcp-adapter'
+import { type RedisFixture, startRedisFixture, waitFor } from '../test-support.js'
 import { BullMqTaskProvider, type BullMqTaskProviderOptions } from './provider.js'
 
 const providers: BullMqTaskProvider[] = []
+let redis: RedisFixture
+beforeAll(async () => {
+  redis = await startRedisFixture()
+})
+afterAll(async () => {
+  await redis.close()
+})
 afterEach(async () => {
   await Promise.all(providers.splice(0).map((provider) => provider[Symbol.asyncDispose]()))
 })
@@ -13,7 +21,7 @@ const context = (principalKey: string): TaskProviderContext => ({
 })
 
 function provider(options: BullMqTaskProviderOptions = {}): BullMqTaskProvider {
-  const value = new BullMqTaskProvider(options)
+  const value = new BullMqTaskProvider({ redisUrl: redis.url, ...options })
   providers.push(value)
   return value
 }
@@ -61,19 +69,14 @@ async function waitForTerminal(
   taskId: string,
   owner: TaskProviderContext
 ): Promise<DetailedTask> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  return waitFor(`task ${taskId} to finish`, async () => {
     const task = await tasks.get(taskId, owner)
     if (task && task.status !== 'working') return task
-    await Bun.sleep(20)
-  }
-  throw new Error(`Task ${taskId} did not finish`)
+  })
 }
 
 async function waitForActiveExecution(tasks: BullMqTaskProvider, taskId: string): Promise<void> {
-  for (let attempt = 0; attempt < 50 && !tasks.abortControllers.has(taskId); attempt += 1) {
-    await Bun.sleep(5)
-  }
-  expect(tasks.abortControllers.has(taskId)).toBe(true)
+  await waitFor(`task ${taskId} to start`, () => tasks.abortControllers.get(taskId))
 }
 
 describe('BullMQ task provider', () => {
@@ -152,11 +155,9 @@ describe('BullMQ task provider', () => {
       owner,
       {
         invoke: (signal) =>
-          new Promise((resolve, reject) => {
-            const timer = setTimeout(() => resolve({ ok: true }), 2_000)
+          new Promise((_, reject) => {
             signal?.addEventListener('abort', () => {
               aborted = true
-              clearTimeout(timer)
               reject(signal.reason)
             })
           })
@@ -170,12 +171,12 @@ describe('BullMQ task provider', () => {
       },
       owner
     )
-    for (let attempt = 0; attempt < 50 && !tasks.abortControllers.has(task.taskId); attempt += 1) {
-      await Bun.sleep(10)
-    }
+    await waitForActiveExecution(tasks, task.taskId)
     expect(await tasks.cancel(task.taskId, owner)).toBe(true)
     const cancelled = await waitForTerminal(tasks, task.taskId, owner)
-    await Bun.sleep(20)
+    await waitFor('cancelled subscription event', () =>
+      events.some((event) => event.status === 'cancelled') ? true : undefined
+    )
     await subscription.close()
 
     expect(cancelled.status).toBe('cancelled')
@@ -392,14 +393,17 @@ describe('BullMQ task provider', () => {
           { method: 'elicitation/create', params: { message: 'Continue?' } },
           owner
         )
-        for (let attempt = 0; attempt < 50; attempt += 1) {
-          if ((await consumer.get(queued.taskId, owner))?.status === 'input_required') break
-          await Bun.sleep(2)
-        }
+        await waitFor('input-required transition', async () =>
+          (await consumer.get(queued.taskId, owner))?.status === 'input_required' ? true : undefined
+        )
         releaseResolver()
         expect(await request).toBe(true)
       }
-      await Bun.sleep(25)
+      await waitFor('resolver round to finish', async () => {
+        const job = await consumer.queue.getJob(queued.taskId)
+        if (!job) return true
+        return (await job.isCompleted()) || (await job.isFailed()) ? true : undefined
+      })
       expect(sideEffects).toBe(0)
       expect((await consumer.get(queued.taskId, owner))?.status).toBe(
         transition === 'cancel' ? 'cancelled' : 'input_required'
@@ -436,9 +440,9 @@ describe('BullMQ task provider', () => {
       duplicateToken
     )
     const first = executeRound(duplicateProvider, duplicate.taskId, duplicateToken)
-    for (let attempt = 0; attempt < 50 && duplicateInvocations === 0; attempt += 1) {
-      await Bun.sleep(2)
-    }
+    await waitFor('duplicate execution to start', () =>
+      duplicateInvocations === 1 ? true : undefined
+    )
     expect(duplicateInvocations).toBe(1)
     expect(await executeRound(duplicateProvider, duplicate.taskId, duplicateToken)).toEqual({})
     releaseDuplicate()
@@ -476,9 +480,9 @@ describe('BullMQ task provider', () => {
     const newToken = `token-new-${crypto.randomUUID()}`
     await recoveryProvider.connection.set(lockKey(recoveryProvider, recovered.taskId), oldToken)
     const oldRound = executeRound(recoveryProvider, recovered.taskId, oldToken)
-    for (let attempt = 0; attempt < 50 && recoveryInvocations === 0; attempt += 1) {
-      await Bun.sleep(2)
-    }
+    await waitFor('orphaned execution to start', () =>
+      recoveryInvocations === 1 ? true : undefined
+    )
     expect(recoveryInvocations).toBe(1)
     await recoveryProvider.connection.set(lockKey(recoveryProvider, recovered.taskId), newToken)
     await executeRound(recoveryProvider, recovered.taskId, newToken)
@@ -520,7 +524,7 @@ describe('BullMQ task provider', () => {
     await tasks.connection.set(lockKey(tasks, task.taskId), oldToken)
     const oldRound = executeRound(tasks, task.taskId, oldToken)
     tasks.executions.set(task.taskId, new Set([oldRound]))
-    for (let attempt = 0; attempt < 50 && invocations === 0; attempt += 1) await Bun.sleep(2)
+    await waitFor('paused execution to start', () => (invocations === 1 ? true : undefined))
 
     const inputTransition = tasks.requestInput(
       task.taskId,
@@ -528,10 +532,9 @@ describe('BullMQ task provider', () => {
       { method: 'elicitation/create', params: { message: 'Continue?' } },
       owner
     )
-    for (let attempt = 0; attempt < 50; attempt += 1) {
-      if ((await tasks.get(task.taskId, owner))?.status === 'input_required') break
-      await Bun.sleep(2)
-    }
+    await waitFor('paused execution input transition', async () =>
+      (await tasks.get(task.taskId, owner))?.status === 'input_required' ? true : undefined
+    )
     expect(await tasks.update(task.taskId, { confirm: { action: 'accept' } }, owner)).toBe(true)
     const resumedToken = `token-resumed-${crypto.randomUUID()}`
     await tasks.connection.set(lockKey(tasks, task.taskId), resumedToken)
@@ -584,7 +587,7 @@ describe('BullMQ task provider', () => {
     const executionToken = `token-no-op-${crypto.randomUUID()}`
     await tasks.connection.set(lockKey(tasks, task.taskId), executionToken)
     const execution = executeRound(tasks, task.taskId, executionToken)
-    for (let attempt = 0; attempt < 50 && invocations === 0; attempt += 1) await Bun.sleep(2)
+    await waitFor('active execution fence', () => (invocations === 1 ? true : undefined))
     expect(invocations).toBe(1)
 
     const taskKey = `${tasks.prefix}:task:${task.taskId}`
@@ -610,7 +613,6 @@ describe('BullMQ task provider', () => {
           owner
         )
       ).toBe(true)
-      await Bun.sleep(10)
       expect(published).toBe(0)
       expect(
         await tasks.connection.hmget(taskKey, 'status', 'lastUpdatedAt', 'executionClaim')
@@ -647,10 +649,8 @@ describe('BullMQ task provider', () => {
       {
         async invoke(signal) {
           invocations += 1
-          return new Promise((resolve, reject) => {
-            const timer = setTimeout(() => resolve({ ok: true }), 100)
+          return new Promise((_, reject) => {
             signal?.addEventListener('abort', () => {
-              clearTimeout(timer)
               reject(signal.reason)
             })
           })
@@ -658,10 +658,7 @@ describe('BullMQ task provider', () => {
       }
     )
     await tasks.get(task.taskId, owner)
-    for (let attempt = 0; attempt < 50 && !tasks.abortControllers.has(task.taskId); attempt += 1) {
-      await Bun.sleep(5)
-    }
-    expect(tasks.abortControllers.has(task.taskId)).toBe(true)
+    await waitForActiveExecution(tasks, task.taskId)
     const duplicateClaims = await Promise.all([
       tasks.requestInput(
         task.taskId,
@@ -706,7 +703,11 @@ describe('BullMQ task provider', () => {
       false
     )
 
-    await Bun.sleep(150)
+    await waitFor('aborted input execution cleanup', () =>
+      !tasks.abortControllers.has(task.taskId) && !tasks.executions.has(task.taskId)
+        ? true
+        : undefined
+    )
     expect((await tasks.get(task.taskId, owner))?.status).toBe('working')
     expect(invocations).toBe(1)
     expect(tasks.schedulers.has(task.taskId)).toBe(false)

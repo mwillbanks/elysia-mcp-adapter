@@ -19,6 +19,10 @@ those responses; replaying the original executor can duplicate side effects.
 
 ## Subprocess provider
 
+The minimal clients preserve the published modern task result. MCP client SDK `2.3.1` currently
+rejects that result after the server creates work, including generic requests with a supplied schema.
+Its generic requests can read and cancel tasks. Do not retry task creation blindly after this SDK error.
+
 The [subprocess example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks/subprocess)
 stores task descriptors and snapshots in SQLite before spawning a fixed Bun worker command. The
 child opens the same database, reconstructs the synchronous Elysia worker application, and reports

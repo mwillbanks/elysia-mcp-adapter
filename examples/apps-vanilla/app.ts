@@ -1,10 +1,5 @@
-import {
-  type JSONRPCMessage,
-  parseJSONRPCMessage,
-  type Transport,
-  type TransportSendOptions
-} from '@modelcontextprotocol/client'
 import { App } from '@modelcontextprotocol/ext-apps'
+import { OriginBoundParentTransport } from './parent-transport.js'
 
 const HOST_REQUEST_TIMEOUT_MS = 30_000
 
@@ -13,50 +8,6 @@ interface ToolResult {
     location?: string
     temperature?: number
     conditions?: string
-  }
-}
-
-/**
- * MCP Apps v2 transport with parent-window validation and first-valid-origin
- * pinning. Opaque iframe origins still require `*` when sending.
- */
-class OriginBoundParentTransport implements Transport {
-  onclose?: () => void
-  onerror?: (error: Error) => void
-  onmessage?: (message: JSONRPCMessage) => void
-  private hostOrigin?: string
-  private started = false
-
-  private readonly receive = (event: MessageEvent): void => {
-    if (event.source !== window.parent) return
-    if (this.hostOrigin !== undefined && event.origin !== this.hostOrigin) return
-    try {
-      const message = parseJSONRPCMessage(event.data)
-      this.hostOrigin ??= event.origin
-      this.onmessage?.(message)
-    } catch (error) {
-      this.onerror?.(error instanceof Error ? error : new Error(String(error)))
-    }
-  }
-
-  async start(): Promise<void> {
-    if (this.started) throw new Error('MCP Apps transport is already started')
-    if (window.parent === window) throw new Error('MCP App must be embedded by a host')
-    this.started = true
-    window.addEventListener('message', this.receive)
-  }
-
-  async send(message: JSONRPCMessage, _options?: TransportSendOptions): Promise<void> {
-    if (!this.started) throw new Error('MCP Apps transport is not started')
-    const targetOrigin = this.hostOrigin && this.hostOrigin !== 'null' ? this.hostOrigin : '*'
-    window.parent.postMessage(message, targetOrigin)
-  }
-
-  async close(): Promise<void> {
-    if (!this.started) return
-    this.started = false
-    window.removeEventListener('message', this.receive)
-    this.onclose?.()
   }
 }
 
@@ -98,15 +49,17 @@ void app
 function render(result: ToolResult | Record<string, unknown>): void {
   const weather = result.structuredContent
   if (!isRecord(weather)) return
-  if (locationElement && typeof weather.location === 'string') {
-    locationElement.textContent = weather.location
-  }
-  if (temperatureElement && typeof weather.temperature === 'number') {
-    temperatureElement.textContent = `${weather.temperature}°`
-  }
-  if (conditionsElement && typeof weather.conditions === 'string') {
-    conditionsElement.textContent = weather.conditions
-  }
+  renderText(locationElement, weather.location)
+  renderTemperature(weather.temperature)
+  renderText(conditionsElement, weather.conditions)
+}
+
+function renderText(element: HTMLElement | null, value: unknown): void {
+  if (element && typeof value === 'string') element.textContent = value
+}
+
+function renderTemperature(value: unknown): void {
+  if (temperatureElement && typeof value === 'number') temperatureElement.textContent = `${value}°`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

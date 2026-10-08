@@ -34,14 +34,25 @@ export function assertServerCard(
   environment: 'production' | 'development'
 ): asserts card is McpServerCard {
   if (!isRecord(card)) throw new TypeError('Server card must be an object')
-  const schemaResult = validateJsonSchema(SERVER_CARD_SCHEMA, card)
-  if (!schemaResult.ok) {
-    const issue = schemaResult.issues?.[0]
-    throw new TypeError(
-      `Server card does not match the pinned schema${issue ? ` at ${issue.path}: ${issue.message}` : ''}`
-    )
-  }
+  assertServerCardSchema(card)
   const validated = card as unknown as McpServerCard
+  assertAllowedServerCardFields(card)
+  assertString(validated.version, 'version', 0, 255)
+  if (RANGE.test(validated.version))
+    throw new TypeError('Server card version must be an exact string, not a range')
+  assertServerCardUris(validated, environment)
+  assertNoEmbeddedSecret(validated)
+}
+
+function assertServerCardSchema(card: Record<string, unknown>): void {
+  const result = validateJsonSchema(SERVER_CARD_SCHEMA, card)
+  if (result.ok) return
+  const issue = result.issues?.[0]
+  const detail = issue ? ` at ${issue.path}: ${issue.message}` : ''
+  throw new TypeError(`Server card does not match the pinned schema${detail}`)
+}
+
+function assertAllowedServerCardFields(card: Record<string, unknown>): void {
   const allowed = new Set([
     '$schema',
     '_meta',
@@ -54,30 +65,36 @@ export function assertServerCard(
     'version',
     'websiteUrl'
   ])
-  for (const key of Object.keys(card)) {
-    if (!allowed.has(key)) throw new TypeError(`Server card must not expose ${key}`)
-  }
-  assertString(validated.version, 'version', 0, 255)
-  if (RANGE.test(validated.version))
-    throw new TypeError('Server card version must be an exact string, not a range')
-  if (validated.websiteUrl !== undefined)
-    assertSafeAncillaryUri(validated.websiteUrl, environment, 'websiteUrl')
-  for (const [index, icon] of (validated.icons ?? []).entries()) {
+  const unexpected = Object.keys(card).find((key) => !allowed.has(key))
+  if (unexpected) throw new TypeError(`Server card must not expose ${unexpected}`)
+}
+
+function assertServerCardUris(
+  card: McpServerCard,
+  environment: 'production' | 'development'
+): void {
+  if (card.websiteUrl !== undefined)
+    assertSafeAncillaryUri(card.websiteUrl, environment, 'websiteUrl')
+  for (const [index, icon] of (card.icons ?? []).entries()) {
     assertSafeAncillaryUri(icon.src, environment, `icons[${index}].src`, true)
   }
-  if (validated.repository !== undefined) {
-    assertSafeAncillaryUri(validated.repository.url, environment, 'repository.url')
-    if (validated.repository.subfolder !== undefined) {
-      assertCleanRepositorySubfolder(validated.repository.subfolder)
-    }
-  }
-  if (validated.remotes !== undefined) {
-    for (const remote of validated.remotes) {
-      if (remote.url.startsWith('{')) assertSafeRemoteTemplate(remote, environment)
-      else assertRemoteUri(remote.url, environment, 'remote.url')
-    }
-  }
-  assertNoEmbeddedSecret(validated)
+  assertRepository(card, environment)
+  for (const remote of card.remotes ?? []) assertSafeRemote(remote, environment)
+}
+
+function assertRepository(card: McpServerCard, environment: 'production' | 'development'): void {
+  if (card.repository === undefined) return
+  assertSafeAncillaryUri(card.repository.url, environment, 'repository.url')
+  if (card.repository.subfolder !== undefined)
+    assertCleanRepositorySubfolder(card.repository.subfolder)
+}
+
+function assertSafeRemote(
+  remote: NonNullable<McpServerCard['remotes']>[number],
+  environment: 'production' | 'development'
+): void {
+  if (remote.url.startsWith('{')) assertSafeRemoteTemplate(remote, environment)
+  else assertRemoteUri(remote.url, environment, 'remote.url')
 }
 
 function assertSafeRemoteTemplate(
@@ -88,30 +105,47 @@ function assertSafeRemoteTemplate(
     (match) => match[1] as string
   )
   for (const name of names) {
-    const input = remote.variables?.[name]
-    if (!isRecord(input)) continue
-    const candidates = [
-      input.value,
-      input.default,
-      ...(Array.isArray(input.choices) ? input.choices : [])
-    ].filter((candidate): candidate is string => typeof candidate === 'string')
-    for (const candidate of candidates) {
-      let rendered = remote.url
-      for (const variable of names) {
-        const selected =
-          variable === name ? candidate : preferredTemplateValue(remote.variables?.[variable])
-        rendered = rendered.replaceAll(`{${variable}}`, selected)
-      }
-      if (/^https?:\/\//u.test(rendered)) {
-        assertRemoteUri(rendered, environment, `remote.variables.${name}`)
-      } else if (/^https?:\/\//u.test(candidate)) {
-        assertRemoteUri(candidate, environment, `remote.variables.${name}`)
-      }
+    for (const candidate of templateCandidates(remote.variables?.[name])) {
+      assertTemplateCandidate(remote, names, name, candidate, environment)
     }
   }
 }
 
+function templateCandidates(input: unknown): string[] {
+  if (!isRecord(input)) return []
+  return [
+    input.value,
+    input.default,
+    ...(Array.isArray(input.choices) ? input.choices : [])
+  ].filter((candidate): candidate is string => typeof candidate === 'string')
+}
+
+function assertTemplateCandidate(
+  remote: NonNullable<McpServerCard['remotes']>[number],
+  names: readonly string[],
+  name: string,
+  candidate: string,
+  environment: 'production' | 'development'
+): void {
+  let rendered = remote.url
+  for (const variable of names) {
+    const selected =
+      variable === name ? candidate : preferredTemplateValue(remote.variables?.[variable])
+    rendered = rendered.replaceAll(`{${variable}}`, selected)
+  }
+  const target = /^https?:\/\//u.test(rendered) ? rendered : candidate
+  if (/^https?:\/\//u.test(target)) assertRemoteUri(target, environment, `remote.variables.${name}`)
+}
+
 function assertCleanRepositorySubfolder(value: string): void {
+  const decoded = repeatedlyDecode(value)
+  const segments = decoded.split('/')
+  if (unsafeRepositoryPath(value, decoded, segments)) {
+    throw new TypeError('Server card repository.subfolder must be a clean relative path')
+  }
+}
+
+function repeatedlyDecode(value: string): string {
   let decoded = value
   try {
     for (let depth = 0; depth < 4; depth++) {
@@ -122,8 +156,15 @@ function assertCleanRepositorySubfolder(value: string): void {
   } catch {
     throw new TypeError('Server card repository.subfolder must be a clean relative path')
   }
-  const segments = decoded.split('/')
-  if (
+  return decoded
+}
+
+function unsafeRepositoryPath(
+  value: string,
+  decoded: string,
+  segments: readonly string[]
+): boolean {
+  return (
     value.length === 0 ||
     decoded.startsWith('/') ||
     decoded.includes('\\') ||
@@ -131,9 +172,7 @@ function assertCleanRepositorySubfolder(value: string): void {
     /[?#]/u.test(decoded) ||
     /^[a-zA-Z]:/u.test(decoded) ||
     segments.some((segment) => segment === '' || segment === '.' || segment === '..')
-  ) {
-    throw new TypeError('Server card repository.subfolder must be a clean relative path')
-  }
+  )
 }
 
 function preferredTemplateValue(input: unknown): string {
@@ -150,33 +189,38 @@ function assertNoEmbeddedSecret(value: unknown): void {
     return
   }
   if (!isRecord(value)) return
-  const actualValue =
-    typeof value.value === 'string' ||
-    typeof value.default === 'string' ||
-    (Array.isArray(value.choices) && value.choices.length > 0)
+  assertSecretObject(value)
+  for (const [key, nested] of Object.entries(value)) {
+    assertSecretEntry(key, nested)
+    assertNoEmbeddedSecret(nested)
+  }
+}
+
+function assertSecretObject(value: Record<string, unknown>): void {
+  const actualValue = hasEmbeddedValue(value)
   if (value.isSecret === true && actualValue) {
     throw new TypeError('Server cards must not embed secret values, defaults, or choices')
   }
-  if (
-    typeof value.name === 'string' &&
-    /(?:authorization|cookie|token|password|secret|credential|api[-_]?key)/iu.test(value.name) &&
-    actualValue
-  ) {
+  const sensitiveName = typeof value.name === 'string' && SENSITIVE_NAME.test(value.name)
+  if (sensitiveName && actualValue)
     throw new TypeError('Server cards must not embed credentials or tokens')
-  }
-  for (const [key, nested] of Object.entries(value)) {
-    if (
-      key !== 'isSecret' &&
-      /(?:^|[./_-])(?:authorization|token|password|secret|credential|api[-_]?key)(?:$|[./_-])/iu.test(
-        key
-      ) &&
-      (typeof nested === 'string' ||
-        (isRecord(nested) &&
-          (typeof nested.value === 'string' || typeof nested.default === 'string')))
-    ) {
-      throw new TypeError('Server cards must not embed credentials or tokens')
-    }
-    assertNoEmbeddedSecret(nested)
+}
+
+const SENSITIVE_NAME = /(?:authorization|cookie|token|password|secret|credential|api[-_]?key)/iu
+const SENSITIVE_KEY =
+  /(?:^|[./_-])(?:authorization|token|password|secret|credential|api[-_]?key)(?:$|[./_-])/iu
+
+function hasEmbeddedValue(value: Record<string, unknown>): boolean {
+  if (typeof value.value === 'string' || typeof value.default === 'string') return true
+  return Array.isArray(value.choices) && value.choices.length > 0
+}
+
+function assertSecretEntry(key: string, nested: unknown): void {
+  if (key === 'isSecret' || !SENSITIVE_KEY.test(key)) return
+  const nestedValue =
+    isRecord(nested) && (typeof nested.value === 'string' || typeof nested.default === 'string')
+  if (typeof nested === 'string' || nestedValue) {
+    throw new TypeError('Server cards must not embed credentials or tokens')
   }
 }
 
@@ -193,13 +237,32 @@ function assertRemoteUri(
     throw new TypeError(`Server card ${label} must be an absolute URI`)
   }
   assertNoCredentials(url, label)
-  const loopback = isLoopbackHost(url.hostname)
-  if (isPrivateHost(url.hostname) && !(environment === 'development' && loopback))
+  assertRemoteTopology(url, environment, label)
+  assertRemoteProtocol(url, environment, label)
+}
+
+function assertRemoteTopology(
+  url: URL,
+  environment: 'production' | 'development',
+  label: string
+): void {
+  const developmentLoopback = environment === 'development' && isLoopbackHost(url.hostname)
+  if (isPrivateHost(url.hostname) && !developmentLoopback) {
     throw new TypeError(`Server card ${label} must not expose private topology`)
-  if (environment === 'production' && url.protocol !== 'https:')
+  }
+}
+
+function assertRemoteProtocol(
+  url: URL,
+  environment: 'production' | 'development',
+  label: string
+): void {
+  if (environment === 'production' && url.protocol !== 'https:') {
     throw new TypeError(`Server card ${label} must use HTTPS in production`)
-  if (environment === 'development' && url.protocol === 'http:' && !loopback)
+  }
+  if (environment === 'development' && url.protocol === 'http:' && !isLoopbackHost(url.hostname)) {
     throw new TypeError(`Server card ${label} HTTP is limited to loopback development`)
+  }
 }
 
 function assertSafeAncillaryUri(
@@ -273,20 +336,24 @@ function mappedIpv4(host: string): number[] | undefined {
 }
 
 function isPrivateIpv4(parts: number[]): boolean {
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255))
-    return false
+  if (!validIpv4Parts(parts)) return false
   const [first = -1, second = -1] = parts
+  if ([0, 10, 127].includes(first) || first >= 224) return true
+  return isReservedIpv4Pair(first, second)
+}
+
+function validIpv4Parts(parts: readonly number[]): boolean {
   return (
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 100 && second >= 64 && second <= 127) ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 198 && (second === 18 || second === 19)) ||
-    first >= 224
+    parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
   )
+}
+
+function isReservedIpv4Pair(first: number, second: number): boolean {
+  if (first === 100) return second >= 64 && second <= 127
+  if (first === 169) return second === 254
+  if (first === 172) return second >= 16 && second <= 31
+  if (first === 192) return second === 168
+  return first === 198 && (second === 18 || second === 19)
 }
 
 function assertString(

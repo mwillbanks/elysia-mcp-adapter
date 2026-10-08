@@ -1,5 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs'
+import type { IncomingMessage } from 'node:http'
 import { createServer } from 'node:https'
+import { listenLoopbackTls } from './listen-fixture.js'
 import { challengeResponse, StandardWebhookReceiver } from './receiver.js'
 
 const logPath = process.argv[2]
@@ -12,35 +14,44 @@ const server = createServer(
     cert: readFileSync(new URL('./fixtures/valid-cert.pem', import.meta.url))
   },
   async (request, response) => {
-    const chunks: Uint8Array[] = []
-    for await (const chunk of request) chunks.push(chunk)
-    const body = Buffer.concat(chunks)
+    const body = await requestBytes(request)
     const result = verifier.verify(
       body,
       new Headers(request.headers as Record<string, string>),
       secrets
     )
-    let challenge: { challenge: string } | null = null
-    if (result.accepted) {
-      try {
-        challenge = challengeResponse(body)
-      } catch {}
-      appendFileSync(
-        logPath,
-        `${JSON.stringify({ kind: challenge ? 'challenge' : 'event', duplicate: result.duplicate, signature: request.headers['webhook-signature'] })}\n`
-      )
-    }
+    const challenge = result.accepted
+      ? recordDelivery(logPath, body, result.duplicate, request.headers['webhook-signature'])
+      : null
     response.writeHead(result.accepted ? 200 : 401, { 'content-type': 'application/json' })
     response.end(JSON.stringify(challenge ?? { accepted: result.accepted }))
   }
 )
-await new Promise<void>((resolve, reject) => {
-  server.once('error', reject)
-  server.listen(0, '127.0.0.1', resolve)
-})
-const address = server.address()
-if (!address || typeof address === 'string') throw new Error('Missing receiver address')
-console.log(address.port)
+
+async function requestBytes(request: IncomingMessage): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = []
+  for await (const chunk of request) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
+
+function recordDelivery(
+  path: string,
+  body: Uint8Array,
+  duplicate: boolean,
+  signature: unknown
+): { challenge: string } | null {
+  let challenge: { challenge: string } | null = null
+  try {
+    challenge = challengeResponse(body)
+  } catch {}
+  appendFileSync(
+    path,
+    `${JSON.stringify({ kind: challenge ? 'challenge' : 'event', duplicate, signature })}\n`
+  )
+  return challenge
+}
+const port = await listenLoopbackTls(server)
+console.log(port)
 const close = async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
   process.exit(0)

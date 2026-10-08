@@ -6,6 +6,10 @@ async function* changes(): AsyncGenerator<McpServerNotification> {
 }
 
 export let cancellationObserved = false
+let resolveCancellation = () => {}
+export const cancellationDone = new Promise<void>((resolve) => {
+  resolveCancellation = resolve
+})
 
 export const app = new Elysia()
   .use(
@@ -13,6 +17,7 @@ export const app = new Elysia()
       allowedRoutes: [],
       server: { name: 'modern-core-example', version: '1.0.0' },
       core: {
+        maxToolInputElements: 1_000,
         continuation: {
           // Load a secret of at least 32 bytes from secure application configuration in production.
           signingKey: '0123456789abcdef0123456789abcdef'
@@ -77,6 +82,7 @@ export const app = new Elysia()
         'abort',
         () => {
           cancellationObserved = true
+          resolveCancellation()
           resolve()
         },
         { once: true }

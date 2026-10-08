@@ -7,6 +7,7 @@ import {
 } from './types.js'
 
 const MAX_EVIDENCE_FIELD_BYTES = 4096
+const ACTION_OUTCOMES = new Set(['benign', 'consequential', 'irreversible'])
 
 export function assertActionMetadata(value: unknown): asserts value is McpActionMetadata {
   if (!isRecord(value)) throw new TypeError('Action metadata must be an object')
@@ -19,7 +20,7 @@ export function assertActionMetadata(value: unknown): asserts value is McpAction
   assertOpenMetadata(value.returnMetadata, ['source', 'sensitivity'], 'returnMetadata')
   if (
     value.outcome !== undefined &&
-    !['benign', 'consequential', 'irreversible'].includes(String(value.outcome))
+    (typeof value.outcome !== 'string' || !ACTION_OUTCOMES.has(value.outcome))
   ) {
     throw new TypeError('Action metadata outcome is invalid')
   }

@@ -54,8 +54,8 @@
     "test": "bun test --bail",
     "lint": "bun --bun biome check",
     "format": "bun --bun biome check --write",
-    "fallow": "bun --bun ./node_modules/fallow/bin/fallow --skip health",
-    "fallow:health": "bun --bun ./node_modules/fallow/bin/fallow health",
+    "fallow": "bun --bun ./node_modules/fallow/bin/fallow --no-cache --fail-on-issues && bun --bun ./node_modules/fallow/bin/fallow --root website --no-cache --fail-on-issues",
+    "fallow:health": "bun --bun ./node_modules/fallow/bin/fallow health --no-cache --fail-on-issues",
     "examples:setup": "bun link && bun install",
     "examples:build": "bun --bun run --cwd examples/tasks build && bun --bun run --cwd examples/auth build && bun --bun run --cwd examples/apps-vanilla build && bun --bun run --cwd examples/apps-react build && bun --bun run --cwd examples/core build && bun --bun run --cwd examples/skills build && bun --bun run --cwd examples/experimental build && bun --bun run --cwd examples/events build",
     "examples:typecheck": "bun --bun run --cwd examples/tasks typecheck && bun --bun run --cwd examples/auth typecheck && bun --bun run --cwd examples/apps-vanilla typecheck && bun --bun run --cwd examples/apps-react typecheck && bun --bun run --cwd examples/core typecheck && bun --bun run --cwd examples/skills typecheck && bun --bun run --cwd examples/experimental typecheck && bun --bun run --cwd examples/events typecheck",
@@ -69,7 +69,6 @@
   "dependencies": {
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "bullmq": "^6.3.11",
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
@@ -87,12 +86,12 @@
     "@biomejs/biome": "^2.5.15",
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
-    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/ext-apps": "2.0.3",
     "@sinclair/typebox": "^0.34.52",
     "@types/bun": "^1.4.2",
     "elysia": "^1.4.30",
-    "fallow": "^3.31.0",
+    "fallow": "^3.32.0",
     "husky": "^9.1.7",
     "typescript": "^7.0.2",
     "zod": "^4.6.5"

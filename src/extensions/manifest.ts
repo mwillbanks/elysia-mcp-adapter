@@ -26,9 +26,9 @@ export interface McpExtensionVersionRecord {
 export type McpExtensionMaturity = 'stable' | 'draft' | 'experimental' | 'undefined'
 
 export interface McpLatestExtensionRecord {
-  identifier: string
+  identifier?: string
   maturity: McpExtensionMaturity
-  protocolEra: string
+  protocolEra?: string
   availability: 'reviewed' | 'unavailable'
   source?: McpExtensionSource
   reason?: string
@@ -226,6 +226,7 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
+    maturity: 'stable',
     current: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
     versions: {
       '526201bbc80231daa40ffcdecfc9da4e54e5dc93': {
@@ -338,7 +339,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'schema/2026-07-28/schema.ts',
       sha256: '742750af0bb8c716e7030c4977c992b55d1adc4407e9e66997db5846baedc2cd'
     }
@@ -350,7 +351,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'schema/draft/schema.ts',
       sha256: 'b2d3a00d4094e413a48628560fec60652169a3d2b427e8c629238e13f987723f'
     }
@@ -362,7 +363,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'schema/2026-07-28/schema.json',
       sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
     }
@@ -374,7 +375,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/tools.mdx',
       sha256: 'ed550806a58eb7744b858fb9f26001aa5e55dac9e2babe88317cc81d9d4c490d'
     }
@@ -386,7 +387,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/patterns/mrtr.mdx',
       sha256: 'a8671eb2a0d292c0dcbae19666ff4fc3d97f294ce8107e9f38259cc5a02a066b'
     }
@@ -398,7 +399,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/authorization/index.mdx',
       sha256: '99e7eeaecad5381649e6dca98cb5b47f314bdda9f1d8cd989299e5fe143a913e'
     }
@@ -410,7 +411,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'schema/draft/schema.json',
       sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
     }
@@ -422,7 +423,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/index.mdx',
       sha256: '03586b10e3214c55478293f1199fffb0bbf95bbef5df3d6a8378e860697bd63f'
     }
@@ -434,7 +435,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/versioning.mdx',
       sha256: 'bc02f271700bdecd88034f2d7801eb09110a71d65876487378d94e48dfeb90dc'
     }
@@ -446,7 +447,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/transports/streamable-http.mdx',
       sha256: '22574bf11e004068493787203ce92be1162107cad717bcb805a15780d4fa69c9'
     }
@@ -458,7 +459,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/patterns/cancellation.mdx',
       sha256: '396030784a4af9b734a1c8d4faed13b31077e4a3a1f03c9c1f2048ec52794ba4'
     }
@@ -470,7 +471,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/patterns/progress.mdx',
       sha256: '9f55aca08920c633f3a2a35e0c77533db08d3fd19ced43918ea7c57aa5f85409'
     }
@@ -482,7 +483,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/basic/patterns/subscriptions.mdx',
       sha256: '8333cbc3280cad293e96b4a20c3200face8e185ebf58f1c4a51c35bb96654abd'
     }
@@ -494,7 +495,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/discover.mdx',
       sha256: '3fe1f5b5f1528014216b1e49cc3363b3c689c36bcb80a6957ddca6a04cea409c'
     }
@@ -506,7 +507,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/resources.mdx',
       sha256: '10538119019af5f49a2fbc55d5818725175863115dfb273e79ed7f65a18aaf0c'
     }
@@ -518,7 +519,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/prompts.mdx',
       sha256: '85e550635bbbbaa90dff8738f98808c62987e8cfce1d75305b55ca43f3c546de'
     }
@@ -530,7 +531,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/utilities/completion.mdx',
       sha256: '1965c563aadb99e141131444caa81ff1860ed82bab314b286c40a0f0ba839f99'
     }
@@ -542,7 +543,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/utilities/pagination.mdx',
       sha256: 'c4c7b674ae9ce16c012b5da35559d35768f6b7a508ceb5d2d71393a9f46afd2b'
     }
@@ -554,7 +555,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/utilities/caching.mdx',
       sha256: 'ca416e94b40c067de638bb101541969f2b956b33e9695761032ddc06245d514d'
     }
@@ -566,7 +567,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/server/utilities/logging.mdx',
       sha256: '4e77ec3257e07ad69bfd6ed902771f14d6498b60fe6c9c325b8ff4bfc35647a6'
     }
@@ -578,7 +579,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/client/roots.mdx',
       sha256: '016aea34d76ccce86a82509dbf2699833bb8547bde5b3f4a8eb086dfd26a9ba2'
     }
@@ -590,7 +591,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/client/sampling.mdx',
       sha256: '32fe2bb69f5a7caa85a6b9501f465cb1fb888d0c669cd13b23a071071a029df1'
     }
@@ -602,7 +603,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3098fe94caa1b9e0afaaa6d30e040b61d5802471',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
       path: 'docs/specification/2026-07-28/client/elicitation.mdx',
       sha256: '74351d1081681695536e59a55588a67ed66a76db6057846c263ce2f465fab4c2'
     }
@@ -614,7 +615,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/ext-tasks',
-      revision: '5246bc3d0253c1c4b09e682f690b7e8b97362500',
+      revision: '93a4915aadf714f87ece5cd40c317bce24779cf5',
       path: 'specification/2026-07-28/tasks.md',
       sha256: 'ef2860ae4418d02f3b2bfd54fcd88b03a3c2c3aa6724d282cd4ca3a3699a2e27',
       packageVersion: '0.2.2',
@@ -628,7 +629,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/ext-tasks',
-      revision: '5246bc3d0253c1c4b09e682f690b7e8b97362500',
+      revision: '93a4915aadf714f87ece5cd40c317bce24779cf5',
       path: 'specification/draft/tasks.md',
       sha256: '7fd574093a5c4e29da19a0d7683693af7b93a276f3ce37343664c9e12f4d039a',
       packageVersion: '0.2.2',
@@ -713,14 +714,26 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'experimental',
-    protocolEra: 'draft',
+    maturity: 'stable',
+    protocolEra: 'final',
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/ext-server-card',
       revision: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
       path: 'schema.json',
       sha256: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042'
+    }
+  },
+  serverCardFinalSep: {
+    identifier: 'io.modelcontextprotocol/server-card',
+    maturity: 'stable',
+    protocolEra: 'final',
+    availability: 'reviewed',
+    source: {
+      repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
+      revision: 'c518f7a927cff918bce35d3522fcdb046d264d7c',
+      path: 'seps/2127-mcp-server-cards.md',
+      sha256: 'b7691eee6daa21f0b556e48f83b73f9cc8e61e9ea2da17c1aaf3aa169b348461'
     }
   },
   serverCardDiscovery: {
@@ -854,6 +867,17 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
       revision: 'fecace78a9552f70ba735d750fc3c4b190e20429',
       path: 'specification/draft/trust-annotations.mdx',
       sha256: '3cc0123157d3ea4489729d8498489e12787297dcfe1f09a5bb02a4a6b0f55b7d'
+    }
+  },
+  filesystems: {
+    maturity: 'undefined',
+    availability: 'reviewed',
+    reason: 'The repository declares an experiment but defines no authoritative MCP wire contract.',
+    source: {
+      repository: 'https://github.com/modelcontextprotocol/experimental-ext-filesystems',
+      revision: '52b61dc9d63ac697e627eae24b7924de7685db22',
+      path: 'README.md',
+      sha256: 'feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993'
     }
   }
 } as const satisfies Record<string, McpLatestExtensionRecord>

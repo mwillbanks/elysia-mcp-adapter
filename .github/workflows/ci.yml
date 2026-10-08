@@ -11,6 +11,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      TASKS_TEST_REDIS_IMAGE: redis:8.10.2-alpine
     services:
       redis:
         image: redis:8.10.2-alpine
@@ -31,7 +33,7 @@ jobs:
       - run: bun ci --cwd website
       - run: bun --bun run lint
       - run: bun --bun run typecheck
-      - run: bun --bun run test
+      - run: bun test --bail --coverage --coverage-reporter=lcov --coverage-dir=coverage
       - run: bun --bun run fallow
       - run: bun --bun run build
       - run: bun --bun run pack:check

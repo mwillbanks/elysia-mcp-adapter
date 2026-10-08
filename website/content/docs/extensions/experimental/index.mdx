@@ -7,13 +7,14 @@ Every experiment is disabled by default. Enable one explicitly and pin the expor
 
 | Experiment | Protocol surface | Adapter opt-in |
 | --- | --- | --- |
-| Server card | `GET /mcp/server-card` | `extensions.serverCard` |
 | Interceptors | `interceptors/list`, `interceptor/invoke`, local chain | `extensions.interceptors` and `.mcpInterceptor()` |
 | Server variants | Legacy initialize, session requests, GET SSE | `extensions.variants` with legacy-only transport |
 | Action metadata | Tool annotations | Add `io.modelcontextprotocol/action-metadata` |
 | Trust annotations | Tool result `_meta` | Add `io.modelcontextprotocol/trust-annotations` |
 | Events | Discovery, polling, POST SSE, durable webhooks | `extensions.events` and `.mcpEvent()` with legacy-only transport |
 
-The [experimental Bun workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental) exercises the first five surfaces through real adapter requests. The separate [Events workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events) covers replay, event-only SSE, durable Bun SQLite subscriptions, and an isolated TLS receiver. Neither workspace contacts external services.
+Server Cards are finalized and documented in the [Server Cards guide](/docs/extensions/server-card).
+
+The [experimental Bun workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental) exercises the remaining surfaces through real adapter requests. The separate [Events workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events) covers replay, event-only SSE, durable Bun SQLite subscriptions, and an isolated TLS receiver. Neither workspace contacts external services.
 
 Draft support does not imply client support. Minimal protocol clients in the workspace cover methods which common hosts do not expose yet. Hosts retain approval, consent, sandbox, evidence, and display responsibilities. An annotation never authorizes an operation.

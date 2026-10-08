@@ -1,21 +1,14 @@
 import { Database } from 'bun:sqlite'
-import { oauthProvider } from '@better-auth/oauth-provider'
-import { type McpAuthPrincipal, mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { betterAuth } from 'better-auth'
 import { getMigrations } from 'better-auth/db/migration'
-import { verifyJwsAccessToken } from 'better-auth/oauth2'
 import { jwt } from 'better-auth/plugins'
 import { Elysia } from 'elysia'
+import { exampleAccessTokenVerifier, exampleOAuthProvider } from '../access-tokens.js'
 
 export const OAUTH_BASE_URL = 'http://localhost:43101/api/auth'
 export const MCP_RESOURCE = 'http://localhost:43101/mcp'
 const MCP_SCOPES = ['mcp:read', 'mcp:admin'] as const
-
-function scopesFromClaim(scope: unknown): string[] {
-  if (Array.isArray(scope))
-    return scope.filter((value): value is string => typeof value === 'string')
-  return typeof scope === 'string' ? scope.split(' ').filter(Boolean) : []
-}
 
 export async function createOAuthExample({
   database = new Database(':memory:'),
@@ -33,54 +26,19 @@ export async function createOAuthExample({
     secret,
     database,
     emailAndPassword: { enabled: true },
-    plugins: [
-      jwt(),
-      oauthProvider({
-        loginPage: '/sign-in',
-        consentPage: '/consent',
-        silenceWarnings: { oauthAuthServerConfig: true },
-        clientPrivileges: ({ action, session, user }) =>
-          Boolean(
-            session?.userId === user?.id &&
-              (action === 'create' || action === 'configure-client-credentials-scopes')
-          ),
-        scopes: [...MCP_SCOPES],
-        validAudiences: [MCP_RESOURCE],
-        resources: [MCP_RESOURCE],
-        clientRegistrationDefaultResources: [MCP_RESOURCE],
-        clientCredentialGrantDefaultScopes: ['mcp:read'],
-        customAccessTokenClaims: ({ resources }) => ({
-          'https://example.local/token-kind': 'access_token',
-          resource: resources?.[0]
-        })
-      })
-    ]
+    plugins: [jwt(), exampleOAuthProvider(MCP_RESOURCE, [...MCP_SCOPES])]
   }
 
   await (await getMigrations(options)).runMigrations()
   const auth = betterAuth(options)
 
-  const verifyForMcp = async (token: string): Promise<McpAuthPrincipal> => {
-    const payload = await verifyJwsAccessToken(token, {
-      jwksFetch: `${OAUTH_BASE_URL}/jwks`,
-      verifyOptions: { issuer: OAUTH_BASE_URL, audience: MCP_RESOURCE }
-    })
-    if (payload['https://example.local/token-kind'] !== 'access_token' || !payload.exp) {
-      throw new Error('Bearer value is not an access token')
-    }
-    const scopes = scopesFromClaim(payload.scope)
-    if (!scopes.includes('mcp:read')) throw new Error('Access token lacks the mcp:read scope')
-    return {
-      tokenType: 'access_token',
-      subject: payload.sub,
-      issuer: payload.iss,
-      audience: payload.aud ?? [],
-      expiresAt: payload.exp,
-      scopes,
-      clientId: typeof payload.client_id === 'string' ? payload.client_id : undefined,
-      claims: { grantType: payload.gty }
-    }
-  }
+  const verifyForMcp = exampleAccessTokenVerifier({
+    issuer: OAUTH_BASE_URL,
+    resource: MCP_RESOURCE,
+    invalidTokenMessage: 'Bearer value is not an access token',
+    acceptArrayScopes: true,
+    includeGrantType: true
+  })
 
   const app = new Elysia()
     .use(

@@ -147,6 +147,16 @@ mcp({
 
 Do not disable origin validation just to make a browser client connect. Add the exact trusted origin instead.
 
+Use a non-HTTP scheme wildcard only when every origin in that browser-extension scheme is trusted:
+
+```ts
+transport: {
+  allowedOrigins: ['chrome-extension://*']
+}
+```
+
+HTTP and HTTPS wildcards, a global `*`, credentialed origins, opaque origins, and malformed patterns are rejected. Exact serialized origins remain the narrow default.
+
 ## Keep model-controlled headers narrow
 
 ```ts

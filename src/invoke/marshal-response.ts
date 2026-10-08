@@ -1,4 +1,5 @@
 import { isRecord } from '../internal.js'
+import { isBinaryMimeType, mimeTypeEssence } from '../schema/media-type.js'
 import type {
   McpContent,
   McpPromptHandlerResult,
@@ -242,60 +243,76 @@ async function readResponse(
   binaryResource?: McpResourceContent
 }> {
   const contentType = response.headers.get('content-type') ?? ''
-  const mimeType = contentType.split(';')[0] || 'application/octet-stream'
-
-  if (isBinaryMimeType(mimeType)) {
-    if (marshal.binary === 'error') {
-      return {
-        text: `Binary response omitted. mimeType=${mimeType}`,
-        structured: {
-          omittedBinary: true,
-          mimeType
-        }
-      }
-    }
-
-    const buffer = await response.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-
-    if (mimeType.startsWith('image/')) {
-      return {
-        text: `[binary image: ${mimeType}; ${buffer.byteLength} bytes]`,
-        binaryContent: { type: 'image', data: base64, mimeType },
-        binaryResource: { uri: '', blob: base64, mimeType }
-      }
-    }
-
-    if (mimeType.startsWith('audio/')) {
-      return {
-        text: `[binary audio: ${mimeType}; ${buffer.byteLength} bytes]`,
-        binaryContent: { type: 'audio', data: base64, mimeType },
-        binaryResource: { uri: '', blob: base64, mimeType }
-      }
-    }
-
-    return {
-      text: `[binary data: ${mimeType}; ${buffer.byteLength} bytes]`,
-      binaryResource: { uri: '', blob: base64, mimeType }
-    }
-  }
+  const mimeType = mimeTypeEssence(contentType) || 'application/octet-stream'
+  if (isBinaryMimeType(mimeType)) return readBinaryResponse(response, mimeType, marshal.binary)
 
   const rawText = await response.text()
   const text = truncateUtf8(rawText, marshal.maxTextBytes)
 
-  if (mimeType === 'application/json' || mimeType.endsWith('+json')) {
-    try {
-      const structured = JSON.parse(rawText)
-      return {
-        text: truncateUtf8(stringifyForText(structured), marshal.maxTextBytes),
-        structured: limitStructured(structured, marshal.maxStructuredBytes)
-      }
-    } catch {
-      return { text }
+  if (!isJsonMimeType(mimeType)) return { text }
+  return parseJsonResponse(rawText, text, marshal)
+}
+
+async function readBinaryResponse(
+  response: Response,
+  mimeType: string,
+  mode: Required<McpResponseMarshalOptions>['binary']
+): Promise<{
+  text: string
+  structured?: unknown
+  binaryContent?: McpContent
+  binaryResource?: McpResourceContent
+}> {
+  if (mode === 'error') {
+    return {
+      text: `Binary response omitted. mimeType=${mimeType}`,
+      structured: { omittedBinary: true, mimeType }
     }
   }
+  const buffer = await response.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString('base64')
+  if (mimeType.startsWith('image/')) return imageBinaryResult(mimeType, buffer.byteLength, base64)
+  if (mimeType.startsWith('audio/')) return audioBinaryResult(mimeType, buffer.byteLength, base64)
+  return {
+    text: `[binary data: ${mimeType}; ${buffer.byteLength} bytes]`,
+    binaryResource: { uri: '', blob: base64, mimeType }
+  }
+}
 
-  return { text }
+function imageBinaryResult(mimeType: string, bytes: number, data: string) {
+  return {
+    text: `[binary image: ${mimeType}; ${bytes} bytes]`,
+    binaryContent: { type: 'image' as const, data, mimeType },
+    binaryResource: { uri: '', blob: data, mimeType }
+  }
+}
+
+function audioBinaryResult(mimeType: string, bytes: number, data: string) {
+  return {
+    text: `[binary audio: ${mimeType}; ${bytes} bytes]`,
+    binaryContent: { type: 'audio' as const, data, mimeType },
+    binaryResource: { uri: '', blob: data, mimeType }
+  }
+}
+
+function isJsonMimeType(mimeType: string): boolean {
+  return mimeType === 'application/json' || mimeType.endsWith('+json')
+}
+
+function parseJsonResponse(
+  rawText: string,
+  fallbackText: string,
+  marshal: Required<McpResponseMarshalOptions>
+): { text: string; structured?: unknown } {
+  try {
+    const structured = JSON.parse(rawText)
+    return {
+      text: truncateUtf8(stringifyForText(structured), marshal.maxTextBytes),
+      structured: limitStructured(structured, marshal.maxStructuredBytes)
+    }
+  } catch {
+    return { text: fallbackText }
+  }
 }
 
 function safeHeaders(headers: Headers): Record<string, string> {
@@ -324,22 +341,6 @@ function limitStructured(value: unknown, maxBytes: number): unknown {
     bytes: Buffer.byteLength(text),
     excerpt: truncateUtf8(text, maxBytes)
   }
-}
-
-function isBinaryMimeType(mimeType: string): boolean {
-  if (!mimeType) return false
-  if (mimeType.startsWith('text/')) return false
-  if (mimeType === 'application/json' || mimeType.endsWith('+json')) return false
-  if (mimeType === 'application/xml' || mimeType.endsWith('+xml')) return false
-  if (mimeType === 'application/x-www-form-urlencoded') return false
-
-  return (
-    mimeType === 'application/octet-stream' ||
-    mimeType.startsWith('image/') ||
-    mimeType.startsWith('audio/') ||
-    mimeType.startsWith('video/') ||
-    mimeType.startsWith('application/')
-  )
 }
 
 function isToolResult(value: unknown): value is McpToolResult {

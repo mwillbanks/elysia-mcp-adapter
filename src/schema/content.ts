@@ -58,42 +58,45 @@ function isSamplingContentBlock(value: unknown): boolean {
   if (!isRecord(value)) return false
   const basicContent = isBasicContentBlock(value)
   if (basicContent !== undefined) return basicContent
-  if (value.type === 'tool_use') {
-    return typeof value.id === 'string' && typeof value.name === 'string' && isRecord(value.input)
-  }
-  if (value.type === 'tool_result') {
-    return (
-      typeof value.toolUseId === 'string' &&
-      Array.isArray(value.content) &&
-      value.content.every(isMcpContentBlock) &&
-      (value.isError === undefined || typeof value.isError === 'boolean')
-    )
-  }
+  if (value.type === 'tool_use') return isToolUseContent(value)
+  if (value.type === 'tool_result') return isToolResultContent(value)
   return false
+}
+
+function isToolUseContent(value: Record<string, unknown>): boolean {
+  return typeof value.id === 'string' && typeof value.name === 'string' && isRecord(value.input)
+}
+
+function isToolResultContent(value: Record<string, unknown>): boolean {
+  if (typeof value.toolUseId !== 'string' || !Array.isArray(value.content)) return false
+  if (!value.content.every(isMcpContentBlock)) return false
+  return value.isError === undefined || typeof value.isError === 'boolean'
 }
 
 function isMcpContentBlock(value: unknown): boolean {
   if (!isRecord(value)) return false
   const basicContent = isBasicContentBlock(value)
   if (basicContent !== undefined) return basicContent
-  if (value.type === 'resource_link') {
-    return (
-      isValidUri(value.uri) &&
-      (value.name === undefined || typeof value.name === 'string') &&
-      (value.description === undefined || typeof value.description === 'string') &&
-      (value.mimeType === undefined || typeof value.mimeType === 'string')
-    )
-  }
-  if (value.type === 'resource' && isRecord(value.resource)) {
-    const resource = value.resource
-    return (
-      isValidUri(resource.uri) &&
-      (resource.mimeType === undefined || typeof resource.mimeType === 'string') &&
-      ((typeof resource.text === 'string' && resource.blob === undefined) ||
-        (typeof resource.blob === 'string' && resource.text === undefined))
-    )
-  }
+  if (value.type === 'resource_link') return isResourceLink(value)
+  if (value.type === 'resource') return isEmbeddedResource(value.resource)
   return false
+}
+
+function isResourceLink(value: Record<string, unknown>): boolean {
+  if (!isValidUri(value.uri)) return false
+  if (!optionalString(value.name) || !optionalString(value.description)) return false
+  return optionalString(value.mimeType)
+}
+
+function isEmbeddedResource(value: unknown): boolean {
+  if (!isRecord(value) || !isValidUri(value.uri) || !optionalString(value.mimeType)) return false
+  const text = typeof value.text === 'string' && value.blob === undefined
+  const blob = typeof value.blob === 'string' && value.text === undefined
+  return text || blob
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
 }
 
 function isBasicContentBlock(value: Record<string, unknown>): boolean | undefined {

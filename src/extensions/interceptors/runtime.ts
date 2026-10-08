@@ -1,5 +1,7 @@
 import { validateJsonSchema } from '../../schema/validate.js'
 import type { McpInvocationContext } from '../../types.js'
+import { assertInterceptorDefinition } from './definition-validation.js'
+import { normalizeInterceptorResult } from './result-validation.js'
 import type {
   McpInterceptorAuditOutcome,
   McpInterceptorChainEntry,
@@ -12,51 +14,7 @@ import type {
   McpValidationResult
 } from './types.js'
 
-export function assertInterceptorDefinition(value: McpInterceptorDefinition): void {
-  if (
-    !value ||
-    typeof value.name !== 'string' ||
-    !value.name ||
-    typeof value.version !== 'string' ||
-    !value.version ||
-    typeof value.description !== 'string'
-  )
-    throw new TypeError('Interceptor identity is invalid')
-  if (!['validation', 'mutation'].includes(value.type))
-    throw new TypeError('Interceptor type is invalid')
-  if (
-    !Array.isArray(value.hooks) ||
-    value.hooks.length === 0 ||
-    value.hooks.some(
-      (hook) =>
-        !['request', 'response'].includes(hook.phase) ||
-        !Array.isArray(hook.events) ||
-        hook.events.length === 0 ||
-        hook.events.some((event) => typeof event !== 'string' || !event)
-    )
-  )
-    throw new TypeError('Interceptor hooks are invalid')
-  if (value.mode !== undefined && !['active', 'audit'].includes(value.mode))
-    throw new TypeError('Interceptor mode is invalid')
-  if (value.failOpen !== undefined && typeof value.failOpen !== 'boolean')
-    throw new TypeError('Interceptor failOpen is invalid')
-  if (!validPriority(value.priorityHint)) throw new TypeError('Interceptor priorityHint is invalid')
-  if (
-    value.compat !== undefined &&
-    (!value.compat ||
-      typeof value.compat !== 'object' ||
-      (value.compat.minProtocol !== undefined && typeof value.compat.minProtocol !== 'string') ||
-      (value.compat.maxProtocol !== undefined && typeof value.compat.maxProtocol !== 'string'))
-  )
-    throw new TypeError('Interceptor compat is invalid')
-  for (const [label, schema] of [
-    ['configSchema', value.configSchema],
-    ['payloadSchema', value.payloadSchema]
-  ] as const) {
-    if (schema !== undefined && (!schema || typeof schema !== 'object' || Array.isArray(schema)))
-      throw new TypeError(`Interceptor ${label} is invalid`)
-  }
-}
+export { assertInterceptorDefinition } from './definition-validation.js'
 
 export function interceptorMatches(
   definition: McpInterceptorDefinition,
@@ -75,35 +33,7 @@ export async function invokeInterceptor(
   invocation: McpInterceptorInvocation,
   context: McpInvocationContext
 ): Promise<McpInterceptorResult> {
-  assertInterceptorDefinition(registration.definition)
-  if (invocation.event.length === 0) throw new TypeError('Interceptor event is required')
-  if (!interceptorMatches(registration.definition, invocation.event, invocation.phase))
-    throw new TypeError('Interceptor does not declare this event and phase')
-  if (
-    invocation.timeoutMs !== undefined &&
-    (!Number.isSafeInteger(invocation.timeoutMs) || invocation.timeoutMs <= 0)
-  )
-    throw new TypeError('Interceptor timeoutMs must be positive')
-  if (registration.definition.configSchema) {
-    try {
-      assertSchema(registration.definition.configSchema, invocation.config ?? {}, 'configuration')
-    } catch (cause) {
-      throw new McpInterceptorExecutionError(
-        registration.definition.name,
-        'Configuration invalid',
-        { cause }
-      )
-    }
-  }
-  if (registration.definition.payloadSchema) {
-    try {
-      assertSchema(registration.definition.payloadSchema, invocation.payload, 'payload')
-    } catch (cause) {
-      throw new McpInterceptorExecutionError(registration.definition.name, 'Payload invalid', {
-        cause
-      })
-    }
-  }
+  validateInterceptorInvocation(registration, invocation)
   const controller = new AbortController()
   const relay = () => controller.abort(context.signal?.reason)
   if (context.signal?.aborted) {
@@ -153,6 +83,42 @@ export async function invokeInterceptor(
   } finally {
     if (timer) clearTimeout(timer)
     context.signal?.removeEventListener('abort', relay)
+  }
+}
+
+function validateInterceptorInvocation(
+  registration: McpInterceptorRegistration,
+  invocation: McpInterceptorInvocation
+): void {
+  assertInterceptorDefinition(registration.definition)
+  if (invocation.event.length === 0) throw new TypeError('Interceptor event is required')
+  if (!interceptorMatches(registration.definition, invocation.event, invocation.phase)) {
+    throw new TypeError('Interceptor does not declare this event and phase')
+  }
+  if (invocation.timeoutMs !== undefined && !validTimeout(invocation.timeoutMs)) {
+    throw new TypeError('Interceptor timeoutMs must be positive')
+  }
+  validateInvocationSchema(registration, 'configSchema', invocation.config ?? {})
+  validateInvocationSchema(registration, 'payloadSchema', invocation.payload)
+}
+
+function validTimeout(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0
+}
+
+function validateInvocationSchema(
+  registration: McpInterceptorRegistration,
+  field: 'configSchema' | 'payloadSchema',
+  input: unknown
+): void {
+  const schema = registration.definition[field]
+  if (!schema) return
+  const label = field === 'configSchema' ? 'configuration' : 'payload'
+  const reason = field === 'configSchema' ? 'Configuration invalid' : 'Payload invalid'
+  try {
+    assertSchema(schema, input, label)
+  } catch (cause) {
+    throw new McpInterceptorExecutionError(registration.definition.name, reason, { cause })
   }
 }
 
@@ -393,97 +359,4 @@ function priority(entry: McpInterceptorChainEntry, phase: 'request' | 'response'
 function assertSchema(schema: Record<string, unknown>, input: unknown, label: string): void {
   const result = validateJsonSchema(schema, input)
   if (!result.ok) throw new TypeError(`Interceptor ${label} failed schema validation`)
-}
-function normalizeInterceptorResult(
-  definition: McpInterceptorDefinition,
-  phase: 'request' | 'response',
-  result: unknown
-): McpInterceptorResult {
-  if (!result || typeof result !== 'object') throw new TypeError('Interceptor result is invalid')
-  const candidate = result as Record<string, unknown>
-  if (candidate.interceptor !== undefined && candidate.interceptor !== definition.name)
-    throw new TypeError('Interceptor result identity is inconsistent')
-  if (candidate.type !== undefined && candidate.type !== definition.type)
-    throw new TypeError('Interceptor result type is inconsistent')
-  if (candidate.phase !== undefined && candidate.phase !== phase)
-    throw new TypeError('Interceptor result phase is inconsistent')
-  if (
-    candidate.durationMs !== undefined &&
-    (typeof candidate.durationMs !== 'number' ||
-      !Number.isFinite(candidate.durationMs) ||
-      candidate.durationMs < 0)
-  )
-    throw new TypeError('Interceptor result durationMs is invalid')
-  if (
-    candidate.info !== undefined &&
-    (!candidate.info || typeof candidate.info !== 'object' || Array.isArray(candidate.info))
-  )
-    throw new TypeError('Interceptor result info is invalid')
-  if (definition.type === 'validation' && typeof (result as any).valid !== 'boolean')
-    throw new TypeError('Validator result is invalid')
-  if (definition.type === 'validation') {
-    if (
-      candidate.severity !== undefined &&
-      !['info', 'warn', 'error'].includes(String(candidate.severity))
-    )
-      throw new TypeError('Validator severity is invalid')
-    if (
-      candidate.messages !== undefined &&
-      (!Array.isArray(candidate.messages) ||
-        candidate.messages.some(
-          (message) =>
-            !message ||
-            typeof message !== 'object' ||
-            typeof (message as any).message !== 'string' ||
-            !['info', 'warn', 'error'].includes((message as any).severity) ||
-            ((message as any).path !== undefined && typeof (message as any).path !== 'string')
-        ))
-    )
-      throw new TypeError('Validator messages are invalid')
-    if (
-      candidate.suggestions !== undefined &&
-      (!Array.isArray(candidate.suggestions) ||
-        candidate.suggestions.some(
-          (suggestion) =>
-            !suggestion ||
-            typeof suggestion !== 'object' ||
-            typeof (suggestion as any).path !== 'string' ||
-            !('value' in suggestion)
-        ))
-    )
-      throw new TypeError('Validator suggestions are invalid')
-    if (
-      candidate.signature !== undefined &&
-      (!candidate.signature ||
-        typeof candidate.signature !== 'object' ||
-        (candidate.signature as any).algorithm !== 'ed25519' ||
-        typeof (candidate.signature as any).publicKey !== 'string' ||
-        typeof (candidate.signature as any).value !== 'string')
-    )
-      throw new TypeError('Validator signature is invalid')
-  }
-  if (
-    definition.type === 'mutation' &&
-    (typeof (result as any).modified !== 'boolean' || !('payload' in result))
-  )
-    throw new TypeError('Mutator result is invalid')
-  return structuredClone({
-    ...candidate,
-    interceptor: definition.name,
-    type: definition.type,
-    phase
-  }) as McpInterceptorResult
-}
-
-function validPriority(value: McpInterceptorDefinition['priorityHint']): boolean {
-  if (value === undefined) return true
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  return (
-    Object.keys(value).every((key) => key === 'request' || key === 'response') &&
-    [value.request, value.response].every(
-      (priority) =>
-        priority === undefined || (typeof priority === 'number' && Number.isFinite(priority))
-    )
-  )
 }

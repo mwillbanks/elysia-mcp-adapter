@@ -1,6 +1,3 @@
-import { randomUUID } from 'node:crypto'
-import { LEGACY_PROTOCOL_VERSION } from '../constants.js'
-import { assertTrustResultMetadata } from '../extensions/annotations/index.js'
 import {
   assertMcpAppsResourceContent,
   assertMcpAppsResourceMetadata,
@@ -14,7 +11,6 @@ import {
 } from '../extensions/apps/index.js'
 import {
   authorizeBearerRequest,
-  authProfileCapabilities,
   buildBearerChallenge,
   type McpAuthorizationContext,
   missingRequiredScopes,
@@ -22,9 +18,6 @@ import {
 } from '../extensions/auth/index.js'
 import { McpExtensionDispatcher } from '../extensions/dispatcher.js'
 import {
-  attachEventSessionStream,
-  deleteEventSession,
-  initializeEventSession,
   listEvents,
   McpEventProtocolError,
   pollEvents,
@@ -35,46 +28,21 @@ import {
 import {
   interceptorMatches,
   invokeInterceptor,
-  MCP_INTERCEPTORS_ID,
   McpInterceptorExecutionError,
   McpInterceptorTimeoutError
 } from '../extensions/interceptors/index.js'
 import { MCP_EXTENSION_SUPPORT } from '../extensions/manifest.js'
 import {
-  assertCompatibleSkillDefinitions,
-  assertSafeDirectoryUri,
-  assertSafeResourceUri,
-  createProviderSkillDefinition,
-  findSkillDirectoryOwner,
-  findStaticDynamicSkill,
-  findStaticSkillResource,
-  isWithinSkill,
-  listStaticSkillDirectory,
-  MCP_SKILLS_EXTENSION_ID,
-  type McpSkillDefinition,
-  type McpSkillDirectoryEntry,
-  type McpSkillDynamicDirectoryReader,
-  serializeDynamicSkillResource,
-  serializeSkillResource
-} from '../extensions/skills/index.js'
-import {
-  type DetailedTask,
   dispatchTaskRequest,
   hasTasksCapability,
   setTaskController,
   TaskController,
-  TaskProtocolError,
-  type TaskSubscription
+  TaskProtocolError
 } from '../extensions/tasks/index.js'
-import {
-  MCP_SERVER_VARIANT_META_KEY,
-  MCP_SERVER_VARIANTS_ID,
-  type McpServerVariant,
-  type McpVariantHints
-} from '../extensions/variants/index.js'
+import { MCP_SERVER_VARIANT_META_KEY, type McpServerVariant } from '../extensions/variants/index.js'
 import { isRecord } from '../internal.js'
 import { findResourceReader, getMcpRegistry } from '../registry.js'
-import { ensureMcpState, type McpRegistryChangeKind, onRegistryChange } from '../state.js'
+import { ensureMcpState } from '../state.js'
 import type {
   AnyElysiaApp,
   JsonRpcRequest,
@@ -84,41 +52,55 @@ import type {
   McpPromptDefinition,
   McpResourceDefinition,
   McpResourceTemplateDefinition,
-  McpServerNotification,
   McpToolDefinition,
   NormalizedMcpPluginOptions
 } from '../types.js'
 import {
-  cachePolicy,
   decodeCursor,
   encodeCursor,
   isInputRequiredResult,
-  modernResultMeta,
   parseInputResponses,
-  prepareInputRequiredResult,
   resolveRequestState
 } from './core.js'
+import {
+  type DiscoveryRuntime,
+  initializedSessionId,
+  initializeResult,
+  modernDiscoverResult
+} from './discovery.js'
+import { exceedsInputElementLimit } from './input-limits.js'
+import { invocationContextBase } from './invocation-context.js'
+import { handleLegacyAuxiliaryMethod, type LegacySessionRuntime } from './legacy-sessions.js'
 import { assertMirroredToolHeaders, assertValidMirroredHeaderSchema } from './mirrored-headers.js'
+import { isOriginAllowed } from './origin-policy.js'
 import {
   McpProtocolError,
   type McpRequestProtocolContext,
-  resolveRequestProtocol,
-  serverDiscoverResult
+  resolveRequestProtocol
 } from './protocol.js'
+import { isRequestId } from './request-id.js'
+import { type ResultSerializationRuntime, serializeProtocolResult } from './result-serialization.js'
+import {
+  getSkill,
+  listSkills,
+  readSkillDirectory,
+  readSkillResource,
+  type SkillRequestRuntime
+} from './skill-requests.js'
+import { handleSubscription, linkAbortSignal, sseResponse } from './subscriptions.js'
+import {
+  resolveActiveVariant,
+  type VariantSelectionRuntime,
+  variantAllows,
+  variantPrincipal
+} from './variant-selection.js'
+import {
+  subscribeVariantResource,
+  unsubscribeVariantResource,
+  type VariantSubscriptionRuntime
+} from './variant-subscriptions.js'
 
 const JSON_RPC_VERSION = '2.0' as const
-const INITIALIZED_SESSION_IDS = new WeakMap<Request, string>()
-const VARIANT_SESSIONS = new WeakMap<
-  AnyElysiaApp,
-  WeakMap<NormalizedMcpPluginOptions, Map<string, VariantSession>>
->()
-
-interface VariantSession {
-  principal?: string
-  variants: McpServerVariant[]
-  streams: Map<ReadableStreamDefaultController<Uint8Array>, ReturnType<typeof setInterval>>
-  subscriptions: Map<string, { uri: string; variantId: string; close?: () => Promise<void> }>
-}
 
 interface DispatchContext {
   protocol: McpRequestProtocolContext
@@ -134,6 +116,41 @@ interface RpcOutcome {
   status: number
 }
 
+const SKILL_REQUEST_RUNTIME: SkillRequestRuntime = {
+  invocationContext,
+  enforceAuthorization,
+  isAuthorized,
+  error: (code, message, data, status) => new JsonRpcError(code, message, data, status)
+}
+
+const VARIANT_SUBSCRIPTION_RUNTIME: VariantSubscriptionRuntime = {
+  invocationContext,
+  authorizeRequest,
+  enforceAuthorization,
+  isAuthorized,
+  variantAllows: (variant, kind, name) => variantAllows(variant, kind, name),
+  variantPrincipal,
+  error: (code, message, data) => new JsonRpcError(code, message, data)
+}
+
+const VARIANT_SELECTION_RUNTIME: VariantSelectionRuntime = {
+  error: (code, message, data) => new JsonRpcError(code, message, data)
+}
+
+const DISCOVERY_RUNTIME: DiscoveryRuntime = {
+  ...VARIANT_SELECTION_RUNTIME,
+  interceptorCapabilities
+}
+
+const RESULT_SERIALIZATION_RUNTIME: ResultSerializationRuntime = {
+  error: (code, message) => new JsonRpcError(code, message)
+}
+
+const LEGACY_SESSION_RUNTIME: LegacySessionRuntime = {
+  errorResponse: createErrorResponse,
+  jsonResponse
+}
+
 export async function handleMcpHttpRequest(
   app: AnyElysiaApp,
   request: Request,
@@ -141,76 +158,61 @@ export async function handleMcpHttpRequest(
 ): Promise<Response> {
   const originValidation = validateOrigin(request, options)
   if (originValidation) return originValidation
-
-  const protocolHeader = request.headers.get('mcp-protocol-version')
-  if (
-    protocolHeader !== null &&
-    !options.transport.protocolVersions.includes(
-      protocolHeader as (typeof options.transport.protocolVersions)[number]
-    )
-  ) {
-    return jsonResponse(
-      {
-        jsonrpc: JSON_RPC_VERSION,
-        error: {
-          code: -32022,
-          message: `Unsupported protocol version: ${protocolHeader}`,
-          data: {
-            supported: options.transport.protocolVersions,
-            requested: protocolHeader
-          }
-        }
-      },
-      400
-    )
-  }
-
+  const protocolFailure = validateProtocolHeader(request, options)
+  if (protocolFailure) return protocolFailure
   const authorization = await authorizeRequest(request, options)
   if (authorization instanceof Response) return authorization
+  return handleAuthorizedHttpRequest(app, request, options, authorization)
+}
 
+async function handleAuthorizedHttpRequest(
+  app: AnyElysiaApp,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): Promise<Response> {
   if (request.method === 'GET' || request.method === 'DELETE') {
-    if (usesModernErrorEnvelope(request, options)) {
-      return jsonResponse(createErrorResponse(undefined, -32600, 'Modern MCP is POST-only'), 405)
-    }
-    return handleLegacyAuxiliaryMethod(app, request, options, authorization)
+    return handleAuxiliaryHttpRequest(app, request, options, authorization)
   }
+  if (request.method !== 'POST') return methodNotAllowedResponse()
+  const parsed = await readRequestPayload(request, options)
+  if (parsed instanceof Response) return parsed
+  return handlePostPayload(app, parsed.payload, request, options, authorization)
+}
 
-  if (request.method !== 'POST') {
-    return new Response(null, { status: 405, headers: { allow: 'POST, GET, DELETE' } })
-  }
-
-  let payload: unknown
+async function readRequestPayload(
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): Promise<{ payload: unknown } | Response> {
   try {
-    payload = await request.json()
+    return { payload: await request.json() }
   } catch (error) {
-    return jsonResponse(
-      createErrorResponse(
-        errorIdForRequest(request, options),
-        -32700,
-        'Parse error',
-        error instanceof Error ? error.message : undefined
-      ),
-      400
-    )
+    return parseErrorResponse(request, options, error)
   }
+}
 
+function handleAuxiliaryHttpRequest(
+  app: AnyElysiaApp,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): Promise<Response> | Response {
+  if (usesModernErrorEnvelope(request, options)) {
+    return jsonResponse(createErrorResponse(undefined, -32600, 'Modern MCP is POST-only'), 405)
+  }
+  return handleLegacyAuxiliaryMethod(app, request, options, authorization, LEGACY_SESSION_RUNTIME)
+}
+
+async function handlePostPayload(
+  app: AnyElysiaApp,
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): Promise<Response> {
   if (Array.isArray(payload)) {
-    if (usesModernErrorEnvelope(request, options)) {
-      return jsonResponse(
-        createErrorResponse(undefined, -32600, 'Modern MCP does not support batches'),
-        400
-      )
-    }
-
-    const responses: JsonRpcResponse[] = []
-    for (const item of payload) {
-      const outcome = await handleJsonRpcMessage(app, item, request, options, authorization)
-      if (outcome.response) responses.push(outcome.response)
-    }
-    if (responses.length === 0) return new Response(null, { status: 202 })
-    return jsonResponse(responses)
+    return handleBatchPayload(app, payload, request, options, authorization)
   }
-
   if (isRecord(payload) && payload.method === 'subscriptions/listen') {
     return handleSubscription(
       app,
@@ -220,42 +222,15 @@ export async function handleMcpHttpRequest(
       authorization
     )
   }
-
   if (isRecord(payload) && payload.method === 'events/stream') {
-    const eventRequest = payload as unknown as JsonRpcRequest
-    if (!options.extensions.events)
-      return jsonResponse(
-        createErrorResponse(eventRequest.id, -32601, 'Events extension is not enabled'),
-        404
-      )
-    if (!isRequestId(eventRequest.id))
-      return jsonResponse(createErrorResponse(undefined, -32600, 'Invalid Request'), 400)
-    try {
-      const protocol = resolveRequestProtocol(request, eventRequest, options)
-      if (protocol.modern)
-        throw new McpEventProtocolError(-32601, 'Events extension is legacy-only', undefined, 404)
-      const params = isRecord(eventRequest.params) ? eventRequest.params : {}
-      const dispatch: DispatchContext = { protocol, authorization }
-      if (options.extensions.variants) {
-        const selected = await resolveActiveVariant(app, request, params, options, authorization)
-        dispatch.activeVariant = selected.variant
-        dispatch.sessionId = selected.sessionId
-        const meta = isRecord(params._meta) ? { ...params._meta } : {}
-        meta[MCP_SERVER_VARIANT_META_KEY] = selected.variant.id
-        params._meta = meta
-      }
-      return await streamEvents(
-        app,
-        params,
-        eventRequest.id,
-        options,
-        await invocationContext(request, 'events/stream', params, dispatch, options)
-      )
-    } catch (error) {
-      return jsonResponse(normalizeDispatchError(eventRequest.id, error), errorStatus(error))
-    }
+    return handleEventStreamRequest(
+      app,
+      payload as unknown as JsonRpcRequest,
+      request,
+      options,
+      authorization
+    )
   }
-
   if (isProgressRequest(payload)) {
     return handleProgressRequest(
       app,
@@ -265,30 +240,171 @@ export async function handleMcpHttpRequest(
       authorization
     )
   }
-
   const outcome = await handleJsonRpcMessage(app, payload, request, options, authorization)
-  if (!outcome.response) return new Response(null, { status: 202 })
-  const initializedSessionId = INITIALIZED_SESSION_IDS.get(request)
-  const responseHeaders: HeadersInit = {
-    ...(initializedSessionId ? { 'mcp-session-id': initializedSessionId } : {}),
-    ...(outcome.status === 403 && options.extensions.auth
-      ? {
-          'www-authenticate': buildBearerChallenge({
-            resourceMetadata: protectedResourceMetadataUrl(options.extensions.auth.resource),
-            error: 'insufficient_scope',
-            scope:
-              outcome.response?.error &&
-              isRecord(outcome.response.error.data) &&
-              Array.isArray(outcome.response.error.data.requiredScopes)
-                ? outcome.response.error.data.requiredScopes.filter(
-                    (scope): scope is string => typeof scope === 'string'
-                  )
-                : undefined
-          })
-        }
-      : {})
+  return outcomeResponse(outcome, request, options)
+}
+
+async function handleBatchPayload(
+  app: AnyElysiaApp,
+  payload: unknown[],
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): Promise<Response> {
+  if (usesModernErrorEnvelope(request, options)) {
+    return jsonResponse(
+      createErrorResponse(undefined, -32600, 'Modern MCP does not support batches'),
+      400
+    )
   }
-  return jsonResponse(outcome.response, outcome.status, responseHeaders)
+  const responses: JsonRpcResponse[] = []
+  for (const item of payload) {
+    const outcome = await handleJsonRpcMessage(app, item, request, options, authorization)
+    if (outcome.response) responses.push(outcome.response)
+  }
+  return responses.length === 0 ? new Response(null, { status: 202 }) : jsonResponse(responses)
+}
+
+async function handleEventStreamRequest(
+  app: AnyElysiaApp,
+  eventRequest: JsonRpcRequest,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): Promise<Response> {
+  const validation = validateEventStreamRequest(eventRequest, options)
+  if (validation) return validation
+  try {
+    const protocol = resolveRequestProtocol(request, eventRequest, options)
+    if (protocol.modern) {
+      throw new McpEventProtocolError(-32601, 'Events extension is legacy-only', undefined, 404)
+    }
+    const params = isRecord(eventRequest.params) ? eventRequest.params : {}
+    const dispatch: DispatchContext = { protocol, authorization }
+    await selectEventStreamVariant(app, request, params, options, dispatch)
+    return await streamEvents(
+      app,
+      params,
+      eventRequest.id as string | number,
+      options,
+      await invocationContext(request, 'events/stream', params, dispatch, options)
+    )
+  } catch (error) {
+    return jsonResponse(normalizeDispatchError(eventRequest.id, error), errorStatus(error))
+  }
+}
+
+function validateEventStreamRequest(
+  eventRequest: JsonRpcRequest,
+  options: NormalizedMcpPluginOptions
+): Response | undefined {
+  if (!options.extensions.events) {
+    return jsonResponse(
+      createErrorResponse(eventRequest.id, -32601, 'Events extension is not enabled'),
+      404
+    )
+  }
+  if (!isRequestId(eventRequest.id)) {
+    return jsonResponse(createErrorResponse(undefined, -32600, 'Invalid Request'), 400)
+  }
+  return undefined
+}
+
+async function selectEventStreamVariant(
+  app: AnyElysiaApp,
+  request: Request,
+  params: Record<string, unknown>,
+  options: NormalizedMcpPluginOptions,
+  dispatch: DispatchContext
+): Promise<void> {
+  if (!options.extensions.variants) return
+  const selected = await resolveActiveVariant(
+    app,
+    request,
+    params,
+    options,
+    dispatch.authorization,
+    VARIANT_SELECTION_RUNTIME
+  )
+  dispatch.activeVariant = selected.variant
+  dispatch.sessionId = selected.sessionId
+  const meta = isRecord(params._meta) ? { ...params._meta } : {}
+  meta[MCP_SERVER_VARIANT_META_KEY] = selected.variant.id
+  params._meta = meta
+}
+
+function outcomeResponse(
+  outcome: RpcOutcome,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): Response {
+  if (!outcome.response) return new Response(null, { status: 202 })
+  return jsonResponse(outcome.response, outcome.status, outcomeHeaders(outcome, request, options))
+}
+
+function outcomeHeaders(
+  outcome: RpcOutcome,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): HeadersInit {
+  const headers: Record<string, string> = {}
+  const session = initializedSessionId(request)
+  if (session) headers['mcp-session-id'] = session
+  if (outcome.status === 403 && options.extensions.auth) {
+    headers['www-authenticate'] = buildBearerChallenge({
+      resourceMetadata: protectedResourceMetadataUrl(options.extensions.auth.resource),
+      error: 'insufficient_scope',
+      scope: requiredScopesFromOutcome(outcome)
+    })
+  }
+  return headers
+}
+
+function requiredScopesFromOutcome(outcome: RpcOutcome): string[] | undefined {
+  const data = outcome.response?.error?.data
+  if (!isRecord(data) || !Array.isArray(data.requiredScopes)) return undefined
+  return data.requiredScopes.filter((scope): scope is string => typeof scope === 'string')
+}
+
+function validateProtocolHeader(
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): Response | undefined {
+  const protocol = request.headers.get('mcp-protocol-version')
+  if (protocol === null || options.transport.protocolVersions.includes(protocol as never)) {
+    return undefined
+  }
+  return jsonResponse(
+    {
+      jsonrpc: JSON_RPC_VERSION,
+      error: {
+        code: -32022,
+        message: `Unsupported protocol version: ${protocol}`,
+        data: { supported: options.transport.protocolVersions, requested: protocol }
+      }
+    },
+    400
+  )
+}
+
+function parseErrorResponse(
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  error: unknown
+): Response {
+  return jsonResponse(
+    createErrorResponse(
+      errorIdForRequest(request, options),
+      -32700,
+      'Parse error',
+      error instanceof Error ? error.message : undefined
+    ),
+    400
+  )
+}
+
+function methodNotAllowedResponse(): Response {
+  return new Response(null, { status: 405, headers: { allow: 'POST, GET, DELETE' } })
 }
 
 async function handleJsonRpcMessage(
@@ -299,30 +415,53 @@ async function handleJsonRpcMessage(
   authorization?: McpAuthorizationContext,
   overrides: Pick<DispatchContext, 'signal' | 'reportProgress'> = {}
 ): Promise<RpcOutcome> {
+  const validation = validateJsonRpcMessage(payload, request, options)
+  if ('outcome' in validation) return validation.outcome
+  return executeJsonRpcMessage(app, validation.payload, request, options, authorization, overrides)
+}
+
+function validateJsonRpcMessage(
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): { payload: JsonRpcRequest } | { outcome: RpcOutcome } {
   if (!isJsonRpcRequest(payload)) {
     return {
-      response: createErrorResponse(
-        errorIdForRequest(request, options, payload),
-        -32600,
-        'Invalid Request'
-      ),
-      status: 400
+      outcome: {
+        response: createErrorResponse(
+          errorIdForRequest(request, options, payload),
+          -32600,
+          'Invalid Request'
+        ),
+        status: 400
+      }
     }
   }
-
-  const id = payload.id ?? null
-  const errorId = errorIdForRequest(request, options, payload)
   if (
     usesModernErrorEnvelope(request, options) &&
     payload.id !== undefined &&
     !isRequestId(payload.id)
   ) {
     return {
-      response: createErrorResponse(undefined, -32600, 'Invalid Request'),
-      status: 400
+      outcome: {
+        response: createErrorResponse(undefined, -32600, 'Invalid Request'),
+        status: 400
+      }
     }
   }
+  return { payload }
+}
 
+async function executeJsonRpcMessage(
+  app: AnyElysiaApp,
+  payload: JsonRpcRequest,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined,
+  overrides: Pick<DispatchContext, 'signal' | 'reportProgress'>
+): Promise<RpcOutcome> {
+  const id = payload.id ?? null
+  const errorId = errorIdForRequest(request, options, payload)
   try {
     const protocol = resolveRequestProtocol(request, payload, options)
     if (payload.id === undefined || payload.id === null) return { status: 202 }
@@ -341,7 +480,8 @@ async function handleJsonRpcMessage(
           protocol,
           payload.params ?? {},
           invocationContextBase(request, payload.params ?? {}, { protocol, authorization }),
-          options
+          options,
+          RESULT_SERIALIZATION_RUNTIME
         )
       },
       status: 200
@@ -361,16 +501,33 @@ async function dispatchRequest(
   options: NormalizedMcpPluginOptions,
   context: DispatchContext
 ): Promise<unknown> {
-  const method = payload.method
+  const method = payload.method ?? ''
   const params = isRecord(payload.params) ? payload.params : {}
+  await applyRequestVariant(app, method, params, request, options, context)
+  const extensionResult = await extensionDispatcher(options, context).dispatch(method, {
+    request,
+    params
+  })
+  if (extensionResult.handled) return extensionResult.result
+  return dispatchBuiltinRequest(app, method, params, request, options, context)
+}
 
+async function applyRequestVariant(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<void> {
   if (options.extensions.variants && method !== 'initialize') {
     const selected = await resolveActiveVariant(
       app,
       request,
       params,
       options,
-      context.authorization
+      context.authorization,
+      VARIANT_SELECTION_RUNTIME
     )
     context.activeVariant = selected.variant
     context.sessionId = selected.sessionId
@@ -384,240 +541,200 @@ async function dispatchRequest(
   ) {
     throw new JsonRpcError(-32602, 'Server variants not supported')
   }
+}
 
-  const extensionResult = await extensionDispatcher(options, context).dispatch(method, {
-    request,
-    params
-  })
-  if (extensionResult.handled) return extensionResult.result
-
+async function dispatchBuiltinRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> {
   switch (method) {
     case 'initialize':
       if (context.protocol.modern)
         throw new JsonRpcError(-32601, 'Method not found: initialize', undefined, 404)
-      return initializeResult(app, request, params, options, context.authorization)
+      return initializeResult(
+        app,
+        request,
+        params,
+        options,
+        context.authorization,
+        DISCOVERY_RUNTIME
+      )
     case 'server/discover':
       if (!context.protocol.modern) {
         throw new JsonRpcError(-32601, 'Method not found: server/discover', undefined, 404)
       }
-      return modernDiscoverResult(app, options)
+      return modernDiscoverResult(app, options, DISCOVERY_RUNTIME)
     case 'ping':
       if (context.protocol.modern) {
         throw new JsonRpcError(-32601, 'Method not found: ping', undefined, 404)
       }
       return {}
-    case 'tools/list':
-      return listTools(app, params, request, options, context)
-    case 'tools/call':
-      return callTool(app, params, request, options, context)
-    case 'resources/list':
-      return listResources(app, params, request, options, context)
-    case 'resources/templates/list':
-      return listResourceTemplates(app, params, request, options, context)
-    case 'resources/read':
-      return readResource(app, params, request, options, context)
-    case 'resources/subscribe':
-      return subscribeVariantResource(app, params, request, options, context)
-    case 'resources/unsubscribe':
-      return unsubscribeVariantResource(app, params, options, context)
-    case 'skills/list':
-      return listSkills(app, params, request, options, context)
-    case 'skills/get':
-      return getSkill(app, params, request, options, context)
-    case 'resources/directory/read':
-      return readSkillDirectory(app, params, request, options, context)
-    case 'interceptors/list':
-      return listInterceptors(app, params, options)
-    case 'interceptor/invoke':
-      return invokeRegisteredInterceptor(app, params, request, options, context)
-    case 'events/list':
-      return listEvents(
-        app,
-        params,
-        request,
-        options,
-        await invocationContext(request, method, params, context, options)
-      )
-    case 'events/poll':
-      return pollEvents(
-        app,
-        params,
-        options,
-        await invocationContext(request, method, params, context, options)
-      )
-    case 'events/subscribe':
-      return subscribeEventsWebhook(
-        app,
-        params,
-        options,
-        await invocationContext(request, method, params, context, options)
-      )
-    case 'events/unsubscribe':
-      return unsubscribeEventsWebhook(
-        app,
-        params,
-        options,
-        await invocationContext(request, method, params, context, options)
-      )
-    case 'prompts/list':
-      return listPrompts(app, params, request, options, context)
-    case 'prompts/get':
-      return getPrompt(app, params, request, options, context)
-    case 'completion/complete':
-      if (!context.protocol.modern && !options.extensions.variants)
-        throw new JsonRpcError(-32601, 'Method not found: completion/complete', undefined, 404)
-      return completeArgument(app, params, request, options, context)
     default:
-      throw new JsonRpcError(
-        -32601,
-        `Method not found: ${method}`,
-        undefined,
-        context.protocol.modern ? 404 : 200
-      )
+      return dispatchPrimitiveRequest(app, method, params, request, options, context)
   }
 }
 
-async function initializeResult(
+function dispatchPrimitiveRequest(
   app: AnyElysiaApp,
-  request: Request,
+  method: string,
   params: Record<string, unknown>,
+  request: Request,
   options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<Record<string, unknown>> {
-  const extensions: Record<string, unknown> = {}
-  let initializedVariant: string | undefined
-  if (options.extensions.apps) {
-    extensions[MCP_APPS_EXTENSION_ID] = { mimeTypes: [MCP_APPS_RESOURCE_MIME_TYPE] }
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  const domain = method.split('/')[0]
+  if (domain === 'tools') return dispatchToolRequest(app, method, params, request, options, context)
+  if (domain === 'resources') {
+    return dispatchResourceRequest(app, method, params, request, options, context)
   }
-  if (options.extensions.interceptors)
-    extensions[MCP_INTERCEPTORS_ID] = interceptorCapabilities(app)
-  if (options.extensions.variants) {
-    const context = invocationContextBase(request, params, {
-      protocol: {
-        modern: false,
-        version: LEGACY_PROTOCOL_VERSION,
-        clientCapabilities: {},
-        clientInfo: undefined,
-        meta: undefined
-      },
-      authorization
-    })
-    const hints = variantHints(params)
-    const visible = [] as McpServerVariant[]
-    for (const variant of options.extensions.variants.variants) {
-      if ((await options.extensions.variants.visible?.(variant, context)) ?? true)
-        visible.push(variant)
-    }
-    const ranked = await rankVariants(visible, hints, context, options)
-    const requestsExperimental = Object.values(hints?.hints ?? {})
-      .flat()
-      .includes('experimental')
-    if (!requestsExperimental && (ranked[0]?.status ?? 'stable') !== 'stable') {
-      const stableIndex = ranked.findIndex(({ status }) => (status ?? 'stable') === 'stable')
-      if (stableIndex < 0) throw new JsonRpcError(-32603, 'No stable server variant is visible')
-      const stable = ranked.splice(stableIndex, 1)[0] as McpServerVariant
-      ranked.unshift(stable)
-    }
-    const limit =
-      ranked.length > 1
-        ? Math.max(2, options.extensions.variants.discoveryLimit)
-        : options.extensions.variants.discoveryLimit
-    const available = ranked.slice(0, limit)
-    if (available.length === 0) throw new JsonRpcError(-32603, 'No server variants are visible')
-    const sessionId = randomUUID()
-    variantSessions(app, options).set(sessionId, {
-      principal: variantPrincipal(authorization),
-      variants: available.map((variant) => structuredClone(variant)),
-      streams: new Map(),
-      subscriptions: new Map()
-    })
-    INITIALIZED_SESSION_IDS.set(request, sessionId)
-    initializedVariant = available[0]?.id
-    extensions[MCP_SERVER_VARIANTS_ID] = {
-      availableVariants: available.map(publicVariant),
-      moreVariantsAvailable: ranked.length > available.length
-    }
+  if (domain === 'skills')
+    return dispatchSkillRequest(app, method, params, request, options, context)
+  if (domain === 'interceptors' || domain === 'interceptor') {
+    return dispatchInterceptorRequest(app, method, params, request, options, context)
   }
-  if (options.extensions.events) {
-    const sessionId = initializeEventSession(
-      app,
-      variantPrincipal(authorization),
-      initializedVariant,
-      INITIALIZED_SESSION_IDS.get(request),
-      options
-    )
-    INITIALIZED_SESSION_IDS.set(request, sessionId)
+  if (domain === 'events')
+    return dispatchEventRequest(app, method, params, request, options, context)
+  if (domain === 'prompts')
+    return dispatchPromptRequest(app, method, params, request, options, context)
+  if (domain === 'completion') {
+    return dispatchCompletionRequest(app, method, params, request, options, context)
   }
-
-  return {
-    protocolVersion: options.transport.protocolVersion,
-    capabilities: {
-      tools: { listChanged: false },
-      resources: {
-        subscribe: options.core.subscriptions?.resources ?? false,
-        listChanged: options.core.subscriptions?.resourcesListChanged ?? false
-      },
-      prompts: { listChanged: false },
-      ...(options.extensions.events
-        ? { events: { listChanged: options.transport.enableGetSse } }
-        : {}),
-      ...(Object.keys(extensions).length > 0 ? { extensions } : {})
-    },
-    serverInfo: {
-      name: options.server.name,
-      version: options.server.version,
-      title: options.server.title
-    },
-    instructions: options.server.instructions
-  }
+  throw methodNotFound(method, context)
 }
 
-function modernDiscoverResult(
+function dispatchToolRequest(
   app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
-): Record<string, unknown> {
-  const result = serverDiscoverResult(options)
-  const registry = getMcpRegistry(app, options)
-  const extensions: Record<string, unknown> = {}
-  if (options.extensions.tasks) {
-    extensions['io.modelcontextprotocol/tasks'] = {}
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  if (method === 'tools/list') return listTools(app, params, request, options, context)
+  if (method === 'tools/call') return callTool(app, params, request, options, context)
+  throw methodNotFound(method, context)
+}
+
+function dispatchResourceRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  if (method === 'resources/list') return listResources(app, params, request, options, context)
+  if (method === 'resources/templates/list') {
+    return listResourceTemplates(app, params, request, options, context)
   }
-  if (options.extensions.apps) {
-    extensions[MCP_APPS_EXTENSION_ID] = { mimeTypes: [MCP_APPS_RESOURCE_MIME_TYPE] }
+  if (method === 'resources/read') return readResource(app, params, request, options, context)
+  if (method === 'resources/directory/read') {
+    return readSkillDirectory(app, params, request, options, context, SKILL_REQUEST_RUNTIME)
   }
-  if (options.extensions.auth) {
-    Object.assign(extensions, authProfileCapabilities(options.extensions.auth.profiles))
+  if (method === 'resources/subscribe') {
+    return subscribeVariantResource(
+      app,
+      params,
+      request,
+      options,
+      context,
+      VARIANT_SUBSCRIPTION_RUNTIME
+    )
   }
-  if (options.extensions.interceptors)
-    extensions[MCP_INTERCEPTORS_ID] = interceptorCapabilities(app)
-  const skillsEnabled =
-    registry.skills.size > 0 || options.extensions.skills?.provider !== undefined
-  if (skillsEnabled) {
-    extensions[MCP_SKILLS_EXTENSION_ID] = {
-      directoryRead: options.extensions.skills?.directoryRead ?? false
-    }
+  if (method === 'resources/unsubscribe') {
+    return unsubscribeVariantResource(app, params, options, context, VARIANT_SUBSCRIPTION_RUNTIME)
   }
-  return {
-    ...result,
-    capabilities: {
-      ...(registry.tools.size > 0
-        ? { tools: { listChanged: options.core.subscriptions?.toolsListChanged ?? false } }
-        : {}),
-      ...(registry.resources.size > 0 || registry.resourceTemplates.size > 0 || skillsEnabled
-        ? {
-            resources: {
-              subscribe: options.core.subscriptions?.resources ?? false,
-              listChanged: options.core.subscriptions?.resourcesListChanged ?? false
-            }
-          }
-        : {}),
-      ...(registry.prompts.size > 0
-        ? { prompts: { listChanged: options.core.subscriptions?.promptsListChanged ?? false } }
-        : {}),
-      ...(hasCompletion(registry) ? { completions: {} } : {}),
-      ...(Object.keys(extensions).length > 0 ? { extensions } : {})
-    }
+  throw methodNotFound(method, context)
+}
+
+function dispatchSkillRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  if (method === 'skills/list') {
+    return listSkills(app, params, request, options, context, SKILL_REQUEST_RUNTIME)
   }
+  if (method === 'skills/get') {
+    return getSkill(app, params, request, options, context, SKILL_REQUEST_RUNTIME)
+  }
+  throw methodNotFound(method, context)
+}
+
+function dispatchInterceptorRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  if (method === 'interceptors/list') return listInterceptors(app, params, options)
+  if (method === 'interceptor/invoke') {
+    return invokeRegisteredInterceptor(app, params, request, options, context)
+  }
+  throw methodNotFound(method, context)
+}
+
+async function dispatchEventRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> {
+  const known = new Set(['events/list', 'events/poll', 'events/subscribe', 'events/unsubscribe'])
+  if (!known.has(method)) throw methodNotFound(method, context)
+  const invocation = await invocationContext(request, method, params, context, options)
+  if (method === 'events/list') return listEvents(app, params, request, options, invocation)
+  if (method === 'events/poll') return pollEvents(app, params, options, invocation)
+  if (method === 'events/subscribe') return subscribeEventsWebhook(app, params, options, invocation)
+  return unsubscribeEventsWebhook(app, params, options, invocation)
+}
+
+function dispatchPromptRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> | unknown {
+  if (method === 'prompts/list') return listPrompts(app, params, request, options, context)
+  if (method === 'prompts/get') return getPrompt(app, params, request, options, context)
+  throw methodNotFound(method, context)
+}
+
+function dispatchCompletionRequest(
+  app: AnyElysiaApp,
+  method: string,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): Promise<unknown> {
+  if (method !== 'completion/complete') throw methodNotFound(method, context)
+  if (!context.protocol.modern && !options.extensions.variants) {
+    throw new JsonRpcError(-32601, 'Method not found: completion/complete', undefined, 404)
+  }
+  return completeArgument(app, params, request, options, context)
+}
+
+function methodNotFound(method: string, context: DispatchContext): JsonRpcError {
+  return new JsonRpcError(
+    -32601,
+    `Method not found: ${method}`,
+    undefined,
+    context.protocol.modern ? 404 : 200
+  )
 }
 
 function listInterceptors(
@@ -652,58 +769,83 @@ async function invokeRegisteredInterceptor(
   options: NormalizedMcpPluginOptions,
   context: DispatchContext
 ): Promise<unknown> {
-  if (!options.extensions.interceptors) {
-    throw new JsonRpcError(-32601, 'Method not found: interceptor/invoke', undefined, 404)
-  }
-  if (
-    typeof params.name !== 'string' ||
-    typeof params.event !== 'string' ||
-    params.event.length === 0 ||
-    (params.phase !== 'request' && params.phase !== 'response') ||
-    !Object.hasOwn(params, 'payload') ||
-    (params.config !== undefined && !isRecord(params.config)) ||
-    (params.timeoutMs !== undefined &&
-      (!Number.isSafeInteger(params.timeoutMs) || Number(params.timeoutMs) <= 0))
-  ) {
-    throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
-  }
-  const registration = ensureMcpState(app).explicitInterceptors.get(params.name)
-  if (!registration) throw new JsonRpcError(-32602, `Unknown interceptor: ${params.name}`)
-  if (!interceptorMatches(registration.definition, params.event, params.phase)) {
+  assertInterceptorEnabled(options)
+  const invocation = interceptorInvocation(params)
+  const registration = ensureMcpState(app).explicitInterceptors.get(invocation.name)
+  if (!registration) throw new JsonRpcError(-32602, `Unknown interceptor: ${invocation.name}`)
+  if (!interceptorMatches(registration.definition, invocation.event, invocation.phase)) {
     throw new JsonRpcError(-32602, 'Interceptor does not declare this event and phase')
   }
   try {
     return await invokeInterceptor(
       registration,
-      {
-        name: params.name,
-        event: params.event,
-        phase: params.phase,
-        payload: params.payload,
-        config: params.config as Record<string, unknown> | undefined,
-        timeoutMs: params.timeoutMs as number | undefined
-      },
+      invocation,
       await invocationContext(request, 'interceptor/invoke', params, context, options)
     )
   } catch (error) {
-    if (error instanceof McpInterceptorTimeoutError) {
-      throw new JsonRpcError(-32000, error.message, {
-        interceptor: error.interceptor,
-        timeoutMs: error.timeoutMs,
-        phase: error.phase
-      })
-    }
-    if (error instanceof McpInterceptorExecutionError) {
-      throw new JsonRpcError(-32603, error.message, {
-        interceptor: error.interceptor,
-        reason: error.reason
-      })
-    }
-    throw new JsonRpcError(-32603, 'Interceptor execution failed', {
-      interceptor: registration.definition.name,
-      reason: 'Invocation failed'
+    throw interceptorInvocationError(error, registration.definition.name)
+  }
+}
+
+function assertInterceptorEnabled(options: NormalizedMcpPluginOptions): void {
+  if (!options.extensions.interceptors) {
+    throw new JsonRpcError(-32601, 'Method not found: interceptor/invoke', undefined, 404)
+  }
+}
+
+function interceptorInvocation(params: Record<string, unknown>): {
+  name: string
+  event: string
+  phase: 'request' | 'response'
+  payload: unknown
+  config?: Record<string, unknown>
+  timeoutMs?: number
+} {
+  const nameValid = typeof params.name === 'string'
+  const eventValid = typeof params.event === 'string' && params.event.length > 0
+  const phaseValid = params.phase === 'request' || params.phase === 'response'
+  if (!nameValid || !eventValid || !phaseValid || !Object.hasOwn(params, 'payload')) {
+    throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
+  }
+  if (!validInterceptorConfig(params.config) || !validInterceptorTimeout(params.timeoutMs)) {
+    throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
+  }
+  return {
+    name: params.name as string,
+    event: params.event as string,
+    phase: params.phase as 'request' | 'response',
+    payload: params.payload,
+    config: params.config as Record<string, unknown> | undefined,
+    timeoutMs: params.timeoutMs as number | undefined
+  }
+}
+
+function validInterceptorConfig(value: unknown): boolean {
+  return value === undefined || isRecord(value)
+}
+
+function validInterceptorTimeout(value: unknown): boolean {
+  return value === undefined || (Number.isSafeInteger(value) && Number(value) > 0)
+}
+
+function interceptorInvocationError(error: unknown, name: string): JsonRpcError {
+  if (error instanceof McpInterceptorTimeoutError) {
+    return new JsonRpcError(-32000, error.message, {
+      interceptor: error.interceptor,
+      timeoutMs: error.timeoutMs,
+      phase: error.phase
     })
   }
+  if (error instanceof McpInterceptorExecutionError) {
+    return new JsonRpcError(-32603, error.message, {
+      interceptor: error.interceptor,
+      reason: error.reason
+    })
+  }
+  return new JsonRpcError(-32603, 'Interceptor execution failed', {
+    interceptor: name,
+    reason: 'Invocation failed'
+  })
 }
 
 function interceptorCapabilities(app: AnyElysiaApp): { supportedEvents: string[] } {
@@ -753,9 +895,20 @@ async function callTool(
   enforceAuthorization(tool.authorization, context.authorization, options)
 
   const args = 'arguments' in params ? params.arguments : {}
+  assertToolInputElementLimit(args, options)
   const invocation = await invocationContext(request, 'tools/call', params, context, options)
-  const tasks = options.extensions.tasks
-  if (!tasks) {
+  const taskDecision = toolTaskDecision(tool, params, context, options)
+  if (!taskDecision) return invokeToolWithinInputLimit(tool, args, invocation, options)
+  return createToolTask(tool, args, invocation, params, request, context, options)
+}
+
+function toolTaskDecision(
+  tool: McpToolDefinition,
+  params: Record<string, unknown>,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+): boolean {
+  if (!options.extensions.tasks) {
     if (tool.taskExecution === 'required') {
       throw new JsonRpcError(
         -32021,
@@ -764,27 +917,45 @@ async function callTool(
         400
       )
     }
-    return tool.invoke(args, invocation)
+    return false
   }
-  if (tool.taskExecution === 'synchronous') return tool.invoke(args, invocation)
-
-  if (!context.protocol.modern) {
-    if (tool.taskExecution === 'required') {
-      taskController(options).assertClientCapability(undefined)
-    }
-    return tool.invoke(args, invocation)
+  if (tool.taskExecution === 'synchronous') return false
+  const meta = isRecord(params._meta) ? params._meta : undefined
+  const supported = context.protocol.modern && hasTasksCapability(meta)
+  const capabilityMeta = context.protocol.modern ? meta : undefined
+  if (!supported && tool.taskExecution === 'required') {
+    taskController(options).assertClientCapability(capabilityMeta)
   }
+  return supported
+}
 
-  const supportsTasks = hasTasksCapability(isRecord(params._meta) ? params._meta : undefined)
-  if (!supportsTasks) {
-    if (tool.taskExecution === 'required') {
-      taskController(options).assertClientCapability(
-        isRecord(params._meta) ? params._meta : undefined
-      )
-    }
-    return tool.invoke(args, invocation)
+function taskExecutionRequest(
+  request: Request,
+  signal: AbortSignal | undefined
+): { request: Request; signal: AbortSignal } {
+  const executionSignal = signal ?? request.signal
+  if (executionSignal === request.signal) return { request, signal: executionSignal }
+  return {
+    request: new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      signal: executionSignal
+    }),
+    signal: executionSignal
   }
+}
 
+async function createToolTask(
+  tool: McpToolDefinition,
+  args: unknown,
+  invocation: McpInvocationContext,
+  params: Record<string, unknown>,
+  request: Request,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+): Promise<unknown> {
+  const tasks = options.extensions.tasks
+  if (!tasks) throw new JsonRpcError(-32601, 'Tasks extension is not enabled', undefined, 404)
   const controller = taskController(options)
   invocation.task = controller
   setTaskController(request, controller)
@@ -797,27 +968,44 @@ async function callTool(
         method: 'tools/call',
         params,
         invoke: async (signal) => {
-          const executionSignal = signal ?? request.signal
-          const executionRequest =
-            executionSignal === request.signal
-              ? request
-              : new Request(request.url, {
-                  method: request.method,
-                  headers: request.headers,
-                  signal: executionSignal
-                })
-          setTaskController(executionRequest, controller)
-          return (await tool.invoke(args, {
-            ...invocation,
-            request: executionRequest,
-            signal: executionSignal,
-            task: controller
-          })) as unknown as Record<string, unknown>
+          const execution = taskExecutionRequest(request, signal)
+          setTaskController(execution.request, controller)
+          return (await invokeToolWithinInputLimit(
+            tool,
+            args,
+            {
+              ...invocation,
+              request: execution.request,
+              signal: execution.signal,
+              task: controller
+            },
+            options
+          )) as unknown as Record<string, unknown>
         }
       }
     },
     taskRequestContext(request, params, context)
   )
+}
+
+function assertToolInputElementLimit(args: unknown, options: NormalizedMcpPluginOptions): void {
+  if (!exceedsInputElementLimit(args, options.core.maxToolInputElements)) return
+  throw new JsonRpcError(
+    -32602,
+    `Tool input exceeds the configured limit of ${options.core.maxToolInputElements} elements`,
+    { maxToolInputElements: options.core.maxToolInputElements },
+    400
+  )
+}
+
+function invokeToolWithinInputLimit(
+  tool: McpToolDefinition,
+  args: unknown,
+  invocation: McpInvocationContext,
+  options: NormalizedMcpPluginOptions
+): Promise<unknown> {
+  assertToolInputElementLimit(args, options)
+  return tool.invoke(args, invocation)
 }
 
 function listResources(
@@ -870,7 +1058,15 @@ async function readResource(
   if (!variantAllows(context.activeVariant, 'resources', uri)) {
     throw variantUnknown(`Resource not found: ${uri}`, context)
   }
-  const skillResult = await readSkillResource(app, uri, params, request, options, context)
+  const skillResult = await readSkillResource(
+    app,
+    uri,
+    params,
+    request,
+    options,
+    context,
+    SKILL_REQUEST_RUNTIME
+  )
   if (skillResult) return skillResult
   const reader = findResourceReader(getMcpRegistry(app, options), uri)
   if (!reader) {
@@ -908,700 +1104,6 @@ async function readResource(
     })
   }
   return result
-}
-
-async function subscribeVariantResource(
-  app: AnyElysiaApp,
-  params: Record<string, unknown>,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, unknown>> {
-  if (!options.extensions.variants || !context.activeVariant || !context.sessionId) {
-    throw new JsonRpcError(-32601, 'Method not found: resources/subscribe')
-  }
-  if (!options.core.subscriptions?.resources) {
-    throw new JsonRpcError(-32601, 'Resource subscriptions are not configured')
-  }
-  const uri = params.uri
-  if (typeof uri !== 'string' || !variantAllows(context.activeVariant, 'resources', uri)) {
-    throw new JsonRpcError(-32602, 'Resource is unavailable in the active variant', {
-      activeVariant: context.activeVariant.id
-    })
-  }
-  const reader = findResourceReader(getMcpRegistry(app, options), uri)
-  if (!reader) {
-    throw new JsonRpcError(-32602, 'Resource is unavailable in the active variant', {
-      activeVariant: context.activeVariant.id
-    })
-  }
-  enforceAuthorization(reader.definition.authorization, context.authorization, options)
-  const session = variantSessions(app, options).get(context.sessionId)
-  if (!session) throw new JsonRpcError(-32602, 'Unknown MCP session')
-  const subscriptionId = randomUUID()
-  const subscription = { uri, variantId: context.activeVariant.id } as {
-    uri: string
-    variantId: string
-    close?: () => Promise<void>
-  }
-  const provider = options.core.subscriptions.provider
-  const subscriptionAbort = new AbortController()
-  const unlinkRequestAbort = linkAbortSignal(request.signal, subscriptionAbort)
-  let iterable: AsyncIterable<McpServerNotification>
-  try {
-    iterable = await provider.subscribe(
-      { resourceSubscriptions: [uri] },
-      await invocationContext(
-        request,
-        'resources/subscribe',
-        params,
-        { ...context, signal: subscriptionAbort.signal },
-        options
-      )
-    )
-  } catch (error) {
-    unlinkRequestAbort()
-    subscriptionAbort.abort('Resource subscription setup failed')
-    throw error
-  }
-  const iterator = iterable[Symbol.asyncIterator]()
-  let closed = false
-  subscription.close = async () => {
-    if (closed) return
-    closed = true
-    subscriptionAbort.abort('Resource subscription closed')
-    unlinkRequestAbort()
-    void safelyReturnIterator(iterator)
-  }
-  session.subscriptions.set(subscriptionId, subscription)
-  void (async () => {
-    try {
-      while (!closed) {
-        const next = await iterator.next()
-        if (next.done || !session.subscriptions.has(subscriptionId)) break
-        if (
-          next.value.method !== 'notifications/resources/updated' ||
-          next.value.params.uri !== uri
-        )
-          continue
-        const currentAuthorization = await authorizeRequest(request, options)
-        const currentVariant = options.extensions.variants?.variants.find(
-          ({ id }) => id === subscription.variantId
-        )
-        const currentReader = currentVariant
-          ? findResourceReader(getMcpRegistry(app, options), uri)
-          : undefined
-        if (
-          currentAuthorization instanceof Response ||
-          variantPrincipal(currentAuthorization) !== session.principal ||
-          !currentVariant ||
-          !variantAllows(currentVariant, 'resources', uri) ||
-          !currentReader ||
-          !isAuthorized(currentReader.definition.authorization, currentAuthorization)
-        ) {
-          emitVariantNotification(session, {
-            method: 'notifications/resources/list_changed',
-            params: { _meta: { [MCP_SERVER_VARIANT_META_KEY]: subscription.variantId } }
-          })
-          break
-        }
-        emitVariantNotification(session, {
-          ...next.value,
-          params: {
-            ...next.value.params,
-            _meta: { [MCP_SERVER_VARIANT_META_KEY]: subscription.variantId }
-          }
-        })
-      }
-    } catch {
-      emitVariantNotification(session, {
-        method: 'notifications/resources/list_changed',
-        params: { _meta: { [MCP_SERVER_VARIANT_META_KEY]: subscription.variantId } }
-      })
-    } finally {
-      if (!closed) {
-        closed = true
-        subscriptionAbort.abort('Resource subscription ended')
-        unlinkRequestAbort()
-        await safelyReturnIterator(iterator)
-      }
-    }
-  })()
-  return { subscriptionId, activeVariant: context.activeVariant.id }
-}
-
-async function unsubscribeVariantResource(
-  app: AnyElysiaApp,
-  params: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, never>> {
-  if (!options.extensions.variants || !context.sessionId) {
-    throw new JsonRpcError(-32601, 'Method not found: resources/unsubscribe')
-  }
-  if (typeof params.subscriptionId !== 'string') {
-    throw new JsonRpcError(-32602, 'resources/unsubscribe requires subscriptionId')
-  }
-  const subscription = variantSessions(app, options)
-    .get(context.sessionId)
-    ?.subscriptions.get(params.subscriptionId)
-  if (!subscription) throw new JsonRpcError(-32602, 'Unknown resource subscription')
-  variantSessions(app, options).get(context.sessionId)?.subscriptions.delete(params.subscriptionId)
-  await subscription.close?.()
-  return {}
-}
-
-function emitVariantNotification(session: VariantSession, notification: unknown): void {
-  const chunk = new TextEncoder().encode(
-    `event: message\ndata: ${JSON.stringify({ jsonrpc: JSON_RPC_VERSION, ...(notification as object) })}\n\n`
-  )
-  for (const stream of session.streams.keys()) stream.enqueue(chunk)
-}
-
-async function listSkills(
-  app: AnyElysiaApp,
-  params: Record<string, unknown>,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, unknown>> {
-  assertModernSkills(app, options, context)
-  const invocation = await invocationContext(request, 'skills/list', params, context, options)
-  const config = options.extensions.skills
-  if (config) enforceAuthorization(config.authorization, context.authorization, options)
-  const staticSkills = Array.from(getMcpRegistry(app, options).skills.values()).filter(
-    (skill) => skill.listed && isAuthorized(skill.authorization, context.authorization)
-  )
-  const pagination = config?.pagination
-  if (!pagination && params.cursor !== undefined) {
-    throw new JsonRpcError(-32602, 'Skills pagination is not configured')
-  }
-  const offset = pagination
-    ? decodeCursor(params.cursor, 'skills/list', params, invocation, options, pagination)
-    : 0
-  if (offset < 0) throw new JsonRpcError(-32602, 'Invalid skills pagination cursor')
-  const limit = pagination?.pageSize
-  const visible: McpSkillDefinition[] = []
-  const providerDefinitions: McpSkillDefinition[] = []
-  let providerOffset = Math.max(0, offset - staticSkills.length)
-  let providerTouched = offset >= staticSkills.length
-  let hasMore = false
-
-  if (offset < staticSkills.length) {
-    const remaining = limit ?? staticSkills.length
-    visible.push(...staticSkills.slice(offset, offset + remaining))
-    hasMore = offset + visible.length < staticSkills.length || config?.provider !== undefined
-  }
-
-  if ((limit === undefined || visible.length < limit) && config?.provider) {
-    providerTouched = true
-    const providerLimit = limit === undefined ? undefined : limit - visible.length
-    const page = await config.provider.list(
-      {
-        offset: providerOffset,
-        limit: providerLimit === undefined ? undefined : Math.max(1, providerLimit)
-      },
-      invocation
-    )
-    if (
-      !page ||
-      !Array.isArray(page.skills) ||
-      (page.hasMore !== undefined && typeof page.hasMore !== 'boolean')
-    ) {
-      throw new JsonRpcError(-32603, 'Skills provider returned an invalid page')
-    }
-    if (providerLimit !== undefined && page.skills.length > Math.max(1, providerLimit)) {
-      throw new JsonRpcError(-32603, 'Skills provider exceeded the requested page size')
-    }
-    if (page.hasMore && page.skills.length === 0) {
-      throw new JsonRpcError(-32603, 'Skills provider returned an empty non-terminal page')
-    }
-    providerOffset += page.skills.length
-    for (const source of page.skills) {
-      let definition: McpSkillDefinition
-      try {
-        definition = createProviderSkillDefinition(source)
-        assertProviderDirectorySupport(config.provider, definition, config.directoryRead)
-        assertCompatibleSkillDefinitions(
-          [...getMcpRegistry(app, options).skills.values(), ...providerDefinitions],
-          definition
-        )
-        await assertProviderAncestorCompatibility(
-          config.provider,
-          definition,
-          invocation,
-          [...getMcpRegistry(app, options).skills.values(), ...providerDefinitions, definition],
-          config.directoryRead
-        )
-      } catch (error) {
-        throw providerSkillError(error)
-      }
-      if (definition.listed && isAuthorized(definition.authorization, context.authorization)) {
-        visible.push(definition)
-      }
-      providerDefinitions.push(definition)
-    }
-    hasMore = page.hasMore === true
-  }
-
-  if (!pagination && hasMore) {
-    throw new JsonRpcError(-32603, 'Skills provider requires pagination configuration')
-  }
-  const nextOffset = providerTouched
-    ? staticSkills.length + providerOffset
-    : offset + visible.length
-  const cache = config?.cache ?? { cacheScope: 'private' as const, ttlMs: 0 }
-  return {
-    resultType: 'complete',
-    skills: visible.map((skill) => skill.entry),
-    ttlMs: cache.ttlMs,
-    cacheScope: cache.cacheScope,
-    ...(hasMore
-      ? {
-          nextCursor: encodeCursor(
-            'skills/list',
-            nextOffset,
-            params,
-            invocation,
-            options,
-            pagination
-          )
-        }
-      : {})
-  }
-}
-
-async function getSkill(
-  app: AnyElysiaApp,
-  params: Record<string, unknown>,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, unknown>> {
-  assertModernSkills(app, options, context)
-  const uri = params.uri
-  if (typeof uri !== 'string') throw new JsonRpcError(-32602, 'skills/get requires a uri')
-  try {
-    assertSafeResourceUri(uri)
-  } catch (error) {
-    throw new JsonRpcError(-32602, 'Invalid skill URI', error)
-  }
-  const invocation = await invocationContext(request, 'skills/get', params, context, options)
-  const registry = getMcpRegistry(app, options)
-  let definition = registry.skills.get(uri)
-  const config = options.extensions.skills
-  if (!definition && config?.provider) {
-    enforceAuthorization(config.authorization, context.authorization, options)
-    const source = await config.provider.get(uri, invocation)
-    if (source) {
-      try {
-        definition = createProviderSkillDefinition(source)
-        assertProviderDirectorySupport(config.provider, definition, config.directoryRead)
-        assertCompatibleSkillDefinitions(registry.skills.values(), definition)
-        await assertProviderAncestorCompatibility(
-          config.provider,
-          definition,
-          invocation,
-          [...registry.skills.values(), definition],
-          config.directoryRead
-        )
-      } catch (error) {
-        throw providerSkillError(error)
-      }
-      if (definition.uri !== uri) {
-        throw new JsonRpcError(-32603, 'Skills provider returned a different skill URI')
-      }
-    }
-  }
-  if (!definition) throw new JsonRpcError(-32602, `No skill is served at ${uri}`)
-  if (config) enforceAuthorization(config.authorization, context.authorization, options)
-  enforceAuthorization(definition.authorization, context.authorization, options)
-  const cache = config?.cache ?? { cacheScope: 'private' as const, ttlMs: 0 }
-  return {
-    resultType: 'complete',
-    skill: definition.entry,
-    ttlMs: cache.ttlMs,
-    cacheScope: cache.cacheScope
-  }
-}
-
-async function readSkillResource(
-  app: AnyElysiaApp,
-  uri: string,
-  params: Record<string, unknown>,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, unknown> | undefined> {
-  const registry = getMcpRegistry(app, options)
-  try {
-    assertSafeResourceUri(uri)
-  } catch {
-    return undefined
-  }
-  const local = findStaticSkillResource(registry.skills.values(), uri)
-  if (local) {
-    if (options.extensions.skills) {
-      enforceAuthorization(options.extensions.skills.authorization, context.authorization, options)
-    }
-    enforceAuthorization(local.skill.authorization, context.authorization, options)
-    return { contents: [serializeSkillResource(local.resource)] }
-  }
-  const localDynamic = findStaticDynamicSkill(registry.skills.values(), uri)
-  if (localDynamic) {
-    if (options.extensions.skills) {
-      enforceAuthorization(options.extensions.skills.authorization, context.authorization, options)
-    }
-    enforceAuthorization(localDynamic.authorization, context.authorization, options)
-    if (!localDynamic.readResource) return undefined
-    const invocation = await invocationContext(request, 'resources/read', params, context, options)
-    const value = await localDynamic.readResource(uri, invocation)
-    if (value === null) return undefined
-    return {
-      contents: [serializeDynamicSkillResource(uri, value, localDynamic.allowBinary)]
-    }
-  }
-  const config = options.extensions.skills
-  if (!config?.provider) return undefined
-  enforceAuthorization(config.authorization, context.authorization, options)
-  const invocation = await invocationContext(request, 'resources/read', params, context, options)
-  const owner = await providerSkillOwner(
-    config.provider,
-    uri,
-    invocation,
-    registry.skills.values(),
-    false,
-    config.directoryRead
-  )
-  if (!owner) return undefined
-  enforceAuthorization(owner.authorization, context.authorization, options)
-  const stable = owner.files.get(uri)
-  if (stable) return { contents: [serializeSkillResource(stable)] }
-  if (owner.entry.resources !== 'dynamic') return undefined
-  const value = await config.provider.read(uri, invocation)
-  if (value === null) return undefined
-  return { contents: [serializeDynamicSkillResource(uri, value, owner.allowBinary)] }
-}
-
-async function readSkillDirectory(
-  app: AnyElysiaApp,
-  params: Record<string, unknown>,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): Promise<Record<string, unknown>> {
-  assertModernSkills(app, options, context)
-  const config = options.extensions.skills
-  if (!config?.directoryRead) {
-    throw new JsonRpcError(-32601, 'Method not found: resources/directory/read', undefined, 404)
-  }
-  const uri = params.uri
-  if (typeof uri !== 'string') throw new JsonRpcError(-32602, 'Directory read requires a uri')
-  try {
-    assertSafeDirectoryUri(uri)
-  } catch (error) {
-    throw new JsonRpcError(-32602, 'Invalid skill directory URI', error)
-  }
-  enforceAuthorization(config.authorization, context.authorization, options)
-  const invocation = await invocationContext(
-    request,
-    'resources/directory/read',
-    params,
-    context,
-    options
-  )
-  const pagination = config.pagination
-  if (!pagination && params.cursor !== undefined) {
-    throw new JsonRpcError(-32602, 'Skills directory pagination is not configured')
-  }
-  const offset = pagination
-    ? decodeCursor(
-        params.cursor,
-        'resources/directory/read',
-        params,
-        invocation,
-        options,
-        pagination
-      )
-    : 0
-  const registry = getMcpRegistry(app, options)
-  const namespaceOwner = findSkillDirectoryOwner(registry.skills.values(), uri)
-  const local = listStaticSkillDirectory(registry.skills.values(), uri)
-  let entries: readonly McpSkillDirectoryEntry[] | undefined
-  let hasMore = false
-  if (namespaceOwner?.entry.resources === 'dynamic') {
-    enforceAuthorization(namespaceOwner.authorization, context.authorization, options)
-    if (!namespaceOwner.readDirectory) {
-      throw new JsonRpcError(-32603, 'Dynamic skill does not implement directory enumeration')
-    }
-    const page = await readDynamicSkillDirectoryPage(
-      namespaceOwner.readDirectory,
-      uri,
-      local?.skill === namespaceOwner ? local.entries : [],
-      offset,
-      pagination?.pageSize,
-      invocation,
-      namespaceOwner
-    )
-    if (!page) throw new JsonRpcError(-32602, `${uri} is not a directory resource`)
-    entries = page.entries
-    hasMore = page.hasMore
-  } else if (namespaceOwner && local?.skill === namespaceOwner) {
-    enforceAuthorization(namespaceOwner.authorization, context.authorization, options)
-    const end = pagination
-      ? Math.min(offset + pagination.pageSize, local.entries.length)
-      : local.entries.length
-    if (offset > local.entries.length) throw new JsonRpcError(-32602, 'Invalid directory cursor')
-    entries = local.entries.slice(offset, end)
-    hasMore = end < local.entries.length
-  } else if (config.provider) {
-    const owner = await providerSkillOwner(
-      config.provider,
-      uri,
-      invocation,
-      registry.skills.values(),
-      true,
-      config.directoryRead
-    )
-    if (!owner) throw new JsonRpcError(-32602, `${uri} is not a directory resource`)
-    enforceAuthorization(owner.authorization, context.authorization, options)
-    const computed = listStaticSkillDirectory([owner], uri)
-    if (computed && owner.entry.resources !== 'dynamic') {
-      const end = pagination
-        ? Math.min(offset + pagination.pageSize, computed.entries.length)
-        : computed.entries.length
-      entries = computed.entries.slice(offset, end)
-      hasMore = end < computed.entries.length
-    } else if (owner.entry.resources === 'dynamic') {
-      if (!config.provider.readDirectory) {
-        throw new JsonRpcError(-32603, 'Skills provider does not implement directory enumeration')
-      }
-      const page = await readDynamicSkillDirectoryPage(
-        config.provider.readDirectory.bind(config.provider),
-        uri,
-        computed?.entries ?? [],
-        offset,
-        pagination?.pageSize,
-        invocation,
-        owner
-      )
-      if (!page) throw new JsonRpcError(-32602, `${uri} is not a directory resource`)
-      entries = page.entries
-      hasMore = page.hasMore
-    }
-  }
-  if (!entries) throw new JsonRpcError(-32602, `${uri} is not a directory resource`)
-  if (!pagination && hasMore)
-    throw new JsonRpcError(-32603, 'Dynamic directory reader requires pagination configuration')
-  return {
-    resultType: 'complete',
-    resources: entries,
-    ...(hasMore
-      ? {
-          nextCursor: encodeCursor(
-            'resources/directory/read',
-            offset + entries.length,
-            params,
-            invocation,
-            options,
-            pagination
-          )
-        }
-      : {})
-  }
-}
-
-function assertModernSkills(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  context: DispatchContext
-): void {
-  if (!context.protocol.modern) {
-    throw new JsonRpcError(-32601, 'Skills require protocol version 2026-07-28', undefined, 404)
-  }
-  if (getMcpRegistry(app, options).skills.size === 0 && !options.extensions.skills?.provider) {
-    throw new JsonRpcError(-32601, 'Skills extension is not enabled', undefined, 404)
-  }
-}
-
-async function readDynamicSkillDirectoryPage(
-  reader: McpSkillDynamicDirectoryReader,
-  uri: string,
-  knownEntries: readonly McpSkillDirectoryEntry[],
-  offset: number,
-  pageSize: number | undefined,
-  context: McpInvocationContext,
-  owner: McpSkillDefinition
-): Promise<{ entries: McpSkillDirectoryEntry[]; hasMore: boolean } | undefined> {
-  const entries =
-    offset < knownEntries.length
-      ? knownEntries.slice(offset, pageSize === undefined ? undefined : offset + pageSize)
-      : []
-  if (pageSize !== undefined && entries.length === pageSize) {
-    return { entries, hasMore: true }
-  }
-
-  const dynamicOffset = Math.max(0, offset - knownEntries.length)
-  const dynamicLimit = pageSize === undefined ? undefined : pageSize - entries.length
-  const page = await reader(uri, { offset: dynamicOffset, limit: dynamicLimit }, context)
-  if (!page) {
-    return knownEntries.length > 0 && offset <= knownEntries.length
-      ? { entries, hasMore: false }
-      : undefined
-  }
-  if (
-    !Array.isArray(page.resources) ||
-    (page.hasMore !== undefined && typeof page.hasMore !== 'boolean') ||
-    (dynamicLimit !== undefined && page.resources.length > dynamicLimit) ||
-    (page.hasMore && page.resources.length === 0)
-  ) {
-    throw new JsonRpcError(-32603, 'Dynamic skill directory reader returned an invalid page')
-  }
-  const dynamicEntries = validateSkillDirectoryEntries(page.resources, uri, owner)
-  const knownUris = new Set(knownEntries.map((entry) => entry.uri))
-  if (dynamicEntries.some((entry) => knownUris.has(entry.uri))) {
-    throw new JsonRpcError(
-      -32603,
-      'Dynamic skill directory reader returned an adapter-managed resource'
-    )
-  }
-  entries.push(...dynamicEntries)
-  return { entries, hasMore: page.hasMore === true }
-}
-
-async function providerSkillOwner(
-  provider: NonNullable<
-    NonNullable<NormalizedMcpPluginOptions['extensions']['skills']>['provider']
-  >,
-  resourceUri: string,
-  context: McpInvocationContext,
-  existing: Iterable<McpSkillDefinition>,
-  includeSelf = false,
-  directoryRead = false
-): Promise<McpSkillDefinition | undefined> {
-  const candidates = candidateSkillUris(resourceUri, includeSelf)
-  const known = [...existing]
-  let owner: McpSkillDefinition | undefined
-  for (const candidate of candidates) {
-    const source = await provider.get(candidate, context)
-    if (!source) continue
-    let definition: McpSkillDefinition
-    try {
-      definition = createProviderSkillDefinition(source)
-      assertProviderDirectorySupport(provider, definition, directoryRead)
-      assertCompatibleSkillDefinitions(known, definition)
-    } catch (error) {
-      throw providerSkillError(error)
-    }
-    if (definition.uri !== candidate || !isWithinSkill(definition.rootUri, resourceUri)) {
-      throw new JsonRpcError(-32603, 'Skills provider violated resource ownership')
-    }
-    owner ??= definition
-    known.push(definition)
-  }
-  return owner
-}
-
-async function assertProviderAncestorCompatibility(
-  provider: NonNullable<
-    NonNullable<NormalizedMcpPluginOptions['extensions']['skills']>['provider']
-  >,
-  definition: McpSkillDefinition,
-  context: McpInvocationContext,
-  existing: readonly McpSkillDefinition[],
-  directoryRead: boolean
-): Promise<void> {
-  const known = [...existing]
-  for (const candidate of candidateSkillUris(definition.rootUri, false)) {
-    if (known.some((skill) => skill.uri === candidate)) continue
-    const source = await provider.get(candidate, context)
-    if (!source) continue
-    const ancestor = createProviderSkillDefinition(source)
-    assertProviderDirectorySupport(provider, ancestor, directoryRead)
-    if (ancestor.uri !== candidate) {
-      throw new TypeError('Skills provider returned a different ancestor skill URI')
-    }
-    assertCompatibleSkillDefinitions(known, ancestor)
-    known.push(ancestor)
-  }
-}
-
-function assertProviderDirectorySupport(
-  provider: NonNullable<
-    NonNullable<NormalizedMcpPluginOptions['extensions']['skills']>['provider']
-  >,
-  definition: McpSkillDefinition,
-  directoryRead: boolean
-): void {
-  if (directoryRead && definition.entry.resources === 'dynamic' && !provider.readDirectory) {
-    throw new MissingProviderDirectoryReaderError(
-      `Dynamic provider skill ${definition.uri} requires readDirectory when directoryRead is enabled`
-    )
-  }
-}
-
-class MissingProviderDirectoryReaderError extends Error {}
-
-function providerSkillError(error: unknown): JsonRpcError {
-  return error instanceof MissingProviderDirectoryReaderError
-    ? new JsonRpcError(-32603, error.message)
-    : new JsonRpcError(-32603, 'Skills provider returned an invalid skill', error)
-}
-
-function candidateSkillUris(uri: string, includeSelf: boolean): string[] {
-  const values: string[] = []
-  if (includeSelf) values.push(`${uri}/SKILL.md`)
-  let cursor = uri.lastIndexOf('/')
-  while (cursor > uri.indexOf('://') + 2) {
-    const directory = uri.slice(0, cursor)
-    values.push(`${directory}/SKILL.md`)
-    cursor = directory.lastIndexOf('/')
-  }
-  return [...new Set(values)]
-}
-
-function validateSkillDirectoryEntries(
-  entries: readonly McpSkillDirectoryEntry[],
-  directoryUri: string,
-  owner: McpSkillDefinition
-): McpSkillDirectoryEntry[] {
-  if (!Array.isArray(entries))
-    throw new JsonRpcError(-32603, 'Directory provider returned invalid resources')
-  const prefix = `${directoryUri}/`
-  const seen = new Set<string>()
-  return entries.map((entry) => {
-    if (!entry || typeof entry.uri !== 'string' || typeof entry.name !== 'string') {
-      throw new JsonRpcError(-32603, 'Directory provider returned an invalid resource')
-    }
-    if (entry.mimeType !== undefined && typeof entry.mimeType !== 'string') {
-      throw new JsonRpcError(-32603, 'Directory provider returned an invalid MIME type')
-    }
-    if (entry.size !== undefined && (!Number.isSafeInteger(entry.size) || entry.size < 0)) {
-      throw new JsonRpcError(-32603, 'Directory provider returned an invalid resource size')
-    }
-    if (seen.has(entry.uri)) {
-      throw new JsonRpcError(-32603, 'Directory provider returned a duplicate resource')
-    }
-    seen.add(entry.uri)
-    try {
-      assertSafeResourceUri(entry.uri)
-    } catch (error) {
-      throw new JsonRpcError(-32603, 'Directory provider returned an unsafe resource URI', error)
-    }
-    const remainder = entry.uri.startsWith(prefix) ? entry.uri.slice(prefix.length) : ''
-    if (!remainder || remainder.includes('/') || !isWithinSkill(owner.rootUri, entry.uri)) {
-      throw new JsonRpcError(-32603, 'Directory provider returned a non-child resource')
-    }
-    if (decodeURIComponent(remainder) !== entry.name) {
-      throw new JsonRpcError(-32603, 'Directory provider resource name does not match its URI')
-    }
-    return {
-      uri: entry.uri,
-      name: entry.name,
-      ...(entry.mimeType !== undefined ? { mimeType: entry.mimeType } : {}),
-      ...(entry.size !== undefined ? { size: entry.size } : {})
-    }
-  })
 }
 
 function listPrompts(
@@ -1646,67 +1148,93 @@ async function completeArgument(
   options: NormalizedMcpPluginOptions,
   context: DispatchContext
 ): Promise<Record<string, unknown>> {
-  if (!isRecord(params.ref) || !isRecord(params.argument)) {
-    throw new JsonRpcError(-32602, 'completion/complete requires ref and argument')
-  }
-  const argument = params.argument
-  if (typeof argument.name !== 'string' || typeof argument.value !== 'string') {
-    throw new JsonRpcError(-32602, 'completion argument requires string name and value')
-  }
-  const registry = getMcpRegistry(app, options)
-  const type = params.ref.type
-  const target =
-    type === 'ref/prompt' && typeof params.ref.name === 'string'
-      ? registry.prompts.get(params.ref.name)
-      : type === 'ref/resource' && typeof params.ref.uri === 'string'
-        ? registry.resourceTemplates.get(params.ref.uri)
-        : undefined
+  const { ref, argument } = completionInput(params)
+  const target = completionTarget(app, ref, options)
   if (!target?.complete) throw new JsonRpcError(-32602, 'Completion target is unavailable')
-  if (
-    (type === 'ref/prompt' &&
-      !variantAllows(context.activeVariant, 'prompts', String(params.ref.name))) ||
-    (type === 'ref/resource' &&
-      !variantAllows(context.activeVariant, 'resources', String(params.ref.uri)))
-  ) {
-    throw variantUnknown('Completion target is unavailable', context)
-  }
+  assertCompletionVariant(ref, context)
   enforceAuthorization(target.authorization, context.authorization, options)
   const completion = await target.complete(
     {
-      ref: params.ref as any,
+      ref: ref as any,
       argument: { name: argument.name, value: argument.value },
-      context: isRecord(params.context)
-        ? {
-            arguments: isRecord(params.context.arguments)
-              ? Object.fromEntries(
-                  Object.entries(params.context.arguments).filter(
-                    (entry): entry is [string, string] => typeof entry[1] === 'string'
-                  )
-                )
-              : undefined
-          }
-        : undefined
+      context: completionContext(params.context)
     },
     await invocationContext(request, 'completion/complete', params, context, options)
   )
-  if (
-    !Array.isArray(completion.values) ||
-    completion.values.length > 100 ||
-    !completion.values.every((value) => typeof value === 'string') ||
-    (completion.total !== undefined &&
-      (!Number.isSafeInteger(completion.total) || completion.total < 0)) ||
-    (completion.hasMore !== undefined && typeof completion.hasMore !== 'boolean')
-  ) {
-    throw new JsonRpcError(-32603, 'Completion callback returned an invalid completion result')
-  }
+  assertCompletionResult(completion)
   return { completion }
 }
 
-function hasCompletion(registry: ReturnType<typeof getMcpRegistry>): boolean {
-  return (
-    Array.from(registry.prompts.values()).some((item) => item.complete) ||
-    Array.from(registry.resourceTemplates.values()).some((item) => item.complete)
-  )
+function completionInput(params: Record<string, unknown>): {
+  ref: Record<string, unknown>
+  argument: { name: string; value: string }
+} {
+  if (!isRecord(params.ref) || !isRecord(params.argument)) {
+    throw new JsonRpcError(-32602, 'completion/complete requires ref and argument')
+  }
+  if (typeof params.argument.name !== 'string' || typeof params.argument.value !== 'string') {
+    throw new JsonRpcError(-32602, 'completion argument requires string name and value')
+  }
+  return {
+    ref: params.ref,
+    argument: { name: params.argument.name, value: params.argument.value }
+  }
+}
+
+function completionTarget(
+  app: AnyElysiaApp,
+  ref: Record<string, unknown>,
+  options: NormalizedMcpPluginOptions
+): McpPromptDefinition | McpResourceTemplateDefinition | undefined {
+  const registry = getMcpRegistry(app, options)
+  if (ref.type === 'ref/prompt' && typeof ref.name === 'string') {
+    return registry.prompts.get(ref.name)
+  }
+  if (ref.type === 'ref/resource' && typeof ref.uri === 'string') {
+    return registry.resourceTemplates.get(ref.uri)
+  }
+  return undefined
+}
+
+function assertCompletionVariant(ref: Record<string, unknown>, context: DispatchContext): void {
+  const promptDenied =
+    ref.type === 'ref/prompt' && !variantAllows(context.activeVariant, 'prompts', String(ref.name))
+  const resourceDenied =
+    ref.type === 'ref/resource' &&
+    !variantAllows(context.activeVariant, 'resources', String(ref.uri))
+  if (promptDenied || resourceDenied) {
+    throw variantUnknown('Completion target is unavailable', context)
+  }
+}
+
+function completionContext(value: unknown): { arguments?: Record<string, string> } | undefined {
+  if (!isRecord(value)) return undefined
+  if (!isRecord(value.arguments)) return { arguments: undefined }
+  return {
+    arguments: Object.fromEntries(
+      Object.entries(value.arguments).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    )
+  }
+}
+
+function assertCompletionResult(completion: {
+  values: string[]
+  total?: number
+  hasMore?: boolean
+}): void {
+  const valuesInvalid =
+    !Array.isArray(completion.values) ||
+    completion.values.length > 100 ||
+    !completion.values.every((value) => typeof value === 'string')
+  const totalInvalid =
+    completion.total !== undefined &&
+    (!Number.isSafeInteger(completion.total) || completion.total < 0)
+  const hasMoreInvalid = completion.hasMore !== undefined && typeof completion.hasMore !== 'boolean'
+  if (valuesInvalid || totalInvalid || hasMoreInvalid) {
+    throw new JsonRpcError(-32603, 'Completion callback returned an invalid completion result')
+  }
 }
 
 function paginate(
@@ -1893,23 +1421,6 @@ async function invocationContext(
   }
 }
 
-function invocationContextBase(
-  request: Request,
-  params: Record<string, unknown>,
-  context: DispatchContext
-): McpInvocationContext {
-  return {
-    request,
-    signal: context.signal ?? request.signal,
-    meta: isRecord(params._meta) ? params._meta : undefined,
-    protocolVersion: context.protocol.version,
-    clientCapabilities: context.protocol.clientCapabilities,
-    clientInfo: context.protocol.clientInfo,
-    authorization: context.authorization,
-    reportProgress: context.reportProgress
-  }
-}
-
 function taskController(options: NormalizedMcpPluginOptions): TaskController {
   const tasks = options.extensions.tasks
   if (!tasks) throw new JsonRpcError(-32601, 'Tasks extension is not enabled', undefined, 404)
@@ -2056,863 +1567,6 @@ function handleProgressRequest(
   return sseResponse(body)
 }
 
-async function handleSubscription(
-  app: AnyElysiaApp,
-  payload: JsonRpcRequest,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<Response> {
-  const params = isRecord(payload.params) ? payload.params : {}
-  const notifications = isRecord(params.notifications) ? params.notifications : undefined
-  const hasTaskFilter = Array.isArray(notifications?.taskIds)
-  const hasCoreFilter = Boolean(
-    notifications?.toolsListChanged ||
-      notifications?.promptsListChanged ||
-      notifications?.resourcesListChanged ||
-      Array.isArray(notifications?.resourceSubscriptions)
-  )
-  if (hasTaskFilter && hasCoreFilter) {
-    return handleMixedSubscription(app, payload, request, options, authorization)
-  }
-  if (hasTaskFilter) return handleTaskSubscription(app, payload, request, options, authorization)
-  if (!isJsonRpcRequest(payload) || !isRequestId(payload.id)) {
-    return jsonResponse(
-      createErrorResponse(errorIdForRequest(request, options, payload), -32600, 'Invalid Request'),
-      400
-    )
-  }
-  try {
-    const protocol = resolveRequestProtocol(request, payload, options)
-    if (!protocol.modern)
-      throw new JsonRpcError(-32601, 'subscriptions/listen requires MCP 2026-07-28', undefined, 404)
-    if (!options.core.subscriptions || !notifications) {
-      throw new JsonRpcError(-32601, 'Core subscriptions are not configured', undefined, 404)
-    }
-    const { accepted, abort, configured, iterator, unlinkIncomingAbort } =
-      await openCoreSubscription(
-        app,
-        request,
-        params,
-        notifications,
-        options,
-        protocol,
-        authorization
-      )
-    const subscriptionId = payload.id
-    const encoder = new TextEncoder()
-    let closed = false
-    let heartbeat: ReturnType<typeof setInterval> | undefined
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const send = (message: unknown) => {
-          if (!closed) controller.enqueue(encodeSseEvent(encoder, message))
-        }
-        send({
-          jsonrpc: JSON_RPC_VERSION,
-          method: 'notifications/subscriptions/acknowledged',
-          params: {
-            notifications: accepted,
-            _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-          }
-        })
-        heartbeat = setInterval(() => {
-          if (!closed) controller.enqueue(encoder.encode(': heartbeat\n\n'))
-        }, configured.heartbeatMs)
-        void (async () => {
-          for (;;) {
-            const next = await iterator.next()
-            if (next.done || closed) break
-            if (!isAllowedNotification(next.value, accepted, app, options, authorization)) {
-              throw new Error(
-                `Subscription provider emitted unrequested notification: ${next.value.method}`
-              )
-            }
-            send({
-              jsonrpc: JSON_RPC_VERSION,
-              method: next.value.method,
-              params: {
-                ...(next.value.params ?? {}),
-                _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-              }
-            })
-          }
-          if (closed) return
-          send(subscriptionCancelled(subscriptionId, 'Subscription ended by server'))
-          send(subscriptionComplete(subscriptionId, options))
-          closed = true
-          unlinkIncomingAbort()
-          if (heartbeat) clearInterval(heartbeat)
-          controller.close()
-        })().catch((error) => {
-          if (closed) return
-          send(subscriptionCancelled(subscriptionId, 'Subscription provider failed'))
-          send(subscriptionComplete(subscriptionId, options))
-          closed = true
-          unlinkIncomingAbort()
-          if (heartbeat) clearInterval(heartbeat)
-          abort.abort('Subscription provider failed')
-          void safelyReturnIterator(iterator)
-          controller.close()
-          void error
-        })
-      },
-      cancel() {
-        closed = true
-        abort.abort('MCP subscription stream closed')
-        unlinkIncomingAbort()
-        if (heartbeat) clearInterval(heartbeat)
-        void safelyReturnIterator(iterator)
-      }
-    })
-    return sseResponse(body)
-  } catch (error) {
-    return jsonResponse(
-      normalizeDispatchError(errorIdForRequest(request, options, payload), error),
-      errorStatus(error)
-    )
-  }
-}
-
-function isAllowedNotification(
-  notification: { method: string; params?: Record<string, unknown> },
-  accepted: Record<string, unknown>,
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): boolean {
-  if (notification.method === 'notifications/tools/list_changed')
-    return accepted.toolsListChanged === true
-  if (notification.method === 'notifications/prompts/list_changed')
-    return accepted.promptsListChanged === true
-  if (notification.method === 'notifications/resources/list_changed')
-    return accepted.resourcesListChanged === true
-  if (notification.method === 'notifications/resources/updated') {
-    return (
-      typeof notification.params?.uri === 'string' &&
-      Array.isArray(accepted.resourceSubscriptions) &&
-      isAuthorizedSubscribedResourceUpdate(
-        app,
-        options,
-        accepted.resourceSubscriptions,
-        notification.params.uri,
-        authorization
-      )
-    )
-  }
-  return false
-}
-
-function isAuthorizedSubscribedResourceUpdate(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions,
-  subscribedUris: unknown[],
-  updatedUri: string,
-  authorization?: McpAuthorizationContext
-): boolean {
-  const registry = getMcpRegistry(app, options)
-  const matchingSubscription = subscribedUris.find(
-    (uri): uri is string => typeof uri === 'string' && isSameOrDescendantUri(uri, updatedUri)
-  )
-  if (!matchingSubscription) return false
-  const subscribedReader = findResourceReader(registry, matchingSubscription)
-  if (
-    !subscribedReader ||
-    !isAuthorized(subscribedReader.definition.authorization, authorization)
-  ) {
-    return false
-  }
-  const updatedReader = findResourceReader(registry, updatedUri)
-  return !updatedReader || isAuthorized(updatedReader.definition.authorization, authorization)
-}
-
-function isSameOrDescendantUri(subscribedUri: string, updatedUri: string): boolean {
-  if (subscribedUri === updatedUri) return true
-  let subscribed: URL
-  let updated: URL
-  try {
-    subscribed = new URL(subscribedUri)
-    updated = new URL(updatedUri)
-  } catch {
-    return false
-  }
-  if (
-    subscribed.protocol !== updated.protocol ||
-    subscribed.username !== updated.username ||
-    subscribed.password !== updated.password ||
-    subscribed.host !== updated.host ||
-    subscribed.search !== updated.search ||
-    subscribed.hash !== updated.hash
-  ) {
-    return false
-  }
-  const basePath = subscribed.pathname.endsWith('/')
-    ? subscribed.pathname
-    : `${subscribed.pathname}/`
-  return updated.pathname.startsWith(basePath)
-}
-
-function acceptedCoreSubscriptionFilter(
-  app: AnyElysiaApp,
-  notifications: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Record<string, unknown> {
-  const configured = options.core.subscriptions
-  if (!configured) {
-    throw new JsonRpcError(-32601, 'Core subscriptions are not configured', undefined, 404)
-  }
-  for (const key of ['toolsListChanged', 'promptsListChanged', 'resourcesListChanged']) {
-    const value = notifications[key]
-    if (value !== undefined && typeof value !== 'boolean') {
-      throw new JsonRpcError(-32602, `${key} must be boolean`)
-    }
-  }
-  const requestedResources = notifications.resourceSubscriptions
-  if (
-    requestedResources !== undefined &&
-    (!Array.isArray(requestedResources) ||
-      !requestedResources.every((uri) => typeof uri === 'string'))
-  ) {
-    throw new JsonRpcError(-32602, 'resourceSubscriptions must contain only strings')
-  }
-  const acceptedResources = requestedResources?.filter((uri) => {
-    const reader = findResourceReader(getMcpRegistry(app, options), uri)
-    return Boolean(
-      configured.resources && reader && isAuthorized(reader.definition.authorization, authorization)
-    )
-  })
-  return pruneUndefined({
-    toolsListChanged:
-      notifications.toolsListChanged === true && configured.toolsListChanged ? true : undefined,
-    promptsListChanged:
-      notifications.promptsListChanged === true && configured.promptsListChanged ? true : undefined,
-    resourcesListChanged:
-      notifications.resourcesListChanged === true && configured.resourcesListChanged
-        ? true
-        : undefined,
-    resourceSubscriptions: acceptedResources ? [...new Set(acceptedResources)] : undefined
-  })
-}
-
-async function openCoreSubscription(
-  app: AnyElysiaApp,
-  request: Request,
-  params: Record<string, unknown>,
-  notifications: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  protocol: McpRequestProtocolContext,
-  authorization?: McpAuthorizationContext
-) {
-  const configured = options.core.subscriptions
-  if (!configured) {
-    throw new JsonRpcError(-32601, 'Core subscriptions are not configured', undefined, 404)
-  }
-  const accepted = acceptedCoreSubscriptionFilter(app, notifications, options, authorization)
-  const abort = new AbortController()
-  const unlinkIncomingAbort = linkAbortSignal(request.signal, abort)
-  const invocation = invocationContextBase(request, params, {
-    protocol,
-    authorization,
-    signal: abort.signal
-  })
-  try {
-    const iterable = await configured.provider.subscribe(accepted, invocation)
-    return {
-      accepted,
-      abort,
-      configured,
-      iterator: mergeRegistryNotifications(
-        app,
-        iterable[Symbol.asyncIterator](),
-        accepted,
-        abort.signal
-      ),
-      unlinkIncomingAbort
-    }
-  } catch (error) {
-    unlinkIncomingAbort()
-    throw error
-  }
-}
-
-function mergeRegistryNotifications(
-  app: AnyElysiaApp,
-  provider: AsyncIterator<McpServerNotification>,
-  accepted: Record<string, unknown>,
-  signal: AbortSignal
-): AsyncIterableIterator<McpServerNotification> {
-  const queued: McpServerNotification[] = []
-  let wake: (() => void) | undefined
-  let providerNext: Promise<IteratorResult<McpServerNotification>> | undefined
-  let closed = false
-  const enabled = (kind: McpRegistryChangeKind): boolean => accepted[`${kind}ListChanged`] === true
-  const removeListener = onRegistryChange(app, (kind) => {
-    if (!closed && enabled(kind)) {
-      queued.push({ method: `notifications/${kind}/list_changed` } as McpServerNotification)
-      wake?.()
-    }
-  })
-  const close = () => {
-    if (closed) return
-    closed = true
-    removeListener()
-    wake?.()
-  }
-  signal.addEventListener('abort', close, { once: true })
-  return {
-    [Symbol.asyncIterator]() {
-      return this
-    },
-    async next() {
-      for (;;) {
-        const local = queued.shift()
-        if (local) return { done: false, value: local }
-        if (closed) return { done: true, value: undefined }
-        providerNext ??= provider.next()
-        let localWake: (() => void) | undefined
-        const localReady = new Promise<'local'>((resolve) => {
-          localWake = () => resolve('local')
-          wake = localWake
-        })
-        const result = await Promise.race([
-          providerNext.then((value) => ({ source: 'provider' as const, value })),
-          localReady.then(() => ({ source: 'local' as const }))
-        ])
-        if (wake === localWake) wake = undefined
-        if (result.source === 'local') continue
-        providerNext = undefined
-        if (result.value.done) close()
-        return result.value
-      }
-    },
-    async return(value?: unknown) {
-      close()
-      const result = await provider.return?.(value)
-      return result ?? { done: true, value: undefined }
-    },
-    async throw(error?: unknown) {
-      close()
-      if (provider.throw) return provider.throw(error)
-      throw error
-    }
-  }
-}
-
-function prepareTaskSubscriptionRequest(
-  request: Request,
-  payload: JsonRpcRequest,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-) {
-  const protocol = resolveRequestProtocol(request, payload, options)
-  const context = { protocol, authorization }
-  assertModernTasks(context, options)
-  const params = isRecord(payload.params) ? payload.params : {}
-  return {
-    context,
-    meta: isRecord(params._meta) ? params._meta : undefined,
-    params,
-    protocol
-  }
-}
-
-async function handleMixedSubscription(
-  app: AnyElysiaApp,
-  payload: JsonRpcRequest,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<Response> {
-  let setupAbort: AbortController | undefined
-  let setupCloseTasks: (() => Promise<void>) | undefined
-  let setupIterator: AsyncIterator<McpServerNotification> | undefined
-  let setupUnlink: (() => void) | undefined
-  let streamEstablished = false
-  try {
-    if (!isRequestId(payload.id)) {
-      throw new JsonRpcError(-32600, 'Invalid Request', undefined, 400)
-    }
-    const { context, meta, params, protocol } = prepareTaskSubscriptionRequest(
-      request,
-      payload,
-      options,
-      authorization
-    )
-    const notifications = isRecord(params.notifications) ? params.notifications : {}
-    taskController(options).assertClientCapability(meta)
-    const taskIds = notifications.taskIds
-    if (
-      !Array.isArray(taskIds) ||
-      !taskIds.every((value): value is string => typeof value === 'string')
-    ) {
-      throw new JsonRpcError(-32602, 'notifications.taskIds must contain only strings')
-    }
-    const {
-      accepted: acceptedCore,
-      abort,
-      configured,
-      iterator,
-      unlinkIncomingAbort
-    } = await openCoreSubscription(
-      app,
-      request,
-      params,
-      notifications,
-      options,
-      protocol,
-      authorization
-    )
-    setupAbort = abort
-    setupIterator = iterator
-    setupUnlink = unlinkIncomingAbort
-    const queuedTasks: DetailedTask[] = []
-    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
-    let acceptedTasks: Set<string> | undefined
-    let closed = false
-    let heartbeat: ReturnType<typeof setInterval> | undefined
-    const encoder = new TextEncoder()
-    const subscriptionId = payload.id
-    const event = (message: unknown) => encodeSseEvent(encoder, message)
-    const emitTask = (task: DetailedTask) => {
-      if (closed) return
-      if (acceptedTasks && !acceptedTasks.has(task.taskId)) {
-        if (streamController) {
-          streamController.enqueue(
-            event(subscriptionCancelled(subscriptionId, 'Task subscription provider failed'))
-          )
-          streamController.enqueue(event(subscriptionComplete(subscriptionId, options)))
-          streamController.close()
-        }
-        closed = true
-        abort.abort('Task subscription provider failed')
-        unlinkIncomingAbort()
-        void safelyReturnIterator(iterator)
-        void setupCloseTasks?.()
-        return
-      }
-      if (!streamController) {
-        queuedTasks.push(task)
-        return
-      }
-      streamController.enqueue(
-        event({
-          jsonrpc: JSON_RPC_VERSION,
-          method: 'notifications/tasks',
-          params: {
-            ...task,
-            _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-          }
-        })
-      )
-    }
-    const tasks = await taskController(options).listen(
-      taskIds,
-      emitTask,
-      taskRequestContext(request, params, { ...context, signal: abort.signal })
-    )
-    let closeTasksPromise: Promise<void> | undefined
-    const closeTasksOnAbort = () => void setupCloseTasks?.()
-    setupCloseTasks = () => {
-      abort.signal.removeEventListener('abort', closeTasksOnAbort)
-      closeTasksPromise ??= safelyCloseTaskSubscription(tasks)
-      return closeTasksPromise
-    }
-    if (abort.signal.aborted) closeTasksOnAbort()
-    else abort.signal.addEventListener('abort', closeTasksOnAbort, { once: true })
-    const acceptedTaskIds = acceptedSubscriptionTaskIds(tasks, taskIds)
-    acceptedTasks = new Set(acceptedTaskIds)
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        streamController = controller
-        controller.enqueue(
-          event({
-            jsonrpc: JSON_RPC_VERSION,
-            method: 'notifications/subscriptions/acknowledged',
-            params: {
-              notifications: { ...acceptedCore, taskIds: acceptedTaskIds },
-              _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-            }
-          })
-        )
-        for (const task of queuedTasks) emitTask(task)
-        queuedTasks.length = 0
-        heartbeat = setInterval(() => {
-          if (!closed) controller.enqueue(encoder.encode(': heartbeat\n\n'))
-        }, configured.heartbeatMs)
-        const coreDone = (async () => {
-          for (;;) {
-            const next = await iterator.next()
-            if (next.done || closed) return
-            if (!isAllowedNotification(next.value, acceptedCore, app, options, authorization)) {
-              throw new Error(
-                `Subscription provider emitted unrequested notification: ${next.value.method}`
-              )
-            }
-            controller.enqueue(
-              event({
-                jsonrpc: JSON_RPC_VERSION,
-                method: next.value.method,
-                params: {
-                  ...(next.value.params ?? {}),
-                  _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-                }
-              })
-            )
-          }
-        })()
-        if (tasks?.done) {
-          void Promise.all([coreDone, tasks.done])
-            .then(() => {
-              if (closed) return
-              controller.enqueue(
-                event(subscriptionCancelled(subscriptionId, 'Subscription ended by server'))
-              )
-              controller.enqueue(event(subscriptionComplete(subscriptionId, options)))
-              closed = true
-              unlinkIncomingAbort()
-              if (heartbeat) clearInterval(heartbeat)
-              void setupCloseTasks?.()
-              controller.close()
-            })
-            .catch(() => {
-              if (closed) return
-              controller.enqueue(
-                event(subscriptionCancelled(subscriptionId, 'Subscription provider failed'))
-              )
-              controller.enqueue(event(subscriptionComplete(subscriptionId, options)))
-              closed = true
-              unlinkIncomingAbort()
-              if (heartbeat) clearInterval(heartbeat)
-              abort.abort('Subscription provider failed')
-              void safelyReturnIterator(iterator)
-              void setupCloseTasks?.()
-              controller.close()
-            })
-        } else {
-          void coreDone.catch(() => {
-            if (closed) return
-            controller.enqueue(
-              event(subscriptionCancelled(subscriptionId, 'Subscription provider failed'))
-            )
-            controller.enqueue(event(subscriptionComplete(subscriptionId, options)))
-            closed = true
-            unlinkIncomingAbort()
-            if (heartbeat) clearInterval(heartbeat)
-            abort.abort('Subscription provider failed')
-            void safelyReturnIterator(iterator)
-            void setupCloseTasks?.()
-            controller.close()
-          })
-        }
-      },
-      cancel() {
-        closed = true
-        abort.abort('MCP subscription stream closed')
-        unlinkIncomingAbort()
-        if (heartbeat) clearInterval(heartbeat)
-        void safelyReturnIterator(iterator)
-        void setupCloseTasks?.()
-      }
-    })
-    const response = sseResponse(body)
-    streamEstablished = true
-    return response
-  } catch (error) {
-    if (!streamEstablished && setupAbort) {
-      setupAbort.abort('Mixed subscription setup failed')
-      setupUnlink?.()
-      await Promise.all([
-        safelyReturnIterator(setupIterator),
-        setupCloseTasks?.() ?? Promise.resolve()
-      ])
-    }
-    return jsonResponse(
-      normalizeDispatchError(errorIdForRequest(request, options, payload), error),
-      errorStatus(error)
-    )
-  }
-}
-
-function sseResponse(body: ReadableStream<Uint8Array>): Response {
-  return new Response(body, {
-    headers: {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache, no-transform',
-      'x-accel-buffering': 'no',
-      connection: 'keep-alive'
-    }
-  })
-}
-
-function linkAbortSignal(source: AbortSignal, target: AbortController): () => void {
-  if (source.aborted) {
-    target.abort(source.reason)
-    return () => undefined
-  }
-  const abort = () => target.abort(source.reason)
-  source.addEventListener('abort', abort, { once: true })
-  return () => source.removeEventListener('abort', abort)
-}
-
-function encodeSseEvent(encoder: TextEncoder, message: unknown): Uint8Array {
-  return encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
-}
-
-function subscriptionCancelled(
-  subscriptionId: string | number,
-  reason: string
-): Record<string, unknown> {
-  return {
-    jsonrpc: JSON_RPC_VERSION,
-    method: 'notifications/cancelled',
-    params: {
-      requestId: subscriptionId,
-      reason,
-      _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-    }
-  }
-}
-
-function subscriptionComplete(
-  subscriptionId: string | number,
-  options: NormalizedMcpPluginOptions
-): Record<string, unknown> {
-  return {
-    jsonrpc: JSON_RPC_VERSION,
-    id: subscriptionId,
-    result: {
-      resultType: 'complete',
-      _meta: {
-        ...modernResultMeta(options),
-        'io.modelcontextprotocol/subscriptionId': subscriptionId
-      }
-    }
-  }
-}
-
-async function handleTaskSubscription(
-  app: AnyElysiaApp,
-  payload: JsonRpcRequest,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<Response> {
-  if (!isJsonRpcRequest(payload) || !isRequestId(payload.id)) {
-    return jsonResponse(
-      createErrorResponse(errorIdForRequest(request, options, payload), -32600, 'Invalid Request'),
-      400
-    )
-  }
-  try {
-    const { context, meta, params } = prepareTaskSubscriptionRequest(
-      request,
-      payload,
-      options,
-      authorization
-    )
-    const controller = taskController(options)
-    controller.assertClientCapability(meta)
-    if (!isRecord(params.notifications) || !Array.isArray(params.notifications.taskIds)) {
-      throw new JsonRpcError(-32602, 'subscriptions/listen requires notifications.taskIds')
-    }
-    const taskIds = params.notifications.taskIds
-    if (!taskIds.every((value): value is string => typeof value === 'string')) {
-      throw new JsonRpcError(-32602, 'notifications.taskIds must contain only strings')
-    }
-    const subscriptionId = payload.id
-    const encoder = new TextEncoder()
-    let closed = false
-    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined
-    let accepted: Set<string> | undefined
-    let subscription: TaskSubscription | undefined
-    let cleanupPromise: Promise<void> | undefined
-    const abort = new AbortController()
-    const unlinkIncomingAbort = linkAbortSignal(request.signal, abort)
-    const detachAbort = () => {
-      unlinkIncomingAbort()
-      abort.signal.removeEventListener('abort', handleAbort)
-    }
-    const closeSubscription = () => {
-      detachAbort()
-      if (!subscription) return Promise.resolve()
-      cleanupPromise ??= safelyCloseTaskSubscription(subscription)
-      return cleanupPromise
-    }
-    const handleAbort = () => {
-      closed = true
-      void closeSubscription()
-      try {
-        streamController?.close()
-      } catch {
-        // The response stream may already be closed by another terminal path.
-      }
-    }
-    if (!abort.signal.aborted) {
-      abort.signal.addEventListener('abort', handleAbort, { once: true })
-    }
-    const queuedTasks: DetailedTask[] = []
-    const event = (message: unknown) =>
-      encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
-    const enqueueTask = (task: DetailedTask) => {
-      if (closed) return
-      if (accepted && !accepted.has(task.taskId)) {
-        if (streamController) {
-          streamController.enqueue(
-            event(subscriptionCancelled(subscriptionId, 'Task subscription provider failed'))
-          )
-          streamController.enqueue(event(subscriptionComplete(subscriptionId, options)))
-          streamController.close()
-        }
-        closed = true
-        void closeSubscription()
-        return
-      }
-      if (!streamController) {
-        queuedTasks.push(task)
-        return
-      }
-      streamController.enqueue(
-        event({
-          jsonrpc: JSON_RPC_VERSION,
-          method: 'notifications/tasks',
-          params: {
-            ...task,
-            _meta: {
-              'io.modelcontextprotocol/subscriptionId': subscriptionId
-            }
-          }
-        })
-      )
-    }
-    try {
-      subscription = await controller.listen(
-        taskIds,
-        enqueueTask,
-        taskRequestContext(request, params, { ...context, signal: abort.signal })
-      )
-    } catch (error) {
-      abort.abort('Task subscription setup failed')
-      detachAbort()
-      throw error
-    }
-    if (abort.signal.aborted) {
-      closed = true
-      await closeSubscription()
-    }
-    let acceptedTaskIds: string[]
-    try {
-      acceptedTaskIds = acceptedSubscriptionTaskIds(subscription, taskIds)
-    } catch (error) {
-      await closeSubscription()
-      throw error
-    }
-    accepted = new Set(acceptedTaskIds)
-    if (queuedTasks.some((task) => !accepted.has(task.taskId))) {
-      await closeSubscription()
-      throw new Error('Task provider emitted a notification for an unaccepted task')
-    }
-    const body = new ReadableStream<Uint8Array>({
-      async start(stream) {
-        streamController = stream
-        if (closed) {
-          stream.close()
-          return
-        }
-        stream.enqueue(
-          event({
-            jsonrpc: JSON_RPC_VERSION,
-            method: 'notifications/subscriptions/acknowledged',
-            params: {
-              notifications: { taskIds: acceptedTaskIds },
-              _meta: {
-                'io.modelcontextprotocol/subscriptionId': subscriptionId
-              }
-            }
-          })
-        )
-        for (const task of queuedTasks) enqueueTask(task)
-        queuedTasks.length = 0
-        if (!subscription || subscription.done) {
-          try {
-            await subscription?.done
-          } catch {
-            if (closed) return
-            stream.enqueue(
-              event(subscriptionCancelled(subscriptionId, 'Task subscription provider failed'))
-            )
-            stream.enqueue(event(subscriptionComplete(subscriptionId, options)))
-            closed = true
-            stream.close()
-            await closeSubscription()
-            return
-          }
-          if (closed) return
-          stream.enqueue(
-            event(subscriptionCancelled(subscriptionId, 'Subscription ended by server'))
-          )
-          stream.enqueue(event(subscriptionComplete(subscriptionId, options)))
-          closed = true
-          await closeSubscription()
-          stream.close()
-        }
-      },
-      async cancel() {
-        closed = true
-        abort.abort('MCP subscription stream closed')
-        await closeSubscription()
-      }
-    })
-    void app
-    return new Response(body, {
-      headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache, no-transform',
-        'x-accel-buffering': 'no',
-        connection: 'keep-alive'
-      }
-    })
-  } catch (error) {
-    return jsonResponse(
-      normalizeDispatchError(errorIdForRequest(request, options, payload), error),
-      errorStatus(error)
-    )
-  }
-}
-
-async function safelyCloseTaskSubscription(
-  subscription: TaskSubscription | undefined
-): Promise<void> {
-  try {
-    await subscription?.close()
-  } catch {
-    // Cleanup failures cannot change an established protocol response or stream error.
-  }
-}
-
-async function safelyReturnIterator(
-  iterator: AsyncIterator<McpServerNotification> | undefined
-): Promise<void> {
-  try {
-    await iterator?.return?.()
-  } catch {
-    // Cleanup failures cannot hide the original subscription setup failure.
-  }
-}
-
-function acceptedSubscriptionTaskIds(
-  subscription: TaskSubscription | undefined,
-  requestedTaskIds: readonly string[]
-): string[] {
-  if (!subscription) return []
-  const accepted = subscription.acceptedTaskIds ?? requestedTaskIds
-  const requested = new Set(requestedTaskIds)
-  if (!accepted.every((taskId) => typeof taskId === 'string' && requested.has(taskId))) {
-    throw new Error('Task provider accepted an unrequested subscription task')
-  }
-  return [...new Set(accepted)]
-}
-
 function validateAppReferences(
   tools: Iterable<McpToolDefinition>,
   resources: Map<string, McpResourceDefinition>,
@@ -2933,28 +1587,24 @@ function validateAppReferences(
 }
 
 function assertCompleteAppsHtml(content: { text?: string; blob?: string }): void {
-  let html = content.text
-  if (html === undefined && content.blob !== undefined) {
-    try {
-      if (
-        content.blob.length % 4 !== 0 ||
-        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(content.blob)
-      ) {
-        throw new TypeError('invalid base64')
-      }
-      html = Buffer.from(content.blob, 'base64').toString('utf8')
-    } catch {
-      throw new TypeError('MCP App blob content must be valid base64 HTML')
-    }
-  }
-  if (
-    typeof html !== 'string' ||
-    !/^\s*<!doctype html>/iu.test(html) ||
-    !/<html(?:\s|>)/iu.test(html) ||
-    !/<\/html>\s*$/iu.test(html)
-  ) {
+  const html = content.text ?? decodeAppsBlob(content.blob)
+  const complete =
+    typeof html === 'string' &&
+    [/^\s*<!doctype html>/iu, /<html(?:\s|>)/iu, /<\/html>\s*$/iu].every((pattern) =>
+      pattern.test(html)
+    )
+  if (!complete) {
     throw new TypeError('MCP App resources must contain a complete HTML5 document')
   }
+}
+
+function decodeAppsBlob(blob: string | undefined): string | undefined {
+  if (blob === undefined) return undefined
+  const valid =
+    blob.length % 4 === 0 &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(blob)
+  if (!valid) throw new TypeError('MCP App blob content must be valid base64 HTML')
+  return Buffer.from(blob, 'base64').toString('utf8')
 }
 
 function isToolVisible(tool: McpToolDefinition, context: DispatchContext): boolean {
@@ -2967,55 +1617,6 @@ function isToolVisible(tool: McpToolDefinition, context: DispatchContext): boole
   if (!isRecord(apps)) return false
   const mimeTypes = apps.mimeTypes
   return Array.isArray(mimeTypes) && mimeTypes.includes(MCP_APPS_RESOURCE_MIME_TYPE)
-}
-
-async function serializeProtocolResult(
-  method: string,
-  result: unknown,
-  protocol: McpRequestProtocolContext,
-  params: Record<string, unknown>,
-  context: McpInvocationContext,
-  options: NormalizedMcpPluginOptions
-): Promise<unknown> {
-  if (!isRecord(result)) return result
-  if (method === 'tools/call') assertTrustResultMetadata(result._meta)
-  if (!protocol.modern) {
-    if (isInputRequiredResult(result)) {
-      throw new JsonRpcError(-32603, 'Input-required results require MCP 2026-07-28')
-    }
-    return result
-  }
-  const prepared = prepareInputRequiredResult(result, method, params, context, options)
-  if (isInputRequiredResult(prepared)) {
-    return {
-      ...prepared,
-      _meta: { ...modernResultMeta(options), ...(prepared._meta ?? {}) }
-    }
-  }
-  const complete = {
-    ...result,
-    resultType: result.resultType === 'task' ? 'task' : 'complete',
-    _meta: {
-      ...modernResultMeta(options),
-      ...(isRecord(result._meta) ? result._meta : {})
-    }
-  }
-  if (
-    method === 'server/discover' ||
-    method === 'tools/list' ||
-    method === 'resources/list' ||
-    method === 'resources/templates/list' ||
-    method === 'resources/read' ||
-    method === 'prompts/list'
-  ) {
-    if (params.inputResponses !== undefined || params.requestState !== undefined) return complete
-    const policy = await cachePolicy(method, context, options)
-    return {
-      ...complete,
-      ...policy
-    }
-  }
-  return complete
 }
 
 function normalizeDispatchError(
@@ -3069,229 +1670,6 @@ function oauthFailure(
   })
 }
 
-async function handleLegacyAuxiliaryMethod(
-  app: AnyElysiaApp,
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<Response> {
-  if (request.method === 'GET') {
-    if (!options.transport.enableGetSse) {
-      return new Response(null, { status: 405, headers: { allow: 'POST, GET, DELETE' } })
-    }
-    if (!options.extensions.variants && !options.extensions.events) return createEmptySseResponse()
-    const sessionId = request.headers.get('mcp-session-id')
-    const session = sessionId ? variantSessions(app, options).get(sessionId) : undefined
-    const principal = variantPrincipal(authorization)
-    if (options.extensions.variants && (!session || session.principal !== principal)) {
-      return jsonResponse(createErrorResponse(null, -32602, 'Unknown MCP session'), 400)
-    }
-    const encoder = new TextEncoder()
-    let streamController: ReadableStreamDefaultController<Uint8Array>
-    let heartbeatTimer: ReturnType<typeof setInterval> | undefined
-    let detachEvents: (() => void) | undefined
-    const closeStream = () => {
-      if (heartbeatTimer) clearInterval(heartbeatTimer)
-      session?.streams.delete(streamController)
-      detachEvents?.()
-      try {
-        streamController.close()
-      } catch {
-        // The consumer may have already cancelled the stream.
-      }
-    }
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        streamController = controller
-        const heartbeat = setInterval(() => {
-          controller.enqueue(encoder.encode(': heartbeat\n\n'))
-        }, options.core.subscriptions?.heartbeatMs ?? 15_000)
-        heartbeatTimer = heartbeat
-        session?.streams.set(controller, heartbeat)
-        detachEvents = sessionId
-          ? attachEventSessionStream(app, sessionId, principal, controller, closeStream, options)
-          : undefined
-        if (options.extensions.events && !detachEvents) {
-          clearInterval(heartbeat)
-          controller.error(new Error('Unknown MCP event session'))
-          return
-        }
-        controller.enqueue(encoder.encode(': connected\n\n'))
-        if (request.signal.aborted) closeStream()
-        else request.signal.addEventListener('abort', closeStream, { once: true })
-      },
-      cancel() {
-        closeStream()
-      }
-    })
-    return new Response(body, {
-      headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache, no-transform',
-        connection: 'keep-alive',
-        'mcp-session-id': sessionId as string
-      }
-    })
-  }
-  if (!options.transport.enableDeleteSession) {
-    return new Response(null, { status: 405, headers: { allow: 'POST, GET, DELETE' } })
-  }
-  if (options.extensions.variants) {
-    const sessionId = request.headers.get('mcp-session-id')
-    const session = sessionId ? variantSessions(app, options).get(sessionId) : undefined
-    const principal = variantPrincipal(authorization)
-    if (options.extensions.variants && (!session || session.principal !== principal)) {
-      return jsonResponse(createErrorResponse(null, -32602, 'Unknown MCP session'), 400)
-    }
-    if (!session) return jsonResponse(createErrorResponse(null, -32602, 'Unknown MCP session'), 400)
-    for (const [controller, heartbeat] of session.streams) {
-      clearInterval(heartbeat)
-      controller.close()
-    }
-    session.streams.clear()
-    await Promise.allSettled(
-      [...session.subscriptions.values()].map((subscription) => subscription.close?.())
-    )
-    variantSessions(app, options).delete(sessionId as string)
-  }
-  if (options.extensions.events) {
-    const sessionId = request.headers.get('mcp-session-id')
-    if (!sessionId || !deleteEventSession(app, sessionId, variantPrincipal(authorization), options))
-      return jsonResponse(createErrorResponse(null, -32602, 'Unknown MCP session'), 400)
-  }
-  return new Response(null, { status: 202 })
-}
-
-function variantSessions(
-  app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
-): Map<string, VariantSession> {
-  let byOptions = VARIANT_SESSIONS.get(app)
-  if (!byOptions) {
-    byOptions = new WeakMap()
-    VARIANT_SESSIONS.set(app, byOptions)
-  }
-  let sessions = byOptions.get(options)
-  if (!sessions) {
-    sessions = new Map()
-    byOptions.set(options, sessions)
-  }
-  return sessions
-}
-
-function variantPrincipal(authorization?: McpAuthorizationContext): string | undefined {
-  const principal = authorization?.principal
-  return principal
-    ? JSON.stringify([
-        principal.issuer ?? null,
-        principal.subject ?? null,
-        principal.clientId ?? null
-      ])
-    : undefined
-}
-
-function variantHints(params: Record<string, unknown>): McpVariantHints | undefined {
-  const capabilities = isRecord(params.capabilities) ? params.capabilities : undefined
-  const extensions = isRecord(capabilities?.extensions) ? capabilities.extensions : undefined
-  const payload = isRecord(extensions?.[MCP_SERVER_VARIANTS_ID])
-    ? extensions[MCP_SERVER_VARIANTS_ID]
-    : undefined
-  const hints = isRecord(payload?.variantHints) ? payload.variantHints : undefined
-  if (!hints) return undefined
-  if (hints.description !== undefined && typeof hints.description !== 'string')
-    throw new JsonRpcError(-32602, 'Variant hints description must be a string')
-  if (
-    hints.hints !== undefined &&
-    (!isRecord(hints.hints) ||
-      Object.values(hints.hints).some(
-        (value) =>
-          typeof value !== 'string' &&
-          (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
-      ))
-  )
-    throw new JsonRpcError(-32602, 'Variant hints are invalid')
-  return hints as McpVariantHints
-}
-
-async function rankVariants(
-  visible: readonly McpServerVariant[],
-  hints: McpVariantHints | undefined,
-  context: McpInvocationContext,
-  options: NormalizedMcpPluginOptions
-): Promise<McpServerVariant[]> {
-  const ids = await options.extensions.variants?.rank?.(visible, hints, context)
-  if (!ids) {
-    const requested = hints?.hints ?? {}
-    return [...visible].sort(
-      (left, right) =>
-        variantScore(right, requested) - variantScore(left, requested) ||
-        variantStatusRank(left) - variantStatusRank(right)
-    )
-  }
-  const known = new Map(visible.map((variant) => [variant.id, variant]))
-  if (new Set(ids).size !== ids.length || ids.some((id) => !known.has(id)))
-    throw new TypeError('Variant rank callback returned invalid identifiers')
-  return [
-    ...ids.map((id) => known.get(id) as McpServerVariant),
-    ...visible.filter((variant) => !ids.includes(variant.id))
-  ]
-}
-
-function variantScore(variant: McpServerVariant, hints: Record<string, string | string[]>): number {
-  let score = 0
-  for (const [key, expected] of Object.entries(hints)) {
-    const choices = Array.isArray(expected) ? expected : [expected]
-    const index = choices.indexOf(variant.hints?.[key] ?? '')
-    if (index >= 0) score += choices.length - index
-  }
-  return score
-}
-
-function variantStatusRank(variant: McpServerVariant): number {
-  return (variant.status ?? 'stable') === 'stable' ? 0 : 1
-}
-
-function publicVariant(variant: McpServerVariant): Record<string, unknown> {
-  const { tools: _tools, resources: _resources, prompts: _prompts, ...metadata } = variant
-  return metadata
-}
-
-async function resolveActiveVariant(
-  app: AnyElysiaApp,
-  request: Request,
-  params: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  authorization?: McpAuthorizationContext
-): Promise<{ variant: McpServerVariant; sessionId: string }> {
-  const sessionId = request.headers.get('mcp-session-id')
-  const session = sessionId ? variantSessions(app, options).get(sessionId) : undefined
-  if (!session || session.principal !== variantPrincipal(authorization))
-    throw new JsonRpcError(-32602, 'Unknown MCP session')
-  const meta = isRecord(params._meta) ? params._meta : undefined
-  const metadataSelector = meta?.[MCP_SERVER_VARIANT_META_KEY]
-  const headerSelector = request.headers.get('mcp-server-variant')
-  if (metadataSelector !== undefined && typeof metadataSelector !== 'string')
-    throw new JsonRpcError(-32602, 'Invalid server variant')
-  const requested =
-    (metadataSelector as string | undefined) ?? headerSelector ?? session.variants[0]?.id
-  const variant = session.variants.find((candidate) => candidate.id === requested)
-  if (!variant)
-    throw new JsonRpcError(-32602, 'Invalid server variant', {
-      requestedVariant: requested,
-      availableVariants: session.variants.map(({ id }) => id)
-    })
-  return { variant, sessionId: sessionId as string }
-}
-
-function variantAllows(
-  variant: McpServerVariant | undefined,
-  kind: 'tools' | 'resources' | 'prompts',
-  identifier: string
-): boolean {
-  const allowed = variant?.[kind]
-  return allowed === undefined || allowed.includes(identifier)
-}
-
 function variantUnknown(message: string, context: DispatchContext): JsonRpcError {
   return new JsonRpcError(
     -32602,
@@ -3314,7 +1692,7 @@ function validateOrigin(
   if (!origin) return undefined
   if (
     options.transport.allowedOrigins.length === 0 ||
-    !options.transport.allowedOrigins.includes(origin)
+    !isOriginAllowed(origin, options.transport.allowedOrigins)
   ) {
     return jsonResponse(
       createErrorResponse(errorIdForRequest(request, options), -32000, 'Forbidden origin'),
@@ -3328,22 +1706,6 @@ function jsonResponse(body: unknown, status = 200, extraHeaders: HeadersInit = {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json', ...extraHeaders }
-  })
-}
-
-function createEmptySseResponse(): Response {
-  const body = new ReadableStream({
-    start(controller) {
-      controller.enqueue(new TextEncoder().encode(': connected\n\n'))
-      controller.close()
-    }
-  })
-  return new Response(body, {
-    headers: {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive'
-    }
   })
 }
 
@@ -3376,10 +1738,6 @@ function usesModernErrorEnvelope(request: Request, options: NormalizedMcpPluginO
     (protocolHeader === null &&
       options.transport.protocolVersions[0] === MCP_EXTENSION_SUPPORT.protocol.current)
   )
-}
-
-function isRequestId(value: unknown): value is string | number {
-  return typeof value === 'string' || (typeof value === 'number' && Number.isInteger(value))
 }
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {

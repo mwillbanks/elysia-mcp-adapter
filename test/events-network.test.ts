@@ -6,6 +6,7 @@ import {
   postWebhook,
   resolveWebhookEndpoint
 } from '../src/extensions/events/network.js'
+import { within } from './events-test-helpers.js'
 
 const fixture = new URL('./fixtures/events-network/runner.ts', import.meta.url)
 const ca = new URL('./fixtures/events-network/ca.pem', import.meta.url)
@@ -172,21 +173,22 @@ describe('webhook network boundary', () => {
   test('bounds hanging DNS, honors pre-abort, and cancels an active request', async () => {
     const endpoint = new URL('https://callback.test/hook')
     const hanging = () => new Promise<never>(() => {})
-    const started = performance.now()
     await expect(
-      postWebhook(
-        endpoint,
-        new Uint8Array(),
-        {},
-        {
-          allowPrivateAddresses: true,
-          resolveAddresses: hanging,
-          requestTimeoutMs: 25,
-          maxResponseBytes: 16
-        }
+      within(
+        postWebhook(
+          endpoint,
+          new Uint8Array(),
+          {},
+          {
+            allowPrivateAddresses: true,
+            resolveAddresses: hanging,
+            requestTimeoutMs: 25,
+            maxResponseBytes: 16
+          }
+        ),
+        'hanging DNS request timeout'
       )
     ).rejects.toMatchObject({ reason: 'timeout' })
-    expect(performance.now() - started).toBeLessThan(500)
 
     const preAborted = new AbortController()
     preAborted.abort('cancelled')

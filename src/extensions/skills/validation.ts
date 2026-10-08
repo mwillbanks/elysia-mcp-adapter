@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { parseDocument } from 'yaml'
 import { isRecord } from '../../internal.js'
+import { isBinaryMimeType } from '../../schema/media-type.js'
 import { isValidUri } from '../../schema/validate.js'
 import type {
   ExplicitSkillRegistration,
@@ -96,48 +97,65 @@ function assertNestedSkillComplete(
   possibleOuter: McpSkillDefinition,
   possibleInner: McpSkillDefinition
 ): void {
-  if (
-    possibleOuter.rootUri === possibleInner.rootUri ||
-    !possibleInner.rootUri.startsWith(`${possibleOuter.rootUri}/`)
-  ) {
-    return
-  }
+  if (!isNestedSkill(possibleOuter, possibleInner)) return
   if (possibleOuter.entry.resources === 'dynamic' || possibleInner.entry.resources === 'dynamic') {
     throw new TypeError(
       `Nested skill namespaces require static complete resource manifests: ${possibleOuter.uri} and ${possibleInner.uri}`
     )
   }
-  for (const [uri, inner] of possibleInner.files) {
-    const outer = possibleOuter.files.get(uri)
+  assertInnerFilesIncluded(possibleOuter, possibleInner)
+  assertOuterFilesIncluded(possibleOuter, possibleInner)
+  assertNestedDirectories(possibleOuter, possibleInner)
+}
+
+function isNestedSkill(outer: McpSkillDefinition, inner: McpSkillDefinition): boolean {
+  return outer.rootUri !== inner.rootUri && inner.rootUri.startsWith(`${outer.rootUri}/`)
+}
+
+function assertInnerFilesIncluded(
+  outerSkill: McpSkillDefinition,
+  innerSkill: McpSkillDefinition
+): void {
+  for (const [uri, inner] of innerSkill.files) {
+    const outer = outerSkill.files.get(uri)
     if (!outer || !sameStoredResource(outer, inner)) {
       throw new TypeError(
-        `Enclosing skill ${possibleOuter.uri} must include nested resource ${uri} with identical bytes and metadata`
+        `Enclosing skill ${outerSkill.uri} must include nested resource ${uri} with identical bytes and metadata`
       )
     }
   }
-  for (const [uri, outer] of possibleOuter.files) {
-    if (!isWithinSkill(possibleInner.rootUri, uri)) continue
-    const inner = possibleInner.files.get(uri)
+}
+
+function assertOuterFilesIncluded(
+  outerSkill: McpSkillDefinition,
+  innerSkill: McpSkillDefinition
+): void {
+  for (const [uri, outer] of outerSkill.files) {
+    if (!isWithinSkill(innerSkill.rootUri, uri)) continue
+    const inner = innerSkill.files.get(uri)
     if (!inner || !sameStoredResource(outer, inner)) {
       throw new TypeError(
-        `Nested skill ${possibleInner.uri} must include enclosing resource ${uri} with identical bytes and metadata`
+        `Nested skill ${innerSkill.uri} must include enclosing resource ${uri} with identical bytes and metadata`
       )
     }
   }
-  for (const directory of possibleOuter.directories) {
-    if (
-      isWithinSkill(possibleInner.rootUri, directory) &&
-      !possibleInner.directories.has(directory)
-    ) {
+}
+
+function assertNestedDirectories(
+  outerSkill: McpSkillDefinition,
+  innerSkill: McpSkillDefinition
+): void {
+  for (const directory of outerSkill.directories) {
+    if (isWithinSkill(innerSkill.rootUri, directory) && !innerSkill.directories.has(directory)) {
       throw new TypeError(
-        `Nested skill ${possibleInner.uri} must include enclosing directory ${directory}`
+        `Nested skill ${innerSkill.uri} must include enclosing directory ${directory}`
       )
     }
   }
-  for (const directory of possibleInner.directories) {
-    if (!possibleOuter.directories.has(directory)) {
+  for (const directory of innerSkill.directories) {
+    if (!outerSkill.directories.has(directory)) {
       throw new TypeError(
-        `Enclosing skill ${possibleOuter.uri} must include nested directory ${directory}`
+        `Enclosing skill ${outerSkill.uri} must include nested directory ${directory}`
       )
     }
   }
@@ -171,53 +189,8 @@ function definitionFromSource(
   const files = new Map<string, McpSkillStoredResource>()
   const directories = new Set<string>([parsed.rootUri])
   files.set(source.uri, storedResource(source.uri, SKILL_FILE, skillBytes, 'text/markdown', false))
-  if (source.resources !== 'dynamic') {
-    for (const [relativePath, value] of Object.entries(source.resources ?? {})) {
-      const segments = validateRelativePath(relativePath)
-      if (relativePath === SKILL_FILE) {
-        throw new TypeError('Supporting resources must not redefine SKILL.md')
-      }
-      const uri = `${parsed.rootUri}/${segments.map(encodeURIComponent).join('/')}`
-      if (files.has(uri)) throw new TypeError(`Duplicate skill resource: ${uri}`)
-      const normalized = normalizeResourceInput(value)
-      const bytes = toBytes(normalized.content)
-      let binary = isBinaryMimeType(normalized.mimeType)
-      try {
-        decodeUtf8(bytes, '')
-      } catch {
-        binary = true
-      }
-      if (binary && !source.allowBinary) {
-        throw new TypeError(`Binary skill resource requires allowBinary: true: ${relativePath}`)
-      }
-      files.set(
-        uri,
-        storedResource(
-          uri,
-          segments.at(-1) ?? relativePath,
-          bytes,
-          normalized.mimeType ?? inferMimeType(relativePath, binary),
-          binary
-        )
-      )
-      for (let index = 1; index < segments.length; index += 1) {
-        directories.add(
-          `${parsed.rootUri}/${segments.slice(0, index).map(encodeURIComponent).join('/')}`
-        )
-      }
-    }
-  }
-  for (const relativePath of source.directories ?? []) {
-    const segments = validateRelativePath(relativePath)
-    const uri = `${parsed.rootUri}/${segments.map(encodeURIComponent).join('/')}`
-    if (files.has(uri)) throw new TypeError(`Skill directory conflicts with a file: ${uri}`)
-    directories.add(uri)
-    for (let index = 1; index < segments.length; index += 1) {
-      directories.add(
-        `${parsed.rootUri}/${segments.slice(0, index).map(encodeURIComponent).join('/')}`
-      )
-    }
-  }
+  addStaticResources(source, parsed.rootUri, files, directories)
+  addDeclaredDirectories(source, parsed.rootUri, files, directories)
 
   const resources =
     source.resources === 'dynamic'
@@ -240,6 +213,89 @@ function definitionFromSource(
     allowBinary: source.allowBinary ?? false,
     readResource,
     readDirectory
+  }
+}
+
+function addStaticResources(
+  source: McpSkillSource,
+  rootUri: string,
+  files: Map<string, McpSkillStoredResource>,
+  directories: Set<string>
+): void {
+  if (source.resources === 'dynamic') return
+  for (const [relativePath, value] of Object.entries(source.resources ?? {})) {
+    addStaticResource(source, rootUri, relativePath, value, files, directories)
+  }
+}
+
+function addStaticResource(
+  source: McpSkillSource,
+  rootUri: string,
+  relativePath: string,
+  value: McpSkillResourceValue,
+  files: Map<string, McpSkillStoredResource>,
+  directories: Set<string>
+): void {
+  const segments = validateRelativePath(relativePath)
+  if (relativePath === SKILL_FILE)
+    throw new TypeError('Supporting resources must not redefine SKILL.md')
+  const uri = resourceUri(rootUri, segments)
+  if (files.has(uri)) throw new TypeError(`Duplicate skill resource: ${uri}`)
+  const normalized = normalizeResourceInput(value)
+  const bytes = toBytes(normalized.content)
+  const binary = detectBinary(bytes, normalized.mimeType)
+  if (binary && !source.allowBinary) {
+    throw new TypeError(`Binary skill resource requires allowBinary: true: ${relativePath}`)
+  }
+  files.set(
+    uri,
+    storedResource(
+      uri,
+      segments.at(-1) ?? relativePath,
+      bytes,
+      normalized.mimeType ?? inferMimeType(relativePath, binary),
+      binary
+    )
+  )
+  addAncestorDirectories(rootUri, segments, directories)
+}
+
+function detectBinary(bytes: Uint8Array, mimeType: string | undefined): boolean {
+  if (isBinaryMimeType(mimeType, true)) return true
+  try {
+    decodeUtf8(bytes, '')
+    return false
+  } catch {
+    return true
+  }
+}
+
+function addDeclaredDirectories(
+  source: McpSkillSource,
+  rootUri: string,
+  files: Map<string, McpSkillStoredResource>,
+  directories: Set<string>
+): void {
+  for (const relativePath of source.directories ?? []) {
+    const segments = validateRelativePath(relativePath)
+    const uri = resourceUri(rootUri, segments)
+    if (files.has(uri)) throw new TypeError(`Skill directory conflicts with a file: ${uri}`)
+    directories.add(uri)
+    addAncestorDirectories(rootUri, segments, directories)
+  }
+}
+
+function resourceUri(rootUri: string, segments: readonly string[]): string {
+  return `${rootUri}/${segments.map(encodeURIComponent).join('/')}`
+}
+
+function addAncestorDirectories(
+  rootUri: string,
+  segments: readonly string[],
+  directories: Set<string>
+): void {
+  for (let index = 1; index < segments.length; index += 1) {
+    directories.add(resourceUri(rootUri, segments.slice(0, index)))
   }
 }
 
@@ -301,41 +357,48 @@ export function listStaticSkillDirectory(
   let match: { skill: McpSkillDefinition; entries: McpSkillDirectoryEntry[] } | undefined
   for (const skill of skills) {
     if (!isWithinSkill(skill.rootUri, normalized)) continue
-    const prefix = `${normalized}/`
-    const entries = new Map<string, McpSkillDirectoryEntry>()
-    let exists = skill.directories.has(normalized)
-    for (const resource of skill.files.values()) {
-      if (!resource.uri.startsWith(prefix)) continue
-      exists = true
-      const remainder = resource.uri.slice(prefix.length)
-      const [child] = remainder.split('/')
-      if (!child) continue
-      const childUri = `${normalized}/${child}`
-      const directory = remainder.includes('/')
-      entries.set(childUri, {
-        uri: childUri,
-        name: decodeURIComponent(child),
-        mimeType: directory ? 'inode/directory' : resource.mimeType
-      })
-    }
-    for (const directory of skill.directories) {
-      if (!directory.startsWith(prefix)) continue
-      exists = true
-      const remainder = directory.slice(prefix.length)
-      const [child] = remainder.split('/')
-      if (!child) continue
-      const childUri = `${normalized}/${child}`
-      entries.set(childUri, {
-        uri: childUri,
-        name: decodeURIComponent(child),
-        mimeType: 'inode/directory'
-      })
-    }
+    const { exists, entries } = directoryEntriesForSkill(skill, normalized)
     if (exists && (!match || skill.rootUri.length > match.skill.rootUri.length)) {
       match = { skill, entries: [...entries.values()] }
     }
   }
   return match
+}
+
+function directoryEntriesForSkill(
+  skill: McpSkillDefinition,
+  normalized: string
+): { exists: boolean; entries: Map<string, McpSkillDirectoryEntry> } {
+  const prefix = `${normalized}/`
+  const entries = new Map<string, McpSkillDirectoryEntry>()
+  let exists = skill.directories.has(normalized)
+  for (const resource of skill.files.values()) {
+    if (!resource.uri.startsWith(prefix)) continue
+    exists = true
+    addDirectoryEntry(entries, normalized, resource.uri.slice(prefix.length), resource.mimeType)
+  }
+  for (const directory of skill.directories) {
+    if (!directory.startsWith(prefix)) continue
+    exists = true
+    addDirectoryEntry(entries, normalized, directory.slice(prefix.length), 'inode/directory')
+  }
+  return { exists, entries }
+}
+
+function addDirectoryEntry(
+  entries: Map<string, McpSkillDirectoryEntry>,
+  normalized: string,
+  remainder: string,
+  mimeType: string
+): void {
+  const [child] = remainder.split('/')
+  if (!child) return
+  const childUri = `${normalized}/${child}`
+  entries.set(childUri, {
+    uri: childUri,
+    name: decodeURIComponent(child),
+    mimeType: remainder.includes('/') ? 'inode/directory' : mimeType
+  })
 }
 
 export function serializeSkillResource(resource: McpSkillStoredResource): {
@@ -366,7 +429,7 @@ export function serializeDynamicSkillResource(
   assertSafeResourceUri(uri)
   const input = normalizeResourceInput(value)
   const bytes = toBytes(input.content)
-  let binary = isBinaryMimeType(input.mimeType)
+  let binary = isBinaryMimeType(input.mimeType, true)
   try {
     decodeUtf8(bytes, '')
   } catch {
@@ -413,18 +476,17 @@ function parseResourceUri(
   directory: boolean
 ): { normalized: string; segments: string[] } {
   if (typeof uri !== 'string' || uri.length === 0) throw new TypeError('Skill URI is required')
-  if (
-    !isValidUri(uri) ||
-    Array.from(uri).some((character) => {
-      const code = character.codePointAt(0) ?? 0
-      return code <= 0x20 || code === 0x7f
-    })
-  ) {
-    throw new TypeError(`Invalid absolute skill resource URI: ${uri}`)
-  }
+  assertAbsoluteSkillUri(uri)
   if (uri.endsWith('/')) throw new TypeError('Skill resource URIs must not end with a slash')
   if (/[?#]/u.test(uri))
     throw new TypeError('Skill resource URIs must not contain query or fragment')
+  return parsedResourceUri(uri, directory)
+}
+
+function parsedResourceUri(
+  uri: string,
+  directory: boolean
+): { normalized: string; segments: string[] } {
   const match = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/]+)(\/.*)?$/u.exec(uri)
   if (!match) throw new TypeError(`Invalid absolute skill resource URI: ${uri}`)
   const authority = decodeSegment(match[2] ?? '')
@@ -434,6 +496,19 @@ function parseResourceUri(
   const segments = [authority, ...rawSegments.map(decodeSegment)]
   if (!directory && rawPath === '') throw new TypeError('Skill file URI requires a path')
   return { normalized: uri, segments }
+}
+
+function assertAbsoluteSkillUri(uri: string): void {
+  if (!isValidUri(uri) || containsUnsafeUriCharacter(uri)) {
+    throw new TypeError(`Invalid absolute skill resource URI: ${uri}`)
+  }
+}
+
+function containsUnsafeUriCharacter(uri: string): boolean {
+  return Array.from(uri).some((character) => {
+    const code = character.codePointAt(0) ?? 0
+    return code <= 0x20 || code === 0x7f
+  })
 }
 
 function decodeSegment(value: string): string {
@@ -488,39 +563,20 @@ function parseFrontmatter(text: string): McpSkill['frontmatter'] {
 
 function assertFrontmatter(value: McpSkill['frontmatter']): void {
   if (typeof value.name !== 'string') throw new TypeError('Skill name is required')
-  const length = Array.from(value.name).length
-  const normalizedName = value.name.normalize('NFKC')
-  if (
-    length < 1 ||
-    length > 64 ||
-    normalizedName !== normalizedName.toLocaleLowerCase() ||
-    normalizedName.startsWith('-') ||
-    normalizedName.endsWith('-') ||
-    normalizedName.includes('--') ||
-    !/^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u.test(normalizedName)
-  ) {
+  if (!validSkillName(value.name)) {
     throw new TypeError('Skill name does not satisfy the Agent Skills naming rules')
   }
-  if (
-    typeof value.description !== 'string' ||
-    Array.from(value.description).length < 1 ||
-    Array.from(value.description).length > 1024
-  ) {
+  if (!validLengthString(value.description, 1, 1024)) {
     throw new TypeError('Skill description must contain 1 to 1024 characters')
   }
-  if (
-    value.compatibility !== undefined &&
-    (typeof value.compatibility !== 'string' ||
-      Array.from(value.compatibility).length < 1 ||
-      Array.from(value.compatibility).length > 500)
-  ) {
+  assertOptionalFrontmatterFields(value)
+}
+
+function assertOptionalFrontmatterFields(value: McpSkill['frontmatter']): void {
+  if (value.compatibility !== undefined && !validLengthString(value.compatibility, 1, 500)) {
     throw new TypeError('Skill compatibility must contain 1 to 500 characters')
   }
-  if (
-    value.metadata !== undefined &&
-    (!isRecord(value.metadata) ||
-      Object.values(value.metadata).some((entry) => typeof entry !== 'string'))
-  ) {
+  if (value.metadata !== undefined && !validMetadata(value.metadata)) {
     throw new TypeError('Skill metadata must map string keys to string values')
   }
   for (const field of ['license', 'allowed-tools'] as const) {
@@ -530,9 +586,26 @@ function assertFrontmatter(value: McpSkill['frontmatter']): void {
   }
 }
 
+function validSkillName(value: string): boolean {
+  const length = Array.from(value).length
+  if (length < 1 || length > 64) return false
+  const normalized = value.normalize('NFKC')
+  if (normalized !== normalized.toLocaleLowerCase()) return false
+  return /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u.test(normalized)
+}
+
+function validLengthString(value: unknown, min: number, max: number): boolean {
+  if (typeof value !== 'string') return false
+  const length = Array.from(value).length
+  return length >= min && length <= max
+}
+
+function validMetadata(value: unknown): boolean {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === 'string')
+}
+
 function assertJsonValue(value: unknown): void {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return
-  if (typeof value === 'number' && Number.isFinite(value)) return
+  if (isJsonScalar(value)) return
   if (Array.isArray(value)) {
     for (const entry of value) assertJsonValue(entry)
     return
@@ -542,6 +615,11 @@ function assertJsonValue(value: unknown): void {
     return
   }
   throw new TypeError('SKILL.md frontmatter must contain only JSON values')
+}
+
+function isJsonScalar(value: unknown): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
 function normalizeResourceInput(value: McpSkillResourceValue): McpSkillResourceInput {
@@ -595,20 +673,4 @@ function inferMimeType(path: string, binary: boolean): string {
   if (/\.json$/iu.test(path)) return 'application/json'
   if (/\.ya?ml$/iu.test(path)) return 'application/yaml'
   return 'text/plain'
-}
-
-function isBinaryMimeType(mimeType: string | undefined): boolean {
-  const essence = mimeType?.split(';', 1)[0]?.trim().toLowerCase()
-  if (!essence || essence.startsWith('text/')) return false
-  if (essence === 'application/json' || essence.endsWith('+json')) return false
-  if (essence === 'application/xml' || essence.endsWith('+xml')) return false
-  if (essence === 'application/yaml' || essence === 'application/x-yaml') return false
-  if (essence === 'application/x-www-form-urlencoded') return false
-  return (
-    essence === 'application/octet-stream' ||
-    essence.startsWith('image/') ||
-    essence.startsWith('audio/') ||
-    essence.startsWith('video/') ||
-    essence.startsWith('application/')
-  )
 }

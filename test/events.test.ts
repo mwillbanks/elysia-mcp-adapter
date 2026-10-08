@@ -40,6 +40,7 @@ import {
 } from '../src/index.js'
 import { normalizeOptions } from '../src/options.js'
 import type { McpPluginOptions } from '../src/types.js'
+import { deferred, withControlledTime, within } from './events-test-helpers.js'
 import eventsSchema from './fixtures/events-proposal.schema.json' with { type: 'json' }
 import { rpc } from './helpers.js'
 
@@ -631,28 +632,27 @@ describe('experimental events extension', () => {
       attributes: {}
     }
     const options = { signingKey, ttlMs: 1 }
-    const encoded = encodeEventCursor(
-      'upstream',
-      'event',
-      { a: 1 },
-      authorization,
-      'stable',
-      options
-    )
-    expect(encoded).toBeString()
-    expect(() =>
-      decodeEventCursor(encoded, 'event', { a: 2 }, authorization, 'stable', options)
-    ).toThrow()
-    expect(() =>
-      decodeEventCursor(encoded, 'event', { a: 1 }, authorization, 'other', options)
-    ).toThrow()
-    await Bun.sleep(2)
-    expect(decodeEventCursor(encoded, 'event', { a: 1 }, authorization, 'stable', options)).toEqual(
-      {
-        cursor: 'upstream',
-        expired: true
-      }
-    )
+    await withControlledTime(new Date('2026-10-08T12:00:00Z'), async (advance) => {
+      const encoded = encodeEventCursor(
+        'upstream',
+        'event',
+        { a: 1 },
+        authorization,
+        'stable',
+        options
+      )
+      expect(encoded).toBeString()
+      expect(() =>
+        decodeEventCursor(encoded, 'event', { a: 2 }, authorization, 'stable', options)
+      ).toThrow()
+      expect(() =>
+        decodeEventCursor(encoded, 'event', { a: 1 }, authorization, 'other', options)
+      ).toThrow()
+      advance(2)
+      expect(
+        decodeEventCursor(encoded, 'event', { a: 1 }, authorization, 'stable', options)
+      ).toEqual({ cursor: 'upstream', expired: true })
+    })
   })
   test('is opt-in, revision-pinned, and legacy-only', () => {
     expect(() =>
@@ -774,24 +774,34 @@ describe('experimental events extension', () => {
     expect(response.headers.get('content-type')).toContain('text/event-stream')
     if (!response.body) throw new Error('Event stream response omitted a body')
     const reader = response.body.getReader()
-    const first = new TextDecoder().decode((await reader.read()).value)
-    const firstNotification = JSON.parse(
-      first
-        .split('\n')
-        .find((line) => line.startsWith('data: '))
-        ?.slice('data: '.length) ?? '{}'
-    )
-    expect(createEventsSchemaValidator()('StreamNotification', firstNotification)).toBe(true)
-    expect(first).toContain('notifications/events/active')
-    expect(first).toContain('io.modelcontextprotocol/subscriptionId')
-    expect(first).toContain('42')
-    expect(first).not.toContain('notifications/tools')
-    controller.abort()
-    await reader.cancel()
+    try {
+      const first = new TextDecoder().decode(
+        (await within(reader.read(), 'initial event notification')).value
+      )
+      const firstNotification = JSON.parse(
+        first
+          .split('\n')
+          .find((line) => line.startsWith('data: '))
+          ?.slice('data: '.length) ?? '{}'
+      )
+      expect(createEventsSchemaValidator()('StreamNotification', firstNotification)).toBe(true)
+      expect(first).toContain('notifications/events/active')
+      expect(first).toContain('io.modelcontextprotocol/subscriptionId')
+      expect(first).toContain('42')
+      expect(first).not.toContain('notifications/tools')
+    } finally {
+      controller.abort()
+      await within(reader.cancel(), 'event notification stream cleanup')
+    }
   })
 
   test('removes resolved polling delay listeners from long-lived streams', async () => {
-    const app = eventApp()
+    const repeatedPoll = deferred()
+    let polls = 0
+    const app = eventApp(() => {
+      polls++
+      if (polls >= 3) repeatedPoll.resolve()
+    })
     const options = normalizeOptions({
       transport: { protocolVersions: ['2025-11-25'] },
       extensions: {
@@ -838,16 +848,21 @@ describe('experimental events extension', () => {
     )
     if (!response.body) throw new Error('Event stream response omitted a body')
     const reader = response.body.getReader()
-    await reader.read()
-    await Bun.sleep(20)
-    expect(listeners).toBeLessThanOrEqual(2)
-    controller.abort()
-    await reader.cancel()
+    try {
+      await within(reader.read(), 'initial event stream item')
+      await within(repeatedPoll.promise, 'repeated event polling')
+      expect(listeners).toBeLessThanOrEqual(2)
+    } finally {
+      controller.abort()
+      await within(reader.cancel(), 'polling listener stream cleanup')
+    }
     expect(listeners).toBe(0)
   })
 
   test('delivers the initial replay batch and heartbeats while the provider is pending', async () => {
     let calls = 0
+    const pendingPoll = deferred()
+    const releasePoll = deferred()
     const app = new Elysia().use(withMcpMethods()).mcpEvent(
       {
         name: 'com.example.replay',
@@ -875,7 +890,8 @@ describe('experimental events extension', () => {
             cursor: 'cursor-2',
             nextPollMs: 0
           }
-        await Bun.sleep(30)
+        pendingPoll.resolve()
+        await releasePoll.promise
         return { events: [], cursor, nextPollMs: 30 }
       }
     )
@@ -910,20 +926,25 @@ describe('experimental events extension', () => {
     if (!response.body) throw new Error('Replay stream response omitted a body')
     const reader = response.body.getReader()
     let observed = ''
-    for (
-      let attempt = 0;
-      attempt < 8 && !observed.includes('notifications/events/heartbeat');
-      attempt++
-    ) {
-      const next = await reader.read()
-      observed += new TextDecoder().decode(next.value)
+    try {
+      await within(pendingPoll.promise, 'pending replay poll')
+      for (
+        let attempt = 0;
+        attempt < 8 && !observed.includes('notifications/events/heartbeat');
+        attempt++
+      ) {
+        const next = await within(reader.read(), 'event replay or heartbeat')
+        observed += new TextDecoder().decode(next.value)
+      }
+      expect(observed).toContain('event-1')
+      expect(observed).toContain('event-2')
+      expect(observed.indexOf('event-1')).toBeLessThan(observed.indexOf('event-2'))
+      expect(observed).toContain('notifications/events/heartbeat')
+    } finally {
+      releasePoll.resolve()
+      abort.abort()
+      await within(reader.cancel(), 'replay stream cleanup')
     }
-    expect(observed).toContain('event-1')
-    expect(observed).toContain('event-2')
-    expect(observed.indexOf('event-1')).toBeLessThan(observed.indexOf('event-2'))
-    expect(observed).toContain('notifications/events/heartbeat')
-    abort.abort()
-    await reader.cancel()
   })
 
   test('delivers list changes on the general session channel', async () => {
@@ -956,22 +977,31 @@ describe('experimental events extension', () => {
     )
     if (!response.body) throw new Error('General SSE response omitted a body')
     const reader = response.body.getReader()
-    expect(new TextDecoder().decode((await reader.read()).value)).toContain(': connected')
-    app.mcpEvent(
-      {
-        name: 'com.example.added',
-        description: 'Added later',
-        delivery: ['poll'],
-        inputSchema: { type: 'object' },
-        payloadSchema: { type: 'object' }
-      },
-      () => ({ events: [], cursor: null })
-    )
-    const changed = new TextDecoder().decode((await reader.read()).value)
-    expect(changed).toContain('notifications/events/list_changed')
-    expect(changed).not.toContain('notifications/events/event')
-    abort.abort()
-    await reader.cancel()
+    try {
+      expect(
+        new TextDecoder().decode(
+          (await within(reader.read(), 'general SSE connection readiness')).value
+        )
+      ).toContain(': connected')
+      app.mcpEvent(
+        {
+          name: 'com.example.added',
+          description: 'Added later',
+          delivery: ['poll'],
+          inputSchema: { type: 'object' },
+          payloadSchema: { type: 'object' }
+        },
+        () => ({ events: [], cursor: null })
+      )
+      const changed = new TextDecoder().decode(
+        (await within(reader.read(), 'event list change notification')).value
+      )
+      expect(changed).toContain('notifications/events/list_changed')
+      expect(changed).not.toContain('notifications/events/event')
+    } finally {
+      abort.abort()
+      await within(reader.cancel(), 'general SSE stream cleanup')
+    }
   })
 
   test('rejects unsafe webhook URLs and private or reserved address classes', () => {
@@ -1008,21 +1038,22 @@ describe('experimental events extension', () => {
       )
     ).rejects.toBeInstanceOf(McpWebhookNetworkError)
 
-    const started = Date.now()
     await expect(
-      postWebhook(
-        endpoint,
-        new Uint8Array(),
-        {},
-        {
-          requestTimeoutMs: 10,
-          maxResponseBytes: 16,
-          allowPrivateAddresses: false,
-          resolveAddresses: () => new Promise(() => {})
-        }
+      within(
+        postWebhook(
+          endpoint,
+          new Uint8Array(),
+          {},
+          {
+            requestTimeoutMs: 10,
+            maxResponseBytes: 16,
+            allowPrivateAddresses: false,
+            resolveAddresses: () => new Promise(() => {})
+          }
+        ),
+        'stalled webhook DNS timeout'
       )
     ).rejects.toBeInstanceOf(McpWebhookNetworkError)
-    expect(Date.now() - started).toBeLessThan(250)
 
     const normalizedVerification = normalizeOptions({
       transport: { protocolVersions: ['2025-11-25'] },
@@ -1041,7 +1072,31 @@ describe('experimental events extension', () => {
     const verificationOptions = normalizedVerification.extensions.events?.webhook
     if (!verificationOptions) throw new Error('Webhook options were not normalized')
     await expect(
-      verifyWebhookEndpoint(
+      within(
+        verifyWebhookEndpoint(
+          {
+            key: 'key',
+            id: 'sub_id',
+            principal: 'principal',
+            name: 'event',
+            arguments: {},
+            url: 'https://example.test/hook',
+            secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
+            refreshBefore: new Date(Date.now() + 60_000).toISOString(),
+            verified: false,
+            active: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          { request: new Request('http://localhost/mcp'), protocolVersion: '2025-11-25' },
+          verificationOptions
+        ),
+        'webhook verification DNS timeout'
+      )
+    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
+
+    const delivery = await within(
+      deliverWebhook(
         {
           key: 'key',
           id: 'sub_id',
@@ -1051,44 +1106,25 @@ describe('experimental events extension', () => {
           url: 'https://example.test/hook',
           secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
           refreshBefore: new Date(Date.now() + 60_000).toISOString(),
-          verified: false,
+          verified: true,
           active: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
-        { request: new Request('http://localhost/mcp'), protocolVersion: '2025-11-25' },
-        verificationOptions
-      )
-    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
-
-    const retryStarted = Date.now()
-    const delivery = await deliverWebhook(
-      {
-        key: 'key',
-        id: 'sub_id',
-        principal: 'principal',
-        name: 'event',
-        arguments: {},
-        url: 'https://example.test/hook',
-        secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
-        refreshBefore: new Date(Date.now() + 60_000).toISOString(),
-        verified: true,
-        active: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      },
-      { eventId: 'event', name: 'event', timestamp: new Date().toISOString(), data: {} },
-      'event',
-      {
-        ...verificationOptions,
-        maxAttempts: 5,
-        maxRetryElapsedMs: 25,
-        retryBaseMs: 1,
-        requestTimeoutMs: 1_000
-      }
+        { eventId: 'event', name: 'event', timestamp: new Date().toISOString(), data: {} },
+        'event',
+        {
+          ...verificationOptions,
+          maxAttempts: 5,
+          maxRetryElapsedMs: 25,
+          retryBaseMs: 1,
+          requestTimeoutMs: 1_000
+        }
+      ),
+      'bounded webhook delivery retries'
     )
     expect(delivery.acknowledged).toBe(false)
-    expect(Date.now() - retryStarted).toBeLessThan(250)
+    expect(delivery).toMatchObject({ abandoned: true })
   })
 
   test('isolates webhook verification consent and challenge throttles by app and options', async () => {
@@ -1268,21 +1304,40 @@ describe('experimental events extension', () => {
       })
     )
     expect(crossDelete.status).toBe(400)
+    const crossAbort = new AbortController()
     const crossStream = await app.handle(
       new Request('http://localhost/events-b', {
+        signal: crossAbort.signal,
         headers: { 'mcp-session-id': sessionA }
       })
     )
-    await expect(new Response(crossStream.body).text()).rejects.toThrow()
+    try {
+      await expect(
+        within(new Response(crossStream.body).text(), 'cross-endpoint stream rejection')
+      ).rejects.toThrow()
+    } finally {
+      crossAbort.abort()
+    }
 
+    const ownAbort = new AbortController()
     const ownStream = await app.handle(
       new Request('http://localhost/events-b', {
+        signal: ownAbort.signal,
         headers: { 'mcp-session-id': sessionB }
       })
     )
-    const reader = ownStream.body?.getReader()
-    expect(new TextDecoder().decode((await reader?.read())?.value)).toContain(': connected')
-    await reader?.cancel()
+    if (!ownStream.body) throw new Error('Own-session SSE response omitted a body')
+    const reader = ownStream.body.getReader()
+    try {
+      expect(
+        new TextDecoder().decode(
+          (await within(reader.read(), 'own-session SSE connection readiness')).value
+        )
+      ).toContain(': connected')
+    } finally {
+      ownAbort.abort()
+      await within(reader.cancel(), 'own-session SSE stream cleanup')
+    }
     const intactA = await app.handle(
       new Request('http://localhost/events-a', {
         method: 'DELETE',
@@ -1295,6 +1350,7 @@ describe('experimental events extension', () => {
   test('isolates webhook workers and poll leases between configurations on one app', async () => {
     const subscriptions: string[] = []
     const unsubscriptions: string[] = []
+    const bothPollLeasesExpired = deferred()
     const app = new Elysia().use(withMcpMethods()).mcpEvent(
       {
         name: 'com.example.isolated',
@@ -1307,6 +1363,8 @@ describe('experimental events extension', () => {
         },
         onUnsubscribe: (_arguments, _id, context) => {
           unsubscriptions.push(context.request.headers.get('x-config') ?? 'unknown')
+          if (unsubscriptions.includes('poll-a') && unsubscriptions.includes('poll-b'))
+            bothPollLeasesExpired.resolve()
         }
       },
       () => ({ events: [], cursor: 'head', nextPollMs: 5 })
@@ -1373,12 +1431,7 @@ describe('experimental events extension', () => {
     await pollEvents(app, pollParams, pollA, context('poll-a'))
     await pollEvents(app, pollParams, pollB, context('poll-b'))
     expect(subscriptions).toEqual(['poll-a', 'poll-b'])
-    for (
-      let attempt = 0;
-      attempt < 100 && !(unsubscriptions.includes('poll-a') && unsubscriptions.includes('poll-b'));
-      attempt++
-    )
-      await Bun.sleep(5)
+    await within(bothPollLeasesExpired.promise, 'both isolated poll leases to expire')
     expect(
       [...unsubscriptions].sort(),
       `Expected both poll leases to expire, observed: ${unsubscriptions.join(', ') || 'none'}`
@@ -1469,7 +1522,11 @@ describe('experimental events extension', () => {
         }
       }
     })
-    const app = eventApp(() => polls++, 5)
+    let pollGate = deferred()
+    const app = eventApp(() => {
+      polls++
+      pollGate.resolve()
+    }, 5)
     const authorization = {
       principal: {
         tokenType: 'access_token' as const,
@@ -1502,26 +1559,23 @@ describe('experimental events extension', () => {
       ...context,
       meta: { 'io.modelcontextprotocol/server-variant': 'ttl-bounds' }
     }
-    const floorStarted = Date.now()
-    const floorGrant = await subscribeEventsWebhook(
-      app,
-      { ...params, ttlMs: 1 },
-      options,
-      ttlContext
-    )
-    const floorTtl = Date.parse(String(floorGrant.refreshBefore)) - floorStarted
-    expect(floorTtl).toBeGreaterThanOrEqual(900)
-    expect(floorTtl).toBeLessThanOrEqual(1_100)
-    const ceilingStarted = Date.now()
-    const ceilingGrant = await subscribeEventsWebhook(
-      app,
-      { ...params, ttlMs: 100_000 },
-      options,
-      ttlContext
-    )
-    const ceilingTtl = Date.parse(String(ceilingGrant.refreshBefore)) - ceilingStarted
-    expect(ceilingTtl).toBeGreaterThanOrEqual(9_900)
-    expect(ceilingTtl).toBeLessThanOrEqual(10_100)
+    await withControlledTime(new Date('2026-10-08T12:00:00Z'), async () => {
+      const expectedNow = Date.now()
+      const floorGrant = await subscribeEventsWebhook(
+        app,
+        { ...params, ttlMs: 1 },
+        options,
+        ttlContext
+      )
+      expect(Date.parse(String(floorGrant.refreshBefore)) - expectedNow).toBe(1_000)
+      const ceilingGrant = await subscribeEventsWebhook(
+        app,
+        { ...params, ttlMs: 100_000 },
+        options,
+        ttlContext
+      )
+      expect(Date.parse(String(ceilingGrant.refreshBefore)) - expectedNow).toBe(10_000)
+    })
     await unsubscribeEventsWebhook(
       app,
       { name: params.name, arguments: params.arguments, delivery: { url: params.delivery.url } },
@@ -1529,13 +1583,15 @@ describe('experimental events extension', () => {
       ttlContext
     )
     expect(records.size).toBe(0)
+    pollGate = deferred()
     const subscribed = await subscribeEventsWebhook(app, params, options, context)
     expect(subscribed).toMatchObject({ refreshBefore: null })
     expect(validates('SubscribeResult', subscribed)).toBe(true)
     expect(records.size).toBe(1)
-    for (let attempt = 0; attempt < 20 && polls === 0; attempt++) await Bun.sleep(5)
+    await within(pollGate.promise, 'initial webhook worker poll')
     const beforeFailedRefresh = structuredClone(records.values().next().value)
     const pollsBeforeFailedRefresh = polls
+    pollGate = deferred()
     resolutionFails = true
     await expect(
       subscribeEventsWebhook(
@@ -1553,8 +1609,7 @@ describe('experimental events extension', () => {
       )
     ).rejects.toMatchObject({ code: -32015, message: 'CallbackEndpointError' })
     expect(records.values().next().value).toEqual(beforeFailedRefresh)
-    for (let attempt = 0; attempt < 20 && polls === pollsBeforeFailedRefresh; attempt++)
-      await Bun.sleep(5)
+    await within(pollGate.promise, 'existing webhook worker after failed refresh')
     expect(polls).toBeGreaterThan(pollsBeforeFailedRefresh)
     resolutionFails = false
     const stableContext = {
@@ -1762,13 +1817,6 @@ describe('experimental events extension', () => {
     expect(
       [...records.values()].find(({ arguments: value }) => value.scenario === 'fresh')?.maxAgeMs
     ).toBe(500)
-    for (
-      let attempt = 0;
-      attempt < 20 &&
-      !observed.some(({ scenario, maxAgeMs }) => scenario === 'fresh' && maxAgeMs === 500);
-      attempt++
-    )
-      await Bun.sleep(5)
     expect(observed).toContainEqual({ cursor: 'head-fresh', maxAgeMs: 500, scenario: 'fresh' })
     const beforeFailedPrime = structuredClone(
       [...records.values()].find(({ arguments: value }) => value.scenario === 'fresh')
@@ -1783,31 +1831,33 @@ describe('experimental events extension', () => {
     ).toEqual(beforeFailedPrime)
 
     const staleArguments = { scenario: 'stale' }
-    const staleCursor = encodeEventCursor(
-      'old-stale',
-      'com.example.prime',
-      staleArguments,
-      authorization,
-      undefined,
-      { signingKey, ttlMs: 1 }
-    )
-    await Bun.sleep(2)
-    const stale = await subscribeEventsWebhook(
-      app,
-      {
-        name: 'com.example.prime',
-        arguments: staleArguments,
-        cursor: staleCursor,
-        maxAgeMs: 250,
-        delivery: {
-          mode: 'webhook',
-          url: 'https://127.0.0.1:1/stale',
-          secret
-        }
-      },
-      options,
-      context
-    )
+    const stale = await withControlledTime(new Date('2026-10-08T12:00:00Z'), async (advance) => {
+      const staleCursor = encodeEventCursor(
+        'old-stale',
+        'com.example.prime',
+        staleArguments,
+        authorization,
+        undefined,
+        { signingKey, ttlMs: 1 }
+      )
+      advance(2)
+      return await subscribeEventsWebhook(
+        app,
+        {
+          name: 'com.example.prime',
+          arguments: staleArguments,
+          cursor: staleCursor,
+          maxAgeMs: 250,
+          delivery: {
+            mode: 'webhook',
+            url: 'https://127.0.0.1:1/stale',
+            secret
+          }
+        },
+        options,
+        context
+      )
+    })
     expect(stale.truncated).toBe(true)
     expect(
       decodeEventCursor(
@@ -1847,6 +1897,7 @@ describe('experimental events extension', () => {
     const records = new Map<string, McpWebhookSubscriptionRecord>()
     const seenCursors: Array<string | null> = []
     const seenMaxAges: number[] = []
+    const deliveryFailurePersisted = deferred()
     const authorization = {
       principal: {
         tokenType: 'access_token' as const,
@@ -1864,6 +1915,7 @@ describe('experimental events extension', () => {
       upsert: (record) => {
         const created = !records.has(record.key)
         records.set(record.key, structuredClone(record))
+        if (record.deliveryStatus?.lastError) deliveryFailurePersisted.resolve()
         return { record: structuredClone(record), created }
       },
       delete: (key) => records.delete(key),
@@ -1967,12 +2019,7 @@ describe('experimental events extension', () => {
       }).cursor
     ).toBe('start')
     expect(records.values().next().value?.maxAgeMs).toBe(1_000)
-    for (
-      let attempt = 0;
-      attempt < 40 && !records.values().next().value?.deliveryStatus?.lastError;
-      attempt++
-    )
-      await Bun.sleep(5)
+    await within(deliveryFailurePersisted.promise, 'persisted webhook delivery failure')
     expect(seenCursors[0]).toBe('start')
     expect(seenMaxAges[0]).toBe(1_000)
     expect(records.values().next().value?.deliveryStatus?.lastError).toBe('connection_refused')
@@ -2012,18 +2059,13 @@ describe('experimental events extension', () => {
   })
 
   test('serializes webhook refresh, terminal cleanup, and unsubscribe without resurrection', async () => {
-    const within = async <T>(promise: Promise<T>, label: string): Promise<T> =>
-      await Promise.race([
-        promise,
-        Bun.sleep(500).then(() => {
-          throw new Error(`Timed out waiting for ${label}`)
-        })
-      ])
     const records = new Map<string, McpWebhookSubscriptionRecord>()
-    let polls = 0
     let terminate = false
     let setupCalls = 0
     let teardownCalls = 0
+    let expectedTeardown = 1
+    let teardownGate = deferred<number>()
+    const pollGate = deferred()
     let terminalObserved = () => {}
     let terminalReached = new Promise<void>((resolve) => {
       terminalObserved = resolve
@@ -2107,10 +2149,11 @@ describe('experimental events extension', () => {
         },
         onUnsubscribe: () => {
           teardownCalls++
+          if (teardownCalls >= expectedTeardown) teardownGate.resolve(teardownCalls)
         }
       },
       () => {
-        polls++
+        pollGate.resolve()
         if (terminate) {
           terminalObserved()
           return {
@@ -2141,7 +2184,7 @@ describe('experimental events extension', () => {
     }
     await subscribeEventsWebhook(app, params, options, context)
     expect(setupCalls).toBe(1)
-    for (let attempt = 0; attempt < 20 && polls === 0; attempt++) await Bun.sleep(5)
+    await within(pollGate.promise, 'initial lifecycle worker poll')
 
     const firstBarrier = blockNextResolution()
     const refreshedSecret = `whsec_${Buffer.alloc(24, 14).toString('base64')}`
@@ -2167,11 +2210,10 @@ describe('experimental events extension', () => {
     )
     terminate = true
     await within(terminalReached, 'stale worker termination')
-    await Bun.sleep(10)
     terminate = false
     firstBarrier.release()
     await within(refresh, 'first refresh completion')
-    await Bun.sleep(10)
+    await within(teardownGate.promise, 'stale worker teardown')
     expect(records.size).toBe(1)
     expect(records.values().next().value?.secret).toBe(refreshedSecret)
     expect(setupCalls).toBe(2)
@@ -2180,6 +2222,8 @@ describe('experimental events extension', () => {
     terminalReached = new Promise<void>((resolve) => {
       terminalObserved = resolve
     })
+    expectedTeardown = 2
+    teardownGate = deferred<number>()
     const secondBarrier = blockNextResolution()
     const secondRefresh = subscribeEventsWebhook(app, params, options, context)
     await within(secondBarrier.wait, 'second refresh verification')
@@ -2194,7 +2238,7 @@ describe('experimental events extension', () => {
     expect(records.size).toBe(0)
     expect(setupCalls).toBe(2)
     expect(teardownCalls).toBe(2)
-    await Bun.sleep(10)
+    await within(teardownGate.promise, 'explicit unsubscribe teardown')
     expect(records.size).toBe(0)
     expect(teardownCalls).toBe(2)
 
@@ -2204,18 +2248,20 @@ describe('experimental events extension', () => {
     terminate = false
     await subscribeEventsWebhook(app, params, options, context)
     expect(setupCalls).toBe(3)
+    expectedTeardown = 3
+    teardownGate = deferred<number>()
     terminate = true
     await within(terminalReached, 'terminal teardown')
-    for (let attempt = 0; attempt < 40 && teardownCalls === 2; attempt++) await Bun.sleep(5)
+    await within(teardownGate.promise, 'terminal subscription teardown')
     expect(records.size).toBe(0)
-    expect(teardownCalls).toBe(3)
-    await Bun.sleep(10)
     expect(teardownCalls).toBe(3)
   })
 
   test('recovers a durable subscription without persisting its client cursor', async () => {
     let polls = 0
     let restarts = 0
+    const recoveredPoll = deferred()
+    const recoveredSubscription = deferred()
     const seenMaxAges: number[] = []
     const records = new Map<string, McpWebhookSubscriptionRecord>()
     const authorization = {
@@ -2266,10 +2312,12 @@ describe('experimental events extension', () => {
         payloadSchema: { type: 'object' },
         onSubscribe: () => {
           restarts++
+          recoveredSubscription.resolve()
         }
       },
       ({ maxAgeMs }) => {
         polls++
+        recoveredPoll.resolve()
         if (maxAgeMs !== undefined) seenMaxAges.push(maxAgeMs)
         return { events: [], cursor: 'new-head', nextPollMs: 5 }
       }
@@ -2299,7 +2347,10 @@ describe('experimental events extension', () => {
       updatedAt: new Date().toISOString()
     })
     recoverWebhookSubscriptions(app, options)
-    for (let attempt = 0; attempt < 20 && polls === 0; attempt++) await Bun.sleep(5)
+    await within(
+      Promise.all([recoveredSubscription.promise, recoveredPoll.promise]),
+      'durable subscription recovery'
+    )
     expect(restarts).toBe(1)
     expect(polls).toBeGreaterThan(0)
     expect(seenMaxAges[0]).toBe(1_234)

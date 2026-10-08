@@ -14,38 +14,38 @@ export function normalizeRouteToolInput(
   options: NormalizedMcpPluginOptions
 ): RouteInvocationInput {
   const value = isRecord(args) ? args : {}
+  if (options.inputMode === 'flatten') return normalizeFlattenedInput(value, operation)
+  return normalizeStructuredInput(value)
+}
 
-  if (options.inputMode === 'flatten') {
-    const routeParams = extractRouteParamNames(operation.path)
-    const params: Record<string, unknown> = {}
-    const query: Record<string, unknown> = {}
-
-    for (const [key, item] of Object.entries(value)) {
-      if (routeParams.includes(key)) params[key] = item
-      else query[key] = item
-    }
-
-    const normalizedParams = Object.keys(params).length > 0 ? params : undefined
-
-    if (operation.hooks.body) {
-      return {
-        params: normalizedParams,
-        body: 'value' in value ? value.value : value
-      }
-    }
-
-    return {
-      params: normalizedParams,
-      query: Object.keys(query).length > 0 ? query : undefined
-    }
-  }
-
+function normalizeStructuredInput(value: Record<string, unknown>): RouteInvocationInput {
   return {
     params: isRecord(value.params) ? value.params : undefined,
     query: isRecord(value.query) ? value.query : undefined,
     body: 'body' in value ? value.body : undefined,
     headers: isRecord(value.headers) ? value.headers : undefined
   }
+}
+
+function normalizeFlattenedInput(
+  value: Record<string, unknown>,
+  operation: McpRouteOperation
+): RouteInvocationInput {
+  const routeParams = new Set(extractRouteParamNames(operation.path))
+  const params: Record<string, unknown> = {}
+  const query: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    ;(routeParams.has(key) ? params : query)[key] = item
+  }
+  const normalizedParams = nonEmptyRecord(params)
+  if (operation.hooks.body) {
+    return { params: normalizedParams, body: 'value' in value ? value.value : value }
+  }
+  return { params: normalizedParams, query: nonEmptyRecord(query) }
+}
+
+function nonEmptyRecord(value: Record<string, unknown>): Record<string, unknown> | undefined {
+  return Object.keys(value).length > 0 ? value : undefined
 }
 
 export function buildInternalRequest(
@@ -150,11 +150,8 @@ function buildInternalHeaders(
 function serializeBody(body: unknown, headers: Headers): BodyInit | undefined {
   if (body === undefined) return undefined
   if (typeof body === 'string') return body
-  if (body instanceof ArrayBuffer) return body
-  if (ArrayBuffer.isView(body)) return body as unknown as BodyInit
-  if (body instanceof Blob) return body
-  if (body instanceof FormData) return body
-  if (body instanceof URLSearchParams) return body
+  const native = nativeBody(body)
+  if (native !== undefined) return native
 
   const contentType = headers.get('content-type') ?? ''
   if (contentType.includes('application/x-www-form-urlencoded') && isRecord(body)) {
@@ -164,6 +161,14 @@ function serializeBody(body: unknown, headers: Headers): BodyInit | undefined {
   }
 
   return JSON.stringify(body)
+}
+
+function nativeBody(body: unknown): BodyInit | undefined {
+  if (body instanceof ArrayBuffer) return body
+  if (ArrayBuffer.isView(body)) return body as unknown as BodyInit
+  if (body instanceof Blob || body instanceof FormData || body instanceof URLSearchParams)
+    return body
+  return undefined
 }
 
 function appendQueryValue(search: URLSearchParams, key: string, value: unknown): void {

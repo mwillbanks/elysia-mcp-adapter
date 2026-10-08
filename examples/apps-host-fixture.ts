@@ -17,50 +17,34 @@ export class AppsHostFixture {
   size?: { width: number; height: number }
 
   receive(message: FixtureMessage): FixtureMessage | undefined {
-    if (message.method === 'ui/initialize' && message.id !== undefined) {
-      return {
-        jsonrpc: '2.0',
-        id: message.id,
-        result: {
-          protocolVersion: '2026-01-26',
-          hostInfo: { name: 'bounded-test-host', version: '1.0.0' },
-          hostCapabilities: {},
-          hostContext: {
-            theme: 'light',
-            locale: 'en-US',
-            displayMode: 'inline',
-            availableDisplayModes: ['inline', 'fullscreen']
-          }
-        }
-      }
+    switch (message.method) {
+      case 'ui/initialize':
+        return initializeResponse(message)
+      case 'ui/notifications/initialized':
+        this.initialized = true
+        return undefined
+      case 'tools/call':
+        return toolCallResponse(message)
+      case 'ui/notifications/size-changed':
+        this.recordSize(message.params)
+        return undefined
+      case 'ui/resource-teardown':
+        return this.teardownResponse(message)
+      default:
+        return undefined
     }
-    if (message.method === 'ui/notifications/initialized') {
-      this.initialized = true
-      return undefined
-    }
-    if (message.method === 'tools/call' && message.id !== undefined) {
-      return {
-        jsonrpc: '2.0',
-        id: message.id,
-        result: {
-          content: [{ type: 'text', text: 'Updated by the fixture.' }],
-          structuredContent: { tasks: [] }
-        }
-      }
-    }
-    if (message.method === 'ui/notifications/size-changed') {
-      const width = message.params?.width
-      const height = message.params?.height
-      if (typeof width === 'number' && typeof height === 'number') {
-        this.size = { width, height }
-      }
-      return undefined
-    }
-    if (message.method === 'ui/resource-teardown' && message.id !== undefined) {
-      this.tornDown = true
-      return { jsonrpc: '2.0', id: message.id, result: {} }
-    }
-    return undefined
+  }
+
+  private recordSize(params: Record<string, unknown> | undefined): void {
+    const width = params?.width
+    const height = params?.height
+    if (typeof width === 'number' && typeof height === 'number') this.size = { width, height }
+  }
+
+  private teardownResponse(message: FixtureMessage): FixtureMessage | undefined {
+    if (message.id === undefined) return undefined
+    this.tornDown = true
+    return { jsonrpc: '2.0', id: message.id, result: {} }
   }
 
   sendToolInput(arguments_: Record<string, unknown>): void {
@@ -85,5 +69,36 @@ export class AppsHostFixture {
       method: 'ui/notifications/host-context-changed',
       params: context
     })
+  }
+}
+
+function initializeResponse(message: FixtureMessage): FixtureMessage | undefined {
+  if (message.id === undefined) return undefined
+  return {
+    jsonrpc: '2.0',
+    id: message.id,
+    result: {
+      protocolVersion: '2026-01-26',
+      hostInfo: { name: 'bounded-test-host', version: '1.0.0' },
+      hostCapabilities: {},
+      hostContext: {
+        theme: 'light',
+        locale: 'en-US',
+        displayMode: 'inline',
+        availableDisplayModes: ['inline', 'fullscreen']
+      }
+    }
+  }
+}
+
+function toolCallResponse(message: FixtureMessage): FixtureMessage | undefined {
+  if (message.id === undefined) return undefined
+  return {
+    jsonrpc: '2.0',
+    id: message.id,
+    result: {
+      content: [{ type: 'text', text: 'Updated by the fixture.' }],
+      structuredContent: { tasks: [] }
+    }
   }
 }

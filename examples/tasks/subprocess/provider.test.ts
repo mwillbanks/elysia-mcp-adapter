@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DetailedTask, TaskProviderContext } from '@mwillbanks/elysia-mcp-adapter'
+import { waitFor } from '../test-support.js'
 import { SqliteSubprocessTaskProvider } from './provider.js'
 
 const disposals: Array<() => Promise<void>> = []
@@ -41,12 +42,10 @@ async function waitForTerminal(
   taskId: string,
   owner: TaskProviderContext
 ): Promise<DetailedTask> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  return waitFor(`task ${taskId} to finish`, async () => {
     const task = await provider.get(taskId, owner)
     if (task && task.status !== 'working') return task
-    await Bun.sleep(20)
-  }
-  throw new Error(`Task ${taskId} did not finish`)
+  })
 }
 
 function trackedSignal(aborted: boolean): {
@@ -122,11 +121,15 @@ describe('SQLite subprocess task provider', () => {
       },
       owner
     )
-    await Bun.sleep(30)
+    await waitFor('subprocess execution to start', () =>
+      provider.children.has(created.taskId) ? true : undefined
+    )
     expect(await provider.cancel(created.taskId, owner)).toBe(true)
     const cancelled = await waitForTerminal(provider, created.taskId, owner)
     expect(cancelled.status).toBe('cancelled')
-    await Bun.sleep(30)
+    await waitFor('cancelled subscription event', () =>
+      events.some((event) => event.status === 'cancelled') ? true : undefined
+    )
     subscription.close()
     expect(events.some((event) => event.status === 'cancelled')).toBe(true)
 
@@ -134,7 +137,9 @@ describe('SQLite subprocess task provider', () => {
       invoke: async () => ({})
     })
     expect(await provider.get(expiring.taskId, owner)).toBeDefined()
-    await Bun.sleep(20)
+    provider.database
+      .query('UPDATE tasks SET created_at = ? WHERE task_id = ?')
+      .run(new Date(0).toISOString(), expiring.taskId)
     expect(await provider.get(expiring.taskId, owner)).toBeUndefined()
   })
 
@@ -246,7 +251,9 @@ describe('SQLite subprocess task provider', () => {
       .get(created.taskId, 'confirm')
     expect(JSON.parse(stored?.response ?? '{}')).toEqual({ action: 'accept' })
     expect((await provider.get(created.taskId, owner))?.status).toBe('working')
-    await Bun.sleep(50)
+    await waitFor('aborted subprocess cleanup', () =>
+      provider.children.has(created.taskId) ? undefined : true
+    )
     expect(provider.children.has(created.taskId)).toBe(false)
   })
 

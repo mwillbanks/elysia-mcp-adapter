@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:https'
 import { Elysia } from 'elysia'
+import { listenLoopbackTls } from '../../examples/events/listen-fixture.js'
 import type {
   McpWebhookSubscriptionProvider,
   McpWebhookSubscriptionRecord
@@ -67,12 +68,7 @@ server.on('request', (request, response) => {
     if (bodies.length >= 6) resolveReceived()
   })
 })
-await new Promise<void>((resolve, reject) => {
-  server.once('error', reject)
-  server.listen(0, '127.0.0.1', resolve)
-})
-const address = server.address()
-if (!address || typeof address === 'string') throw new Error('Missing replay fixture address')
+const port = await listenLoopbackTls(server)
 
 let sentOngoingBatch = false
 const app = new Elysia().use(withMcpMethods()).mcpEvent(
@@ -164,7 +160,7 @@ const context = {
   protocolVersion: '2025-11-25' as const,
   authorization
 }
-const url = `https://callback.test:${address.port}/hook`
+const url = `https://callback.test:${port}/hook`
 const arguments_ = {}
 
 try {

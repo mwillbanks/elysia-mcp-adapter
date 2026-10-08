@@ -310,28 +310,49 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     controllers.add(controller)
     this.abortControllers.set(taskId, controllers)
     try {
-      const scheduler =
-        this.schedulers.get(taskId) ?? (await this.resolveScheduler?.(descriptor, providerContext))
-      if (!scheduler) throw new Error(`No ephemeral scheduler is available for ${taskId}`)
-      const mayInvoke = await this.evalExecutionTransition(
-        verifyExecutionScript,
+      return await this.invokeClaimedExecution(
         taskId,
-        executionFence
+        executionFence,
+        descriptor,
+        providerContext,
+        controller.signal
       )
-      if (!mayInvoke || controller.signal.aborted) return {}
-      const result = await scheduler.invoke(controller.signal)
-      await this.completeExecution(taskId, executionFence, result)
-      return result
     } catch (error) {
       await this.failExecution(taskId, executionFence, error)
       throw error
     } finally {
-      controllers.delete(controller)
-      if (controllers.size === 0) this.abortControllers.delete(taskId)
-      await this.evalTransition(releaseExecutionScript, taskId, [executionFence])
-      const status = await this.connection.hget(this.key(taskId), 'status')
-      if (status !== 'input_required') this.schedulers.delete(taskId)
+      await this.releaseClaimedExecution(taskId, executionFence, controllers, controller)
     }
+  }
+
+  private async invokeClaimedExecution(
+    taskId: string,
+    fence: string,
+    descriptor: TaskDurableCreateRequest['execution'],
+    context: TaskProviderContext,
+    signal: AbortSignal
+  ): Promise<Record<string, unknown>> {
+    const scheduler =
+      this.schedulers.get(taskId) ?? (await this.resolveScheduler?.(descriptor, context))
+    if (!scheduler) throw new Error(`No ephemeral scheduler is available for ${taskId}`)
+    const mayInvoke = await this.evalExecutionTransition(verifyExecutionScript, taskId, fence)
+    if (!mayInvoke || signal.aborted) return {}
+    const result = await scheduler.invoke(signal)
+    await this.completeExecution(taskId, fence, result)
+    return result
+  }
+
+  private async releaseClaimedExecution(
+    taskId: string,
+    fence: string,
+    controllers: Set<AbortController>,
+    controller: AbortController
+  ): Promise<void> {
+    controllers.delete(controller)
+    if (controllers.size === 0) this.abortControllers.delete(taskId)
+    await this.evalTransition(releaseExecutionScript, taskId, [fence])
+    const status = await this.connection.hget(this.key(taskId), 'status')
+    if (status !== 'input_required') this.schedulers.delete(taskId)
   }
 
   private async completeExecution(
@@ -353,26 +374,11 @@ export class BullMqTaskProvider implements TaskProvider, AsyncDisposable {
     executionFence: string,
     error: unknown
   ): Promise<void> {
-    const protocolCode =
-      typeof error === 'object' && error !== null && 'code' in error && Number.isInteger(error.code)
-        ? error.code
-        : -32603
-    const protocolData =
-      typeof error === 'object' && error !== null && 'data' in error ? error.data : undefined
     const transitioned = await this.evalExecutionTransition(
       finishExecutionScript,
       taskId,
       executionFence,
-      [
-        'failed',
-        new Date().toISOString(),
-        'error',
-        JSON.stringify({
-          code: protocolCode,
-          message: error instanceof Error ? error.message : String(error),
-          ...(protocolData !== undefined ? { data: protocolData } : {})
-        })
-      ]
+      ['failed', new Date().toISOString(), 'error', JSON.stringify(taskFailurePayload(error))]
     )
     if (transitioned) await this.publish(taskId)
   }
@@ -567,6 +573,17 @@ return 1
 
 function inputRequestField(key: string): string {
   return `${inputRequestPrefix}${key}`
+}
+
+function taskFailurePayload(error: unknown): Record<string, unknown> {
+  const fields =
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {}
+  const code = Number.isInteger(fields.code) ? fields.code : -32603
+  return {
+    code,
+    message: error instanceof Error ? error.message : String(error),
+    ...(fields.data !== undefined ? { data: fields.data } : {})
+  }
 }
 
 function inputResponseField(key: string): string {

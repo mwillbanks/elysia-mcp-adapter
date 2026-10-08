@@ -3,6 +3,7 @@
   "pages": [
     "index",
     "specification-inventory",
+    "server-card",
     "tasks",
     "authorization",
     "apps",

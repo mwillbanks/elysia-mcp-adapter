@@ -596,7 +596,7 @@ describe('integrated Tasks', () => {
       'notifications/subscriptions/acknowledged'
     )
     incomingAbort.abort('HTTP client disconnected')
-    await Bun.sleep(0)
+    await provider.subscriptionCleanup
     expect(provider.subscriptionClosed).toBe(true)
     expect(provider.subscriptionCloseCalls).toBe(1)
     let streamDone = false
@@ -701,6 +701,10 @@ describe('integrated Tasks', () => {
     const provider = new IntegrationTaskProvider()
     const incomingAbort = new AbortController()
     let coreAborted = false
+    let resolveCoreCleanup = () => {}
+    const coreCleanup = new Promise<void>((resolve) => {
+      resolveCoreCleanup = resolve
+    })
     provider.tasks.set('observed', workingIntegrationTask('observed'))
     const app = new Elysia().use(
       mcp({
@@ -720,6 +724,7 @@ describe('integrated Tasks', () => {
                     })
                   } finally {
                     coreAborted = context.signal?.aborted === true
+                    resolveCoreCleanup()
                   }
                 })()
               }
@@ -773,7 +778,7 @@ describe('integrated Tasks', () => {
     expect(stream).not.toContain('notifications/progress')
     expect(stream).not.toContain('notifications/message')
     incomingAbort.abort('HTTP client disconnected')
-    await Bun.sleep(0)
+    await Promise.all([coreCleanup, provider.subscriptionCleanup])
     expect(coreAborted).toBe(true)
     expect(provider.subscriptionClosed).toBe(true)
     await reader.cancel()
@@ -1017,6 +1022,10 @@ class IntegrationTaskProvider implements TaskProvider {
   executionSignal?: AbortSignal
   subscriptionClosed = false
   subscriptionCloseCalls = 0
+  private resolveSubscriptionCleanup = () => {}
+  readonly subscriptionCleanup = new Promise<void>((resolve) => {
+    this.resolveSubscriptionCleanup = resolve
+  })
   acceptedTaskIds?: readonly string[]
   subscriptionListener?: (task: DetailedTask) => void | Promise<void>
   rejectSubscriptionClose = false
@@ -1080,6 +1089,7 @@ class IntegrationTaskProvider implements TaskProvider {
       close: async () => {
         this.subscriptionClosed = true
         this.subscriptionCloseCalls += 1
+        this.resolveSubscriptionCleanup()
         if (this.rejectSubscriptionClose) throw new Error('cleanup failed')
       }
     }
