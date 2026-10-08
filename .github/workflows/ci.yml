@@ -33,6 +33,7 @@ jobs:
       - run: bun ci --cwd website
       - run: bun --bun run lint
       - run: bun --bun run typecheck
+      - run: bun --bun run --cwd website typecheck
       - run: bun test --bail --coverage --coverage-reporter=lcov --coverage-dir=coverage
       - run: bun --bun run fallow
       - run: bun --bun run build
@@ -42,7 +43,6 @@ jobs:
       - run: bun --bun run examples:test
       - run: bun --bun run examples:smoke
       - run: bun --bun run --cwd website lint
-      - run: bun --bun run --cwd website typecheck
       - run: bun --bun run --cwd website test
       - run: bun --bun run --cwd website build
       - run: bun --bun run --cwd website verify:build

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { staticFunctionMiddleware } from "@tanstack/start-static-server-functions";
 import { basePathStaticFunctionMiddleware } from "@/lib/static-function-middleware";
 import { useFumadocsLoader } from "fumadocs-core/source/client";
+import { createClientLoader } from "fumadocs-mdx/runtime/browser";
 import browserCollections from "collections/browser";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layouts/docs/page";
@@ -34,7 +35,8 @@ const loadPage = createServerFn({ method: "GET" })
     };
   });
 
-const clientLoader = browserCollections.docs.createClientLoader({
+const clientLoader = createClientLoader(browserCollections.docs.raw, {
+  id: "docs",
   component({ default: MDX, frontmatter, toc }) {
     return (
       <DocsPage toc={toc}>
