@@ -29,6 +29,7 @@ export const app = new Elysia()
     'skill://release-helper/SKILL.md',
     new Uint8Array(await Bun.file(skillUrl).arrayBuffer()),
     {
+      _meta: { 'io.modelcontextprotocol.skills/example': { category: 'release' } },
       resources: {
         'references/VERIFY.md': {
           content: new Uint8Array(await Bun.file(referenceUrl).arrayBuffer()),

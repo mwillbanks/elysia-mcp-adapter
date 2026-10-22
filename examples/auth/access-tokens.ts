@@ -10,7 +10,7 @@ export function exampleOAuthProvider(resource: string, scopes: string[]) {
     clientPrivileges: ({ action, session, user }) =>
       Boolean(
         session?.userId === user?.id &&
-          (action === 'create' || action === 'configure-client-credentials-scopes')
+        (action === 'create' || action === 'configure-client-credentials-scopes')
       ),
     scopes,
     validAudiences: [resource],

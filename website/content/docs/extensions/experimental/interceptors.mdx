@@ -14,3 +14,39 @@ Audit handlers shadow their result and never block. The returned audit outcomes 
 Handlers may omit result identity fields. The adapter supplies and validates the required `interceptor`, `type`, and `phase` fields on every wire result. A handler cannot claim another identity, type, or phase.
 
 The adapter does not discover or contact external interceptor services. Keep secrets and model-controlled credentials outside interceptor configuration.
+
+## Current invocation contract
+
+`current` selects `faf1583a9c1b3d059043b191bd21fd44d65049a7`. The historical
+`b60459844cc95f2170297ebe1c84b7de8b752953` selector remains available.
+Descriptor `version` and `description` are optional. Supplied `config` is validated against
+`configSchema` on each invocation. Omit `config` to use handler defaults; an explicit empty
+object still undergoes schema validation.
+
+An optional invocation `context` requires an ISO timestamp. It can include `traceId`, `spanId`,
+`sessionId`, and an untrusted `principal` claim with type `user`, `service`, or `anonymous`.
+`interceptorState` is reserved. Claimed identity never replaces authenticated request identity.
+Payload, configuration, and context are isolated before the handler runs.
+
+```ts
+const params = {
+  name: "prefix-name",
+  event: "tools/call",
+  phase: "request",
+  payload: { name: "example" },
+  config: { prefix: "reviewed:" },
+  context: {
+    timestamp: new Date().toISOString(),
+    traceId: "trace",
+    spanId: "span",
+    sessionId: "session",
+  },
+};
+```
+
+The proposal describes a separate HTTP interceptor service. The runnable experimental example
+starts `interceptor-service.ts` in a child process and invokes it through `remote-interceptor.ts`.
+Run `bun run build`, `bun run test`, and `bun run smoke` in `examples/experimental`.
+The client supplies modern request metadata and checks discovery, configured calls, defaults,
+and rejected configuration. `executeInterceptorChain()` remains an adapter-local utility;
+it does not implement remote service discovery or orchestration.

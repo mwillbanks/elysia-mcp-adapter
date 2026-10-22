@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: oven-sh/setup-bun@v2.2.0
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - run: bun link
       - run: bun ci
       - run: bun ci --cwd website

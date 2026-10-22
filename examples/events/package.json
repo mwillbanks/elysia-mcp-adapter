@@ -2,10 +2,10 @@
   "name": "@examples/events",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.4",
   "scripts": {
     "build": "bun build server.ts event-source.ts webhook-server.ts client.ts provider.ts receiver.ts provider-process.ts fixture-receiver.ts webhook-process.ts smoke.ts --outdir dist --target bun",
-    "typecheck": "bun --bun tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bun test --bail",
     "smoke": "bun smoke.ts"
   },
@@ -14,7 +14,7 @@
     "elysia": "1.4.30"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.3",
     "typescript": "7.0.2"
   }
 }

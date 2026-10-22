@@ -1607,7 +1607,7 @@ describe('experimental events extension', () => {
         options,
         context
       )
-    ).rejects.toMatchObject({ code: -32015, message: 'CallbackEndpointError' })
+    ).rejects.toMatchObject({ code: -32027, message: 'CallbackEndpointError' })
     expect(records.values().next().value).toEqual(beforeFailedRefresh)
     await within(pollGate.promise, 'existing webhook worker after failed refresh')
     expect(polls).toBeGreaterThan(pollsBeforeFailedRefresh)
@@ -1639,7 +1639,7 @@ describe('experimental events extension', () => {
         options,
         stableContext
       )
-    ).rejects.toMatchObject({ code: -32011, message: 'NotFound' })
+    ).rejects.toMatchObject({ code: -32023, message: 'NotFound' })
     await unsubscribeEventsWebhook(
       app,
       { name: params.name, arguments: params.arguments, delivery: { url: params.delivery.url } },
@@ -1660,7 +1660,7 @@ describe('experimental events extension', () => {
           }
         }
       )
-    ).rejects.toMatchObject({ code: -32011, message: 'NotFound' })
+    ).rejects.toMatchObject({ code: -32023, message: 'NotFound' })
     const unsubscribeRequest = {
       name: params.name,
       arguments: params.arguments,
@@ -2071,8 +2071,7 @@ describe('experimental events extension', () => {
       terminalObserved = resolve
     })
     let resolverBarrier:
-      | { entered(): void; wait: Promise<void>; release: Promise<void> }
-      | undefined
+      { entered(): void; wait: Promise<void>; release: Promise<void> } | undefined
     const blockNextResolution = () => {
       let entered = () => {}
       let release = () => {}

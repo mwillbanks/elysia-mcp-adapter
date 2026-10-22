@@ -77,7 +77,7 @@ async function verifyConsumer(
           '@mwillbanks/elysia-mcp-adapter': archive,
           elysia: '1.4.30'
         },
-        devDependencies: { '@types/bun': '1.4.2', '@types/node': '26.6.4', typescript }
+        devDependencies: { '@types/bun': '1.4.3', '@types/node': '26.6.5', typescript }
       },
       null,
       2

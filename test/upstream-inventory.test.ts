@@ -1,3 +1,4 @@
+import { normalizeOptions } from '../src/options.js'
 import { describe, expect, test } from 'bun:test'
 import {
   MCP_EXTENSION_LATEST_REVIEWED,
@@ -51,6 +52,7 @@ const expectedLatestKeys = [
   'ianaIpv6SpecialRegistry',
   'actionMetadata',
   'trustAnnotations',
+  'fileUploads',
   'filesystems'
 ] as const
 
@@ -78,27 +80,28 @@ const expectedDigests: Record<string, string> = {
   coreRoots: '016aea34d76ccce86a82509dbf2699833bb8547bde5b3f4a8eb086dfd26a9ba2',
   coreSampling: '32fe2bb69f5a7caa85a6b9501f465cb1fb888d0c669cd13b23a071071a029df1',
   coreElicitation: '74351d1081681695536e59a55588a67ed66a76db6057846c263ce2f465fab4c2',
-  tasksStable: 'ef2860ae4418d02f3b2bfd54fcd88b03a3c2c3aa6724d282cd4ca3a3699a2e27',
-  tasksDraft: '7fd574093a5c4e29da19a0d7683693af7b93a276f3ce37343664c9e12f4d039a',
+  tasksStable: '5fc22b9b5ff248703927c69855f751a061c2d6170f4dc3923204452f859f91a5',
+  tasksDraft: '5d1dd2d95c287f7defa97b20823990a3908f9ed93d49977ac8d5de559b6ff49b',
   authEnterprise: 'df4fe01daec0eac6069e17a293d4ed7e197ab20463038d806f71e63b22fd8986',
   authClientCredentials: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f',
   appsStable: 'ee452a7d1b9b7fb900acfeb4d6932d3963375b0f3f37d196a4b93eb80312af0e',
   appsDraft: '00e97500a71cd46f27a0c661a3c9ee4df60cf64ba7b069e41227ddf8d41b4269',
-  skillsStable: 'b8b4c2faf0ef38d72114b8ea2c4e29bbba1d30151b8dc3b476ca31f685de610c',
+  skillsStable: '6e33a33762783a02dc4c13c889dda5b8d7c525649012cf77da12d80c04ce6851',
   agentSkillsFormat: 'b9079c0c10b7930e8c6a20ff2bc10cda2a3343c55185120e3f1116a1a529b220',
   serverCard: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042',
   serverCardFinalSep: 'b7691eee6daa21f0b556e48f83b73f9cc8e61e9ea2da17c1aaf3aa169b348461',
   serverCardDiscovery: '633dacfe5bcdbb3ed2f177be7dd7f9943ed2484a5fdd13bd2b742f43a14c2786',
-  interceptors: '1ccbb25046161f10e631ff4fce20742a816dd5fa018e466a7551cb8675200a35',
+  interceptors: 'e486a4e7a50f2a704bf94785d0de48a66ab727c24991a44a281193ba4ce5bb7e',
   variants: 'acb459c128b2b26af772f878919c40d7a7a0c23d364c594c08cf01e733b95d15',
   variantsRepository: 'dca88077d719d5c8d55fa128234a05d013f9bff3775005bdf2478d2752f57af6',
   toolAnnotations: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb',
-  triggersEvents: 'a4ca4ea18b10e3fe53595c73e593a92d3445ae75897fd8ab15e88bf781efeb5a',
+  triggersEvents: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59',
   standardWebhooks: '47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082',
-  ianaIpv4SpecialRegistry: 'e3e39e76d00b1677335db8e9a805c7b9480ea2f4dc9e33f0b93cd3a905128d73',
-  ianaIpv6SpecialRegistry: '775feea0621dec8735a44fbf30f762e721e8f0a1b3ab7eb341961a88cfce2139',
+  ianaIpv4SpecialRegistry: 'cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac',
+  ianaIpv6SpecialRegistry: 'bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66',
   actionMetadata: '985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f',
   trustAnnotations: '3cc0123157d3ea4489729d8498489e12787297dcfe1f09a5bb02a4a6b0f55b7d',
+  fileUploads: '0321ca91f3eddc140c8ab2973549b9b2feecf2b7700dd04722ccf57270d27d24',
   filesystems: 'feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993'
 }
 
@@ -140,7 +143,42 @@ describe('upstream extension inventory', () => {
     expect(MCP_EXTENSION_SUPPORT.serverCard.maturity).toBe('stable')
     expect(
       MCP_EXTENSION_SUPPORT.serverCard.versions['526201bbc80231daa40ffcdecfc9da4e54e5dc93'].status
-    ).toBe('experimental')
+    ).toBe('stable')
+  })
+
+  test('advances accepted current selectors and retains explicit historical revisions', () => {
+    for (const [selection, skillsVersion, interceptorVersion] of [
+      ['current', MCP_EXTENSION_SUPPORT.skills.current, MCP_EXTENSION_SUPPORT.interceptors.current],
+      [
+        'historical',
+        '167da6c0d42c247a8f8470228a10ca711e3f6c45',
+        'b60459844cc95f2170297ebe1c84b7de8b752953'
+      ]
+    ] as const) {
+      const extensions =
+        selection === 'current'
+          ? {
+              skills: { version: 'current' as const },
+              interceptors: { version: 'current' as const }
+            }
+          : { skills: { version: skillsVersion }, interceptors: { version: interceptorVersion } }
+      const normalized = normalizeOptions({ extensions })
+      expect(normalized.extensions.skills?.version).toBe(skillsVersion)
+      expect(normalized.extensions.interceptors?.version).toBe(interceptorVersion)
+    }
+    expect(MCP_EXTENSION_SUPPORT.tasks.draft).toBe('draft-b3d28ac')
+  })
+
+  test('does not advertise undefined experiment APIs', () => {
+    for (const experiment of [
+      MCP_EXTENSION_LATEST_REVIEWED.filesystems,
+      MCP_EXTENSION_LATEST_REVIEWED.fileUploads
+    ]) {
+      expect(experiment.maturity).toBe('undefined')
+      expect(experiment).not.toHaveProperty('identifier')
+    }
+    expect(MCP_EXTENSION_SUPPORT).not.toHaveProperty('filesystems')
+    expect(MCP_EXTENSION_SUPPORT).not.toHaveProperty('fileUploads')
   })
 
   test('covers every reviewed extension and records immutable source integrity', () => {
@@ -184,10 +222,10 @@ describe('upstream extension inventory', () => {
 
   test('records current upstream review state without inventing extension contracts', () => {
     expect(MCP_EXTENSION_LATEST_REVIEWED.coreSchema.source.revision).toBe(
-      'c518f7a927cff918bce35d3522fcdb046d264d7c'
+      '80041ab0a139a8f4fb3adbc99f7ae9113ea59671'
     )
     expect(MCP_EXTENSION_LATEST_REVIEWED.tasksStable.source.revision).toBe(
-      '93a4915aadf714f87ece5cd40c317bce24779cf5'
+      'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84'
     )
     expect(MCP_EXTENSION_LATEST_REVIEWED.serverCard.maturity).toBe('stable')
     expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).toMatchObject({

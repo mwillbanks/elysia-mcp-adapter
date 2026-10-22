@@ -22,3 +22,5 @@ bun run server.ts
 
 The server imports the adapter from its public package root. Build the repository root before
 running this example from a checkout.
+
+Use Bun 1.4.4. The reviewed Apps stable 2026-01-26 and draft contracts remain supported. Host approval, CSP, resource authorization, and UI permissions remain explicit.

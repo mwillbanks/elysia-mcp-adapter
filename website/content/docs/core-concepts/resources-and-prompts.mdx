@@ -11,15 +11,11 @@ HTTP routes become tools by default. Resources and prompts are explicit because 
 ```ts
 new Elysia()
   .use(mcp({ allowedRoutes: [] }))
-  .mcpResource(
-    'config://runtime',
-    () => ({ environment: 'production' }),
-    {
-      name: 'runtime.config',
-      title: 'Runtime configuration',
-      mimeType: 'application/json'
-    }
-  )
+  .mcpResource("config://runtime", () => ({ environment: "production" }), {
+    name: "runtime.config",
+    title: "Runtime configuration",
+    mimeType: "application/json",
+  });
 ```
 
 Use URI templates for parameterized data:
@@ -55,21 +51,20 @@ Template variables map to route params by default. Supply `mapUriToInput` when t
 new Elysia()
   .use(mcp({ allowedRoutes: [] }))
   .mcpPrompt(
-    'debug-http-error',
-    ({ status, body }) =>
-      `Analyze this HTTP error:\n\nStatus: ${status}\n\n${body}`,
+    "debug-http-error",
+    ({ status, body }) => `Analyze this HTTP error:\n\nStatus: ${status}\n\n${body}`,
     {
       argsSchema: {
-        type: 'object',
+        type: "object",
         properties: {
-          status: { type: 'number' },
-          body: { type: 'string' }
+          status: { type: "number" },
+          body: { type: "string" },
         },
-        required: ['status', 'body'],
-        additionalProperties: false
-      }
-    }
-  )
+        required: ["status", "body"],
+        additionalProperties: false,
+      },
+    },
+  );
 ```
 
 A prompt handler may return a string, a list of MCP prompt messages, or a complete prompt result. Route-backed `POST` prompts receive arguments in the internal request body by default; `GET` prompts receive query parameters.

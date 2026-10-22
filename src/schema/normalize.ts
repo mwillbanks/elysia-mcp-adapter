@@ -13,14 +13,7 @@ export function normalizeJsonSchema(
     kind: McpRouteKind
     route?: McpRouteOperation
     schemaLocation:
-      | 'input'
-      | 'output'
-      | 'params'
-      | 'query'
-      | 'body'
-      | 'headers'
-      | 'cookie'
-      | 'promptArgs'
+      'input' | 'output' | 'params' | 'query' | 'body' | 'headers' | 'cookie' | 'promptArgs'
     options: NormalizedMcpPluginOptions
   }
 ): JsonSchema | undefined {

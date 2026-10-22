@@ -15,35 +15,31 @@ The `npm` code-block language automatically presents equivalent npm, pnpm, Yarn,
 ## Create a route-backed tool
 
 ```ts
-import { mcp } from '@mwillbanks/elysia-mcp-adapter'
-import { Elysia, t } from 'elysia'
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { Elysia, t } from "elysia";
 
 const app = new Elysia()
   .use(
     mcp({
       server: {
-        name: 'users-api',
-        version: '1.0.0',
-        title: 'Users API'
-      }
-    })
+        name: "users-api",
+        version: "1.0.0",
+        title: "Users API",
+      },
+    }),
   )
-  .get(
-    '/users/:id',
-    ({ params }) => ({ id: params.id, displayName: 'Ada' }),
-    {
-      params: t.Object({ id: t.String() }),
-      response: t.Object({
-        id: t.String(),
-        displayName: t.String()
-      }),
-      detail: {
-        operationId: 'users.get',
-        summary: 'Get a user'
-      }
-    }
-  )
-  .listen(3000)
+  .get("/users/:id", ({ params }) => ({ id: params.id, displayName: "Ada" }), {
+    params: t.Object({ id: t.String() }),
+    response: t.Object({
+      id: t.String(),
+      displayName: t.String(),
+    }),
+    detail: {
+      operationId: "users.get",
+      summary: "Get a user",
+    },
+  })
+  .listen(3000);
 ```
 
 The route is discoverable as the `users.get` tool because `detail.operationId` supplies a stable name. Its input uses the default envelope shape:

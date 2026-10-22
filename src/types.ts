@@ -155,10 +155,7 @@ export interface McpRootsRequest {
 }
 
 export type McpInputRequest =
-  | McpElicitationFormRequest
-  | McpElicitationUrlRequest
-  | McpSamplingRequest
-  | McpRootsRequest
+  McpElicitationFormRequest | McpElicitationUrlRequest | McpSamplingRequest | McpRootsRequest
 
 export interface McpElicitationResult {
   action: 'accept' | 'decline' | 'cancel'
@@ -410,20 +407,19 @@ export interface McpPluginOptions {
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
 }
 
-export interface NormalizedMcpPluginOptions
-  extends Required<
-    Pick<
-      McpPluginOptions,
-      | 'path'
-      | 'allowedRoutes'
-      | 'excludedRoutes'
-      | 'methods'
-      | 'defaultRouteKind'
-      | 'onNameCollision'
-      | 'inputMode'
-      | 'includeHiddenRoutes'
-    >
-  > {
+export interface NormalizedMcpPluginOptions extends Required<
+  Pick<
+    McpPluginOptions,
+    | 'path'
+    | 'allowedRoutes'
+    | 'excludedRoutes'
+    | 'methods'
+    | 'defaultRouteKind'
+    | 'onNameCollision'
+    | 'inputMode'
+    | 'includeHiddenRoutes'
+  >
+> {
   server: McpServerInfo
   headers: {
     allowFromToolInput: string[]
@@ -471,14 +467,7 @@ export interface McpSchemaMapContext {
   kind: McpRouteKind
   route?: McpRouteOperation
   schemaLocation:
-    | 'input'
-    | 'output'
-    | 'params'
-    | 'query'
-    | 'body'
-    | 'headers'
-    | 'cookie'
-    | 'promptArgs'
+    'input' | 'output' | 'params' | 'query' | 'body' | 'headers' | 'cookie' | 'promptArgs'
 }
 
 export interface McpRouteOperation {

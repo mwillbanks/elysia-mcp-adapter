@@ -22,6 +22,7 @@ export function buildSkillDefinition(registration: ExplicitSkillRegistration): M
   return definitionFromSource(
     {
       uri: registration.uri,
+      _meta: registration.options._meta,
       skill: registration.skill,
       resources: registration.options.resources,
       directories: registration.options.directories,
@@ -61,6 +62,7 @@ export function snapshotSkillRegistration(
     skill: copyBytes(skill),
     options: {
       ...options,
+      ...(options._meta === undefined ? {} : { _meta: snapshotSkillMetadata(options._meta) }),
       resources,
       directories: options.directories ? [...options.directories] : undefined
     }
@@ -200,7 +202,12 @@ function definitionFromSource(
           digest: digest(bytes),
           size: bytes.byteLength
         }))
-  const entry: McpSkill = { uri: source.uri, frontmatter, resources }
+  const entry: McpSkill = {
+    uri: source.uri,
+    frontmatter,
+    resources,
+    ...(source._meta === undefined ? {} : { _meta: snapshotSkillMetadata(source._meta) })
+  }
   return {
     source: 'explicit',
     uri: source.uri,
@@ -673,4 +680,37 @@ function inferMimeType(path: string, binary: boolean): string {
   if (/\.json$/iu.test(path)) return 'application/json'
   if (/\.ya?ml$/iu.test(path)) return 'application/yaml'
   return 'text/plain'
+}
+
+function snapshotSkillMetadata(value: unknown): Record<string, unknown> {
+  if (!isRecord(value) || !isPlainJsonObject(value)) {
+    throw new TypeError('Skill _meta must be a JSON object')
+  }
+  return copySkillMetadataValue(value, new Set()) as Record<string, unknown>
+}
+
+function isPlainJsonObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function copySkillMetadataValue(value: unknown, ancestors: Set<object>): unknown {
+  if (isJsonScalar(value)) return value
+  if (typeof value !== 'object' || value === null || ancestors.has(value)) {
+    throw new TypeError('Skill _meta must contain only acyclic JSON values')
+  }
+  ancestors.add(value)
+  try {
+    if (Array.isArray(value)) {
+      return Array.from(value, (entry) => copySkillMetadataValue(entry, ancestors))
+    }
+    if (!isPlainJsonObject(value)) {
+      throw new TypeError('Skill _meta must contain only JSON values')
+    }
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, copySkillMetadataValue(entry, ancestors)])
+    )
+  } finally {
+    ancestors.delete(value)
+  }
 }

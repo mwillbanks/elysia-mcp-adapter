@@ -16,3 +16,5 @@ The adapter serves skill content as untrusted data. A host must identify the sou
 obtain per-skill approval, bind approval to the complete manifest, verify every read, and gate
 all local execution and permission grants. The adapter never executes a skill or resolves its
 URI through DNS or the local filesystem.
+
+Use Bun 1.4.4. The current stable Skills revision preserves optional skill `_meta`. This example checks metadata in both discovery and lookup while independently verifying exact resource digests. It enables directory reads explicitly and never executes published skills.

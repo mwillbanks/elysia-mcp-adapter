@@ -5,12 +5,12 @@ description: Provider durability, execution modes, MRTR, security, and distribut
 
 ## Extension options
 
-| Option | Meaning |
-| --- | --- |
-| `version` | `current`, `2026-07-28`, legacy `draft`, or `draft-5246bc3`. |
-| `provider` | Required durable `TaskProvider`. |
-| `defaultTtl` | Default retention in milliseconds, or `null`. |
-| `pollInterval` | Suggested client polling interval in milliseconds. |
+| Option         | Meaning                                                                       |
+| -------------- | ----------------------------------------------------------------------------- |
+| `version`      | `current`, `2026-07-28`, legacy `draft`, `draft-5246bc3`, or `draft-b3d28ac`. |
+| `provider`     | Required durable `TaskProvider`.                                              |
+| `defaultTtl`   | Default retention in milliseconds, or `null`.                                 |
+| `pollInterval` | Suggested client polling interval in milliseconds.                            |
 
 ## Execution policy
 
@@ -41,7 +41,7 @@ superseded keys without overwriting stored responses. A partial response keeps t
 `input_required` until all pending keys are satisfied.
 
 The `draft` selector remains pinned to revision `2c1425d` and its `-32003` capability error.
-Select `draft-5246bc3` for the current pinned draft and its final `-32021` error behavior.
+Select `draft-b3d28ac` for the current pinned draft and its final `-32021` error behavior.
 
 A resolved tool result—including `isError: true`—is `completed`. Use `failed` only for a JSON-RPC
 execution failure. Cancellation is cooperative and may remain pending until the executor observes

@@ -23,9 +23,9 @@ function validIdentity(value: McpInterceptorDefinition): boolean {
     Boolean(value) &&
     typeof value.name === 'string' &&
     value.name.length > 0 &&
-    typeof value.version === 'string' &&
-    value.version.length > 0 &&
-    typeof value.description === 'string'
+    (value.version === undefined ||
+      (typeof value.version === 'string' && value.version.length > 0)) &&
+    (value.description === undefined || typeof value.description === 'string')
   )
 }
 

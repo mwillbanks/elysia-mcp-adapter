@@ -66,3 +66,5 @@ bun run --cwd examples/tasks typecheck
 bun run --cwd examples/tasks test
 bun run --cwd examples/tasks smoke
 ```
+
+Use Bun 1.4.4. Stable Tasks remains the default. Select draft-b3d28ac for the current draft; draft and draft-5246bc3 retain historical codecs. Terminal tasks/get responses use resultType: "complete". Redis-backed checks require a real Redis service.

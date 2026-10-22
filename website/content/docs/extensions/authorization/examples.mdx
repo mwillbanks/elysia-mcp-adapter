@@ -20,11 +20,14 @@ them with the OAuth resource client, and maps verified claims to `McpAuthPrincip
 exercise authorization-code with PKCE, client credentials, metadata, audience, expiry, and scopes.
 
 ```ts
-plugins: [jwt(), oauthProvider({
-  loginPage: '/sign-in',
-  consentPage: '/consent',
-  validAudiences: [MCP_RESOURCE]
-})]
+plugins: [
+  jwt(),
+  oauthProvider({
+    loginPage: "/sign-in",
+    consentPage: "/consent",
+    validAudiences: [MCP_RESOURCE],
+  }),
+];
 ```
 
 ## Enterprise SSO and OAuth

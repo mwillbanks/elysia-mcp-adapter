@@ -1,6 +1,7 @@
 import { validateJsonSchema } from '../../schema/validate.js'
 import type { McpInvocationContext } from '../../types.js'
 import { assertInterceptorDefinition } from './definition-validation.js'
+import { validInterceptorConfig, validInterceptorContext } from './invocation-validation.js'
 import { normalizeInterceptorResult } from './result-validation.js'
 import type {
   McpInterceptorAuditOutcome,
@@ -34,6 +35,7 @@ export async function invokeInterceptor(
   context: McpInvocationContext
 ): Promise<McpInterceptorResult> {
   validateInterceptorInvocation(registration, invocation)
+  const isolatedInvocation = structuredClone(invocation)
   const controller = new AbortController()
   const relay = () => controller.abort(context.signal?.reason)
   if (context.signal?.aborted) {
@@ -45,10 +47,7 @@ export async function invokeInterceptor(
   try {
     const execution = Promise.resolve()
       .then(() =>
-        registration.handler(
-          { ...invocation, payload: structuredClone(invocation.payload) },
-          { ...context, signal: controller.signal }
-        )
+        registration.handler(isolatedInvocation, { ...context, signal: controller.signal })
       )
       .catch((cause) => {
         throw new McpInterceptorExecutionError(registration.definition.name, 'Handler failed', {
@@ -98,7 +97,12 @@ function validateInterceptorInvocation(
   if (invocation.timeoutMs !== undefined && !validTimeout(invocation.timeoutMs)) {
     throw new TypeError('Interceptor timeoutMs must be positive')
   }
-  validateInvocationSchema(registration, 'configSchema', invocation.config ?? {})
+  if (!validInterceptorConfig(invocation.config) || !validInterceptorContext(invocation.context)) {
+    throw new TypeError('Interceptor invocation metadata is invalid')
+  }
+  if (invocation.config !== undefined) {
+    validateInvocationSchema(registration, 'configSchema', invocation.config)
+  }
   validateInvocationSchema(registration, 'payloadSchema', invocation.payload)
 }
 

@@ -18,15 +18,15 @@ This project uses Bun as its package manager and test runner. Run these checks b
 considering a change complete:
 
 ```bash
-bun run lint       # biome (formatting + lint)
-bun run typecheck  # tsc --noEmit
+bun run lint       # bun fmt --check
+bun run typecheck  # bun check
 bun test           # bun:test suites in test/
 bun run fallow     # dead code + duplication gate
 bun run build      # TypeScript 7 ESM + d.ts output
 ```
 
 Commits are validated by husky: `commit-msg` runs commitlint (Conventional Commits) and
-`pre-commit` runs Biome on staged files. Releases are automated by release-please
+`pre-commit` runs bun fmt on staged files. Releases are automated by release-please
 (`.github/workflows/release.yml`) from Conventional Commit history.
 
 ## Source map

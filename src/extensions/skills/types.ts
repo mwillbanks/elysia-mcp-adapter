@@ -6,7 +6,8 @@ import type {
 } from '../../types.js'
 
 export const MCP_SKILLS_EXTENSION_ID = 'io.modelcontextprotocol/skills' as const
-export const MCP_SKILLS_VERSION = '167da6c0d42c247a8f8470228a10ca711e3f6c45' as const
+export const MCP_SKILLS_VERSION = 'c1aa87e4c381c82b99aa37471d0eae4ab50f9985' as const
+export const MCP_SKILLS_HISTORICAL_VERSION = '167da6c0d42c247a8f8470228a10ca711e3f6c45' as const
 
 export type McpSkillBytes = string | Uint8Array
 
@@ -18,6 +19,8 @@ export interface McpSkillResourceInput {
 export type McpSkillResourceValue = McpSkillBytes | McpSkillResourceInput
 
 export interface McpSkillRegistrationOptions {
+  /** Protocol metadata. Extension-defined keys use io.modelcontextprotocol.skills/. */
+  _meta?: Record<string, unknown>
   /** Supporting files keyed by paths relative to the skill directory. */
   resources?: Readonly<Record<string, McpSkillResourceValue>> | 'dynamic'
   /** Explicit directory resources, keyed by relative path. Empty directories are supported. */
@@ -40,12 +43,14 @@ export interface McpSkillResource {
 }
 
 export interface McpSkill {
+  _meta?: Record<string, unknown>
   uri: string
   frontmatter: { name: string; description: string; [key: string]: unknown }
   resources: McpSkillResource[] | 'dynamic'
 }
 
 export interface McpSkillSource {
+  _meta?: Record<string, unknown>
   uri: string
   skill: McpSkillBytes
   resources?: Readonly<Record<string, McpSkillResourceValue>> | 'dynamic'
@@ -110,7 +115,7 @@ export type McpSkillDynamicDirectoryReader = (
 
 export interface McpSkillsOptions {
   /** Current stable extension pin. */
-  version?: 'current' | typeof MCP_SKILLS_VERSION
+  version?: 'current' | typeof MCP_SKILLS_VERSION | typeof MCP_SKILLS_HISTORICAL_VERSION
   directoryRead?: boolean
   provider?: McpSkillProvider
   authorization?: McpAuthorizationOptions

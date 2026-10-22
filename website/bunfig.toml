@@ -1,0 +1,14 @@
+[fmt]
+printWidth = 100
+tabWidth = 2
+useTabs = false
+semi = true
+singleQuote = false
+trailingComma = "all"
+ignorePatterns = [
+  "src/routeTree.gen.ts",
+  ".output/**",
+  ".source/**",
+  "node_modules/**",
+  "patches/**",
+]

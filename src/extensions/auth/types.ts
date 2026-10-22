@@ -6,12 +6,7 @@ import type {
 export type McpAuthProfile = 'core' | 'client-credentials' | 'enterprise-managed'
 
 export type McpAuthVersion =
-  | 'current'
-  | 'draft'
-  | '2026-07-28'
-  | '2026-06-17'
-  | '2025-11-25'
-  | '2025-06-18'
+  'current' | 'draft' | '2026-07-28' | '2026-06-17' | '2025-11-25' | '2025-06-18'
 
 export interface McpAuthPrincipal {
   /** Verified token class. ID tokens, SAML assertions, and ID-JAGs are not access tokens. */
@@ -124,8 +119,7 @@ export interface McpAuthOptions {
 }
 
 export type BearerAuthorizationResult =
-  | { ok: true; token: string }
-  | { ok: false; reason: 'missing' | 'malformed' }
+  { ok: true; token: string } | { ok: false; reason: 'missing' | 'malformed' }
 
 export type McpBearerChallengeError = 'invalid_request' | 'invalid_token' | 'insufficient_scope'
 

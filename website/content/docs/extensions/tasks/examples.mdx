@@ -31,9 +31,9 @@ provider, and observes cancellation without interpolating model input into a she
 
 ```ts
 const child = Bun.spawn([process.execPath, workerPath, databasePath, taskId], {
-  stdout: 'ignore',
-  stderr: 'inherit'
-})
+  stdout: "ignore",
+  stderr: "inherit",
+});
 ```
 
 ## BullMQ provider

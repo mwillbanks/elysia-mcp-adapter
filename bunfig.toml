@@ -1,2 +1,23 @@
 [test]
 root = "./test"
+
+[fmt]
+printWidth = 100
+tabWidth = 2
+useTabs = false
+semi = false
+singleQuote = true
+trailingComma = "none"
+ignorePatterns = [
+  "test/fixtures/core-2026-07-28.schema.json",
+  "**/dist/**",
+  "**/node_modules/**",
+  "**/.output/**",
+  "**/.source/**",
+  "website/src/routeTree.gen.ts",
+  "website/patches/**"
+]
+
+[[fmt.overrides]]
+files = ["website/**"]
+options = { semi = true, singleQuote = false, trailingComma = "all" }

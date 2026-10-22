@@ -12,13 +12,15 @@ The adapter registers and validates Apps declarations; it is not an Apps host. T
 responsible for iframe sandboxing, CSP enforcement, permissions, user approvals, display modes,
 resizing, and audit logging.
 
-<Mermaid chart={`flowchart LR
+<Mermaid
+  chart={`flowchart LR
   M["Model"] --> T["Launch tool"]
   T --> R["ui:// HTML resource"]
   R --> H["Client Apps host"]
   H --> V["Sandboxed view"]
   V -->|"app-only call"| A["Elysia MCP tool"]
-  A -->|"structured result"| V`} />
+  A -->|"structured result"| V`}
+/>
 
 - [Quick Start](/docs/extensions/apps/quick-start) registers a launch tool and resource.
 - [Configuration](/docs/extensions/apps/configuration) covers metadata, visibility, and security.

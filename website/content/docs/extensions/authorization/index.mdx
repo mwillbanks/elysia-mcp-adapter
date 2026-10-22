@@ -8,7 +8,8 @@ authorization server. An external authorization server authenticates users or wo
 grants and enterprise federation, and issues an audience-bound access token. The adapter verifies
 that final token before parsing JSON-RPC and enforces scopes again at every primitive.
 
-<Mermaid chart={`sequenceDiagram
+<Mermaid
+  chart={`sequenceDiagram
   participant C as MCP client
   participant I as Enterprise IdP
   participant AS as Authorization server
@@ -19,7 +20,8 @@ that final token before parsing JSON-RPC and enforces scopes again at every prim
   AS-->>C: audience-bound access token
   C->>M: Bearer access token
   M->>M: verify signature, issuer, audience, expiry, scopes
-  M-->>C: MCP result or RFC Bearer challenge`} />
+  M-->>C: MCP result or RFC Bearer challenge`}
+/>
 
 The adapter publishes RFC 9728 Protected Resource Metadata, rejects query-string tokens and
 malformed Bearer credentials, filters unauthorized tools/resources/prompts from discovery, and

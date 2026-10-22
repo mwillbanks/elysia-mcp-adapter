@@ -5,16 +5,16 @@ description: Resource metadata, token verification, scopes, and optional authori
 
 ## Extension options
 
-| Option | Meaning |
-| --- | --- |
-| `resource` | Canonical HTTPS MCP endpoint URI; localhost HTTP is allowed for development. |
-| `authorizationServers` | Trusted authorization-server issuer URLs. |
-| `verifyAccessToken` | Async verifier returning a normalized `McpAuthPrincipal`. |
-| `scopes` | Base scopes required for every MCP request and advertised by default. |
-| `metadata` | RFC 9728 protected-resource metadata fields. |
-| `rootMetadataAlias` | Explicitly expose the origin-root well-known alias. |
-| `profiles` | Advertise Client Credentials or Enterprise-Managed Authorization. |
-| `clockSkewSeconds` | Non-negative expiry tolerance. |
+| Option                 | Meaning                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `resource`             | Canonical HTTPS MCP endpoint URI; localhost HTTP is allowed for development. |
+| `authorizationServers` | Trusted authorization-server issuer URLs.                                    |
+| `verifyAccessToken`    | Async verifier returning a normalized `McpAuthPrincipal`.                    |
+| `scopes`               | Base scopes required for every MCP request and advertised by default.        |
+| `metadata`             | RFC 9728 protected-resource metadata fields.                                 |
+| `rootMetadataAlias`    | Explicitly expose the origin-root well-known alias.                          |
+| `profiles`             | Advertise Client Credentials or Enterprise-Managed Authorization.            |
+| `clockSkewSeconds`     | Non-negative expiry tolerance.                                               |
 
 Use `authorization.requiredScopes` on tools, resources, prompts, or route MCP metadata. Unauthorized
 primitives are removed from list results and checked again during call/read/get. Missing or invalid

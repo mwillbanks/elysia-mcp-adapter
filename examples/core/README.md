@@ -20,3 +20,5 @@ Run `bun run test` for the protocol client flow. Run `bun run smoke` for discove
 completion checks. Production applications must load continuation and cursor signing keys
 from secure configuration. A host remains responsible for approving elicitation, sampling,
 roots access, and any action requested by a skill or tool.
+
+Use Bun 1.4.4. Modern MCP uses per-request metadata and server/discover; legacy initialization remains supported. Route calls preserve Elysia handling and Origin checks.

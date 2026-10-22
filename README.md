@@ -46,17 +46,13 @@ const app = new Elysia()
       }
     })
   )
-  .get(
-    '/users/:id',
-    ({ params }) => ({ id: params.id }),
-    {
-      params: t.Object({ id: t.String() }),
-      detail: {
-        operationId: 'users.get',
-        summary: 'Get a user'
-      }
+  .get('/users/:id', ({ params }) => ({ id: params.id }), {
+    params: t.Object({ id: t.String() }),
+    detail: {
+      operationId: 'users.get',
+      summary: 'Get a user'
     }
-  )
+  })
   .listen(3000)
 ```
 
@@ -88,26 +84,19 @@ Install the plugin, then register MCP-only behavior alongside your HTTP routes:
 ```ts
 const app = new Elysia()
   .use(mcp({ allowedRoutes: [] }))
-  .mcpTool(
-    'math.add',
-    ({ a, b }: { a: number; b: number }) => ({ sum: a + b }),
-    {
-      inputSchema: {
-        type: 'object',
-        properties: {
-          a: { type: 'number' },
-          b: { type: 'number' }
-        },
-        required: ['a', 'b'],
-        additionalProperties: false
-      }
+  .mcpTool('math.add', ({ a, b }: { a: number; b: number }) => ({ sum: a + b }), {
+    inputSchema: {
+      type: 'object',
+      properties: {
+        a: { type: 'number' },
+        b: { type: 'number' }
+      },
+      required: ['a', 'b'],
+      additionalProperties: false
     }
-  )
+  })
   .mcpResource('config://runtime', () => ({ environment: 'production' }))
-  .mcpPrompt(
-    'review-error',
-    ({ message }: { message: string }) => `Review this error: ${message}`
-  )
+  .mcpPrompt('review-error', ({ message }: { message: string }) => `Review this error: ${message}`)
 ```
 
 Routes become tools by default. Resources and prompts require explicit route metadata or the standalone methods above.
@@ -145,7 +134,7 @@ app.use(
 )
 ```
 
-Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks keeps `draft` pinned to revision `2c1425d` and exposes the current draft as `draft-5246bc3`, so updating upstream does not move the legacy codec. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
+Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks keeps `draft` pinned to revision `2c1425d` and exposes the current draft as `draft-b3d28ac`, so updating upstream does not move the legacy codec. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
 
 ### Modern core behavior
 
@@ -189,7 +178,7 @@ The repository includes tested, package-root examples for every extension:
 
 Server Cards are a finalized MCP extension. They publish advisory discovery metadata at `GET /mcp/server-card`. They use `application/mcp-server-card+json`, CORS, ETags, and conditional caching. Use HTTPS in production. Loopback HTTP is development-only. Cards must not contain credentials, private topology, or primitive catalogs. Clients decide whether and when to fetch them.
 
-`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. Its nested version record retains `status: 'experimental'` because that immutable record describes the originally reviewed schema snapshot.
+`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. Its selected version record also reports `status: 'stable'` under Final SEP-2127.
 
 ### Experimental extension policy
 
@@ -201,7 +190,7 @@ Legacy server variants bind discovery, selection, cursors, registries, subscript
 
 Action metadata describes destinations, sources, sensitivity, outcome, and review needs. Trust result metadata distinguishes an absent boolean from `false`. Evidence references are bounded descriptors; the adapter does not fetch them. Hosts own approval, union-strengthening, consent, evidence retrieval, and unavailable functionality. Behavioral annotations never grant authorization.
 
-Events are legacy-only and pinned to revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546`. The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
+Events are legacy-only and default to revision `d5316be214be2e76e51462069c1d67e00a5a7619`. The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
 
@@ -244,6 +233,24 @@ Documentation development runs independently from `website/` with `bun install` 
 Every finding fails the gate under the default thresholds. CI records measured Bun coverage separately
 from Fallow's estimated coverage. Installation, builds, tests, and packed-consumer checks use Bun;
 the declared Node.js compatibility floor is checked statically.
+
+## Extension revisions and toolchain
+
+Use Bun 1.4.4. `bun run lint` checks formatting with `bun fmt`; `bun run typecheck`
+uses `bun check`. Fallow remains the static analysis gate. No standalone lint package is required.
+
+Skills preserves optional JSON `_meta` on registrations and provider sources. Extension-owned keys
+use `io.modelcontextprotocol.skills/`. Resource digests still cover exact published bytes.
+Interceptors use the current `faf1583a` proposal, including timestamped invocation context,
+optional span/session identifiers, and per-call configuration validation. See the separate HTTP
+service in `examples/experimental`; local chain helpers remain local utilities.
+Events uses proposal `d5316be2` and codes `-32023` through `-32027`; explicitly selecting
+`6682596d` retains historical codes. Events and Variants remain legacy transport experiments.
+
+Apps and Enterprise-Managed Authorization are stable. Client Credentials is draft.
+Server Cards follows Final SEP-2127. Tasks exposes stable and pinned draft selections.
+File Uploads and Filesystems have no defined wire contract: they are inventoried, not implemented.
+See the website specification inventory for immutable sources, hashes, limitations, and all selectors.
 
 ## License
 

@@ -46,8 +46,10 @@ export class SqliteWebhookProvider implements McpWebhookSubscriptionProvider {
         if (!existing && count.count >= options.maxSubscriptionsPerPrincipal)
           return { limitExceeded: true } as const
         this.#database
-          .query(`INSERT INTO webhook_subscriptions(key, principal, record) VALUES (?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET principal = excluded.principal, record = excluded.record`)
+          .query(
+            `INSERT INTO webhook_subscriptions(key, principal, record) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET principal = excluded.principal, record = excluded.record`
+          )
           .run(record.key, record.principal, JSON.stringify(record))
         return { record: structuredClone(record), created: !existing }
       })

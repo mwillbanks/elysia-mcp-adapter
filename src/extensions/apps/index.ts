@@ -1,7 +1,4 @@
-export type {
-  McpAppsProtocolVersion,
-  McpAppsProtocolVersionSelector
-} from './constants.js'
+export type { McpAppsProtocolVersion, McpAppsProtocolVersionSelector } from './constants.js'
 export {
   MCP_APPS_CURRENT_PROTOCOL_VERSION,
   MCP_APPS_DRAFT_PROTOCOL_VERSION,

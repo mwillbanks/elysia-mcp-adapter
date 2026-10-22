@@ -13,18 +13,18 @@ The adapter computes directory results from static provider manifests without a 
 mcp({
   extensions: {
     skills: {
-      version: 'current',
+      version: "current",
       provider,
       directoryRead: true,
       pagination: {
         pageSize: 50,
-        signingKey: process.env.MCP_SKILLS_CURSOR_KEY!
+        signingKey: process.env.MCP_SKILLS_CURSOR_KEY!,
       },
-      cache: { cacheScope: 'private', ttlMs: 0 },
-      authorization: { requiredScopes: ['skills:read'] }
-    }
-  }
-})
+      cache: { cacheScope: "private", ttlMs: 0 },
+      authorization: { requiredScopes: ["skills:read"] },
+    },
+  },
+});
 ```
 
 Cursors are signed and bound to the request, selected server variant, and verified principal.
@@ -40,12 +40,12 @@ filesystem.
 Explicit dynamic skills use `readResource` and `readDirectory` together:
 
 ```ts
-app.mcpSkill('skill://generated/SKILL.md', skillBytes, {
-  resources: 'dynamic',
-  directories: ['empty'],
+app.mcpSkill("skill://generated/SKILL.md", skillBytes, {
+  resources: "dynamic",
+  directories: ["empty"],
   readResource: (uri) => generateResource(uri),
-  readDirectory: (uri, page) => listGeneratedDirectChildren(uri, page)
-})
+  readDirectory: (uri, page) => listGeneratedDirectChildren(uri, page),
+});
 ```
 
 The adapter adds the registered `SKILL.md` and declared directories to dynamic directory results.
@@ -61,3 +61,17 @@ Publish dynamic skills in disjoint URI namespaces.
 
 The 512-resource and 16 MiB values are interoperability recommendations. The adapter does not
 invent a mandatory server rejection above them.
+
+Skill registrations and provider sources accept optional JSON-object `_meta`. Discovery and
+`skills/get` preserve a snapshot without changing resource bytes or SHA-256 digests. Use
+`io.modelcontextprotocol.skills/` for extension-owned keys. Other application namespaces remain
+available. Cycles, non-finite numbers, functions, and non-JSON objects are rejected.
+
+```ts
+app.mcpSkill("skill://release/SKILL.md", skillBytes, {
+  _meta: { "io.modelcontextprotocol.skills/example": { category: "release" } },
+});
+```
+
+Modern calls require protocol, client information, and client capability metadata in `params._meta`.
+This request metadata is separate from a skill's optional `_meta`. The Skills example demonstrates both.

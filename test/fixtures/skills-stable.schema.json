@@ -5,6 +5,7 @@
   "required": ["uri", "frontmatter", "resources"],
   "additionalProperties": false,
   "properties": {
+    "_meta": { "type": "object", "additionalProperties": true },
     "uri": { "type": "string", "format": "uri" },
     "frontmatter": {
       "type": "object",

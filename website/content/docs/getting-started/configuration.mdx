@@ -7,61 +7,61 @@ icon: Settings2
 ```ts
 mcp({
   server: {
-    name: 'example-api',
-    version: '1.0.0',
-    title: 'Example API',
-    instructions: 'Prefer read-only tools unless mutation is requested.'
+    name: "example-api",
+    version: "1.0.0",
+    title: "Example API",
+    instructions: "Prefer read-only tools unless mutation is requested.",
   },
-  path: '/mcp',
-  allowedRoutes: '*',
-  excludedRoutes: ['/admin/*'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  defaultRouteKind: 'tool',
-  onNameCollision: 'error',
-  inputMode: 'envelope',
+  path: "/mcp",
+  allowedRoutes: "*",
+  excludedRoutes: ["/admin/*"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  defaultRouteKind: "tool",
+  onNameCollision: "error",
+  inputMode: "envelope",
   includeHiddenRoutes: false,
   headers: {
-    passThroughFromMcpRequest: ['authorization', 'cookie', 'x-api-key'],
-    allowFromToolInput: []
+    passThroughFromMcpRequest: ["authorization", "cookie", "x-api-key"],
+    allowFromToolInput: [],
   },
   marshal: {
     maxTextBytes: 262144,
     maxStructuredBytes: 262144,
     includeHttpMetadata: true,
-    binary: 'error'
+    binary: "error",
   },
   transport: {
     validateOrigin: true,
     allowedOrigins: [],
     enableGetSse: false,
     enableDeleteSession: false,
-    protocolVersion: '2025-11-25',
-    protocolVersions: ['2026-07-28', '2025-11-25']
+    protocolVersion: "2025-11-25",
+    protocolVersions: ["2026-07-28", "2025-11-25"],
   },
   core: {
     maxToolInputElements: 10000,
     cache: {
-      default: { cacheScope: 'private', ttlMs: 0 }
-    }
+      default: { cacheScope: "private", ttlMs: 0 },
+    },
   },
   diagnostics: {
-    failOnMissingSchema: false
-  }
-})
+    failOnMissingSchema: false,
+  },
+});
 ```
 
 ## Core options
 
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `path` | `/mcp` | HTTP path for the MCP transport |
-| `allowedRoutes` | `'*'` | Route matchers eligible for discovery |
-| `excludedRoutes` | `[]` | Additional matchers excluded from discovery |
-| `methods` | GET, POST, PUT, PATCH, DELETE | Eligible HTTP methods |
-| `defaultRouteKind` | `'tool'` | Default route-backed MCP primitive |
-| `onNameCollision` | `'error'` | Error or suffix duplicate registry names |
-| `inputMode` | `'envelope'` | Preserve or flatten params, query, body, and headers |
-| `includeHiddenRoutes` | `false` | Include routes hidden by Elysia metadata |
+| Option                | Default                       | Purpose                                              |
+| --------------------- | ----------------------------- | ---------------------------------------------------- |
+| `path`                | `/mcp`                        | HTTP path for the MCP transport                      |
+| `allowedRoutes`       | `'*'`                         | Route matchers eligible for discovery                |
+| `excludedRoutes`      | `[]`                          | Additional matchers excluded from discovery          |
+| `methods`             | GET, POST, PUT, PATCH, DELETE | Eligible HTTP methods                                |
+| `defaultRouteKind`    | `'tool'`                      | Default route-backed MCP primitive                   |
+| `onNameCollision`     | `'error'`                     | Error or suffix duplicate registry names             |
+| `inputMode`           | `'envelope'`                  | Preserve or flatten params, query, body, and headers |
+| `includeHiddenRoutes` | `false`                       | Include routes hidden by Elysia metadata             |
 
 ## Schema diagnostics
 

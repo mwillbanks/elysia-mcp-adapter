@@ -1,6 +1,6 @@
 import {
   eventPrincipalKey,
-  MCP_EVENTS_REVISION,
+  MCP_EVENTS_LATEST_REVISION,
   type McpAuthorizationContext,
   mcp
 } from '@mwillbanks/elysia-mcp-adapter'
@@ -56,7 +56,7 @@ export function createWebhookEventApp(
             }
           },
           events: {
-            version: MCP_EVENTS_REVISION,
+            version: MCP_EVENTS_LATEST_REVISION,
             cursor: {
               signingKey: 'example-events-cursor-signing-key-at-least-32-bytes',
               ttlMs: 60_000

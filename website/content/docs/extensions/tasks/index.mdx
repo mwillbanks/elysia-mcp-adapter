@@ -12,7 +12,8 @@ The adapter supplies protocol handling and preserves Elysia invocation semantics
 `TaskProvider` supplies durable records, execution, ownership, expiry, cancellation, and fan-out.
 There is deliberately no production in-memory provider and no task-listing method.
 
-<Mermaid chart={`sequenceDiagram
+<Mermaid
+  chart={`sequenceDiagram
   participant C as MCP client
   participant A as Elysia MCP adapter
   participant P as TaskProvider
@@ -25,7 +26,8 @@ There is deliberately no production in-memory provider and no task-listing metho
   W->>P: completed, failed, or cancelled snapshot
   C->>A: tasks/get or subscriptions/listen
   A->>P: principal-bound lookup
-  P-->>C: complete task snapshot`} />
+  P-->>C: complete task snapshot`}
+/>
 
 - [Quick Start](/docs/extensions/tasks/quick-start) creates one taskable Elysia tool.
 - [Configuration](/docs/extensions/tasks/configuration) defines provider and lifecycle contracts.

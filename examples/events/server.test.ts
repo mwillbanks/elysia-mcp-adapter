@@ -19,6 +19,11 @@ import { createWebhookEventApp } from './webhook-server.js'
 const database = `${import.meta.dir}/events-test.sqlite`
 
 describe('events example', () => {
+  test('uses current proposal error codes for unknown events', async () => {
+    const response = await rpc(app, 'events/poll', { name: 'missing', arguments: {}, cursor: null })
+    expect(response.body.error.code).toBe(-32023)
+  })
+
   test('lists, polls with a client-owned cursor, and streams event-only SSE', async () => {
     const listed = await rpc(app, 'events/list')
     expect(listed.body.result.events[0].name).toBe('com.example.build.changed')

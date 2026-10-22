@@ -27,7 +27,7 @@ Tests generate a one-day IdP certificate and private key with local `openssl` in
 
 ## Run
 
-Use Bun 1.4.2 and OpenSSL, then run from the repository root:
+Use Bun 1.4.4 and OpenSSL, then run from the repository root:
 
 ```bash
 bun run examples:setup
@@ -38,3 +38,5 @@ bun run --cwd examples/auth smoke
 ```
 
 For manual configuration, copy `.env.example`, generate a random Better Auth secret of at least 32 characters, and provide the IdP's PEM certificate. The examples use fixed loopback ports `43101` and `43102`; they do not start production services or persist the in-memory test database.
+
+Use Bun 1.4.4. The reviewed authorization contracts remain unchanged: Client Credentials is draft; Enterprise-Managed Authorization is stable. Token verification, audience binding, and credential redaction remain required.

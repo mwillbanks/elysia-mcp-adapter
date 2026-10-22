@@ -7,6 +7,8 @@ import type {
 import type { McpAuthorizationContext } from '../auth/index.js'
 
 export const MCP_EVENTS_REVISION = '6682596d65eec778fe0b8b1f43b4e89d2fe2c546' as const
+export const MCP_EVENTS_LATEST_REVISION = 'd5316be214be2e76e51462069c1d67e00a5a7619' as const
+export type McpEventsRevision = typeof MCP_EVENTS_REVISION | typeof MCP_EVENTS_LATEST_REVISION
 export const MCP_EVENTS_CAPABILITY = 'events' as const
 export const MCP_EVENT_SUBSCRIPTION_META_KEY = 'io.modelcontextprotocol/subscriptionId' as const
 
@@ -107,12 +109,7 @@ export interface McpEventCursorOptions {
 }
 
 export type McpWebhookLastError =
-  | 'connection_refused'
-  | 'timeout'
-  | 'tls_error'
-  | 'http_4xx'
-  | 'http_5xx'
-  | 'challenge_failed'
+  'connection_refused' | 'timeout' | 'tls_error' | 'http_4xx' | 'http_5xx' | 'challenge_failed'
 
 export interface McpWebhookDeliveryStatus {
   active: boolean
@@ -195,7 +192,7 @@ export interface McpEventWebhookOptions {
 }
 
 export interface McpEventsOptions {
-  version?: 'current' | typeof MCP_EVENTS_REVISION
+  version?: 'current' | McpEventsRevision
   authorization?: McpAuthorizationOptions
   provider?: McpEventProvider
   pagination?: McpPaginationOptions
@@ -209,7 +206,7 @@ export interface McpEventsOptions {
 }
 
 export interface NormalizedMcpEventsOptions extends Omit<McpEventsOptions, 'version'> {
-  version: typeof MCP_EVENTS_REVISION
+  version: McpEventsRevision
   cursor: McpEventCursorOptions & { ttlMs: number }
   heartbeatMs: number
   pollIntervalMs: number

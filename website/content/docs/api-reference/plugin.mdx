@@ -9,23 +9,23 @@ The package exposes two Elysia plugins. Use `mcp()` for the normal application s
 ## `mcp`
 
 ```ts
-function mcp(options?: McpPluginOptions): Elysia
+function mcp(options?: McpPluginOptions): Elysia;
 ```
 
 ```ts
-import { mcp } from '@mwillbanks/elysia-mcp-adapter'
-import { Elysia } from 'elysia'
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { Elysia } from "elysia";
 
 const app = new Elysia().use(
   mcp({
     server: {
-      name: 'billing-api',
-      version: '1.0.0'
+      name: "billing-api",
+      version: "1.0.0",
     },
-    path: '/mcp',
-    allowedRoutes: '*'
-  })
-)
+    path: "/mcp",
+    allowedRoutes: "*",
+  }),
+);
 ```
 
 `mcp()` installs `.mcpTool()`, `.mcpResource()`, `.mcpPrompt()`, `.mcpSkill()`, `.mcpInterceptor()`, and `.mcpEvent()`, discovers eligible routes, and mounts the JSON-RPC transport.
@@ -63,13 +63,13 @@ Skill handlers serve registered bytes or delegate to `McpSkillProvider`. Interce
 Route handlers can read the current MCP call without accepting model-controlled headers:
 
 ```ts
-import { getMcpInvocationContext } from '@mwillbanks/elysia-mcp-adapter'
+import { getMcpInvocationContext } from "@mwillbanks/elysia-mcp-adapter";
 
-new Elysia().post('/report', ({ request }) => {
-  const invocation = getMcpInvocationContext(request)
-  invocation?.reportProgress?.({ progress: 1, total: 1, message: 'complete' })
-  return { inputResponses: invocation?.inputResponses }
-})
+new Elysia().post("/report", ({ request }) => {
+  const invocation = getMcpInvocationContext(request);
+  invocation?.reportProgress?.({ progress: 1, total: 1, message: "complete" });
+  return { inputResponses: invocation?.inputResponses };
+});
 ```
 
 `getMcpInvocationContext()` returns data only for the internal request that the adapter passes to `app.handle()`. The adapter removes the association after the route finishes.
@@ -89,14 +89,14 @@ Annotations tell MCP clients about behavioral properties. They do not replace ap
 ## `withMcpMethods`
 
 ```ts
-function withMcpMethods(): Elysia
+function withMcpMethods(): Elysia;
 ```
 
 ```ts
 new Elysia()
   .use(withMcpMethods())
-  .mcpTool('health.read', () => ({ ok: true }))
-  .use(mcp())
+  .mcpTool("health.read", () => ({ ok: true }))
+  .use(mcp());
 ```
 
 The plugin augments the Elysia instance without mounting `/mcp`. A later `mcp()` call reuses those explicit registrations and adds the endpoint.
@@ -106,8 +106,8 @@ The plugin augments the Elysia instance without mounting `/mcp`. A later `mcp()`
 The package also exports:
 
 ```ts
-function sanitizeMcpName(value: string): string
-function defaultOperationNameResolver(operation: McpRouteOperation): string
+function sanitizeMcpName(value: string): string;
+function defaultOperationNameResolver(operation: McpRouteOperation): string;
 ```
 
 `sanitizeMcpName()` converts an arbitrary name into the MCP-compatible form. `defaultOperationNameResolver()` prefers `detail.operationId`, then derives a stable name from the HTTP method and path.

@@ -1,8 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 export type WebhookVerification =
-  | { accepted: true; duplicate: boolean }
-  | { accepted: false; duplicate: false }
+  { accepted: true; duplicate: boolean } | { accepted: false; duplicate: false }
 
 export class StandardWebhookReceiver {
   readonly #seen = new Map<string, number>()

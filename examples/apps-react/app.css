@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   color-scheme: light dark;
@@ -28,7 +28,7 @@ body {
   background: color-mix(in srgb, currentColor 5%, transparent);
 }
 
-.task[data-done="true"] span {
+.task[data-done='true'] span {
   color: var(--color-muted);
   text-decoration: line-through;
 }

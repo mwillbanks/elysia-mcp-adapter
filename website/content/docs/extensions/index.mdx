@@ -9,29 +9,32 @@ thin, opt-in protocol layers around the same Elysia application. Route-backed op
 pass through Elysia validation, hooks, guards, error handling, and response mapping.
 
 ```ts
-import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
 
-app.use(mcp({
-  transport: {
-    protocolVersions: ['2026-07-28', '2025-11-25']
-  },
-  extensions: {
-    tasks: { version: 'current', provider },
-    auth: {
-      version: 'current',
-      resource: 'https://api.example.com/mcp',
-      authorizationServers: ['https://auth.example.com'],
-      verifyAccessToken
+app.use(
+  mcp({
+    transport: {
+      protocolVersions: ["2026-07-28", "2025-11-25"],
     },
-    apps: { version: 'current' },
-    skills: { version: 'current', directoryRead: true }
-  }
-}))
+    extensions: {
+      tasks: { version: "current", provider },
+      auth: {
+        version: "current",
+        resource: "https://api.example.com/mcp",
+        authorizationServers: ["https://auth.example.com"],
+        verifyAccessToken,
+      },
+      apps: { version: "current" },
+      skills: { version: "current", directoryRead: true },
+    },
+  }),
+);
 ```
 
 ## Architecture
 
-<Mermaid chart={`flowchart LR
+<Mermaid
+  chart={`flowchart LR
   C["MCP client"] --> T["MCP HTTP transport"]
   T --> D["Protocol and extension dispatcher"]
   D --> R["Elysia registry and route lifecycle"]
@@ -40,20 +43,21 @@ app.use(mcp({
   D --> AV["Access-token verifier"]
   AV --> AS["External authorization server"]
   D --> UR["Apps ui:// resource"]
-  UR --> H["Sandboxed client host"]`} />
+  UR --> H["Sandboxed client host"]`}
+/>
 
 ## Implemented extensions and versions
 
-`current` selects the reviewed stable implementation when one exists. `draft` selects the newest
-reviewed draft pinned by this release. A supported `YYYY-MM-DD` is immutable, and omitting
+`current` selects the accepted implementation, whose maturity appears in the table. Draft selectors
+are extension-specific: Tasks preserves legacy `draft` and names its current draft `draft-b3d28ac`. A supported `YYYY-MM-DD` is immutable, and omitting
 `version` means `current`. Unsupported versions fail during plugin construction.
 
 <ExtensionSupportTable />
 
 The table is generated from the package's exported `MCP_EXTENSION_SUPPORT` manifest. Every pin
 records its inclusion date, upstream revision or package version, specification path, status, and
-schema hash. Aliases move only through reviewed source, fixtures, tests, and documentation; the
-upstream watcher reports drift but never changes an alias automatically.
+schema hash. Aliases move only through reviewed source, fixtures, tests, and documentation. The
+manual drift check reports upstream changes but never changes an alias automatically.
 
 ## Tasks
 
@@ -82,3 +86,13 @@ directory reads, binary resources, and scalable providers explicitly configured.
 Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
 
 Client implementations vary. Use the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) when deciding which capabilities to enable.
+
+## Experimental and undefined contracts
+
+[Interceptors](/docs/extensions/experimental/interceptors), [Events](/docs/extensions/experimental/events),
+[Variants](/docs/extensions/experimental/server-variants), and
+[annotations](/docs/extensions/experimental/annotations) remain opt-in experiments.
+[Server Cards](/docs/extensions/server-card) is stable under Final SEP-2127.
+Client Credentials is draft; Enterprise-Managed Authorization is stable.
+File Uploads and Filesystems have no defined wire contract and are not implemented.
+The [specification inventory](/docs/extensions/specification-inventory) records all reviewed sources.

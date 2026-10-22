@@ -11,24 +11,24 @@ The adapter selects MCP `2026-07-28` by default. Every modern POST includes matc
 Tools, resource reads, and prompts can return `McpInputRequiredResult`. The client fulfills declared elicitation, sampling, or roots requests. It retries the original method with `inputResponses` and the exact `requestState`.
 
 ```ts
-app.mcpTool('profile', (_input, context) => {
-  const answer = context.inputResponses?.profile
-  if (answer) return { answer, state: context.requestState }
+app.mcpTool("profile", (_input, context) => {
+  const answer = context.inputResponses?.profile;
+  if (answer) return { answer, state: context.requestState };
   return {
-    resultType: 'input_required',
+    resultType: "input_required",
     inputRequests: {
       profile: {
-        method: 'elicitation/create',
+        method: "elicitation/create",
         params: {
-          mode: 'form',
-          message: 'Confirm the profile',
-          requestedSchema: { type: 'object', properties: {} }
-        }
-      }
+          mode: "form",
+          message: "Confirm the profile",
+          requestedSchema: { type: "object", properties: {} },
+        },
+      },
     },
-    requestState: 'application state'
-  }
-})
+    requestState: "application state",
+  };
+});
 ```
 
 Configure `core.continuation.signingKey` to bind state to its principal, expiry, method, request parameters, and selected variant. Set `singleUse: true` only with a `McpContinuationProvider`. The provider records consumption durably. Without signing configuration, handlers treat state as attacker-controlled.
