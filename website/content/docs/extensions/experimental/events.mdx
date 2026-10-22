@@ -3,14 +3,14 @@ title: Events
 summary: Poll, stream, and deliver durable experimental events.
 ---
 
-Events are opt-in and pinned to revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546`. They require legacy-only transport configuration:
+Events are opt-in and pinned to revision `d5316be214be2e76e51462069c1d67e00a5a7619`. They require legacy-only transport configuration:
 
 ```ts
 mcp({
   transport: { protocolVersions: ["2025-11-25"] },
   extensions: {
     events: {
-      version: "6682596d65eec778fe0b8b1f43b4e89d2fe2c546",
+      version: "d5316be214be2e76e51462069c1d67e00a5a7619",
       cursor: { signingKey: process.env.MCP_EVENT_CURSOR_KEY! },
       heartbeatMs: 15_000,
       maxEvents: 100,
@@ -41,3 +41,19 @@ Hosts own subscription approval, callback allowlists, secret custody, replay rec
 Only one adapter instance may actively own a recovered subscription. The example demonstrates sequential process restart. Applications that share a durable provider across processes must supply external single-owner routing or leadership; the provider contract does not define distributed leases or compare-and-swap fencing.
 
 See [`examples/events`](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events) for Bun SQLite durability, a minimal protocol client, SSE, real subscribe/refresh/unsubscribe requests, signed TLS delivery, and recovery in a separate adapter process.
+
+## Revision compatibility
+
+`current` selects the proposal above. Polling, streams, webhooks, and provider failures use these codes:
+
+| Meaning                 | Current code | Historical code |
+| ----------------------- | ------------ | --------------- |
+| Not found               | `-32023`     | `-32011`        |
+| Forbidden               | `-32024`     | `-32012`        |
+| Resource exhausted      | `-32025`     | `-32013`        |
+| Unsupported             | `-32026`     | `-32014`        |
+| Callback endpoint error | `-32027`     | `-32015`        |
+
+Select `6682596d65eec778fe0b8b1f43b4e89d2fe2c546` explicitly to retain historical codes.
+Errors remain sanitized, and terminal stream messages retain the selected revision's codes.
+These experimental revisions remain limited to legacy transport; modern request support is not advertised.

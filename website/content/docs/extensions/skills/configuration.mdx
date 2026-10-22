@@ -61,3 +61,17 @@ Publish dynamic skills in disjoint URI namespaces.
 
 The 512-resource and 16 MiB values are interoperability recommendations. The adapter does not
 invent a mandatory server rejection above them.
+
+Skill registrations and provider sources accept optional JSON-object `_meta`. Discovery and
+`skills/get` preserve a snapshot without changing resource bytes or SHA-256 digests. Use
+`io.modelcontextprotocol.skills/` for extension-owned keys. Other application namespaces remain
+available. Cycles, non-finite numbers, functions, and non-JSON objects are rejected.
+
+```ts
+app.mcpSkill("skill://release/SKILL.md", skillBytes, {
+  _meta: { "io.modelcontextprotocol.skills/example": { category: "release" } },
+});
+```
+
+Modern calls require protocol, client information, and client capability metadata in `params._meta`.
+This request metadata is separate from a skill's optional `_meta`. The Skills example demonstrates both.

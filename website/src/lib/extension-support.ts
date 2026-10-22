@@ -81,6 +81,23 @@ export function getExtensionSupportRows(): ExtensionSupportRow[] {
         record,
       })),
     },
+    ...(
+      [
+        ["Skills", support.skills],
+        ["Server Cards", support.serverCard],
+        ["Interceptors", support.interceptors],
+        ["Server Variants", support.variants],
+        ["Events", support.events],
+        ["Action metadata", support.actionMetadata],
+        ["Trust annotations", support.trustAnnotations],
+      ] as const
+    ).map(([extension, profile]) => ({
+      extension,
+      identifier: profile.identifier,
+      current: profile.current,
+      draft: "—",
+      versions: Object.entries(profile.versions).map(([version, record]) => ({ version, record })),
+    })),
   ];
 }
 

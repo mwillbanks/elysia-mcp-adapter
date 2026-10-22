@@ -21,3 +21,5 @@ bun run server.ts
 
 The bounded host fixture in `../apps-host-fixture.ts` is protocol test infrastructure. Its tests
 also connect the v2 `App` and `AppBridge` through SDK in-memory transports.
+
+Use Bun 1.4.4. The reviewed Apps stable 2026-01-26 and draft contracts remain supported. Host approval, CSP, resource authorization, and UI permissions remain explicit.

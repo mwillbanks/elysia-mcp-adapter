@@ -37,6 +37,19 @@ async function rpc(app: Elysia, method: string, params: Record<string, unknown> 
 export async function verifyPublishedSkill(app: Elysia): Promise<void> {
   await verifyCapabilities(app)
   const entries = await collectSkills(app)
+  if (
+    !entries.some(
+      (entry) => entry._meta?.['io.modelcontextprotocol.skills/example']?.category === 'release'
+    )
+  ) {
+    throw new Error('Skill metadata was not preserved in discovery')
+  }
+  const direct = await rpc(app, 'skills/get', { uri: 'skill://release-helper/SKILL.md' })
+  if (
+    direct.result.skill._meta?.['io.modelcontextprotocol.skills/example']?.category !== 'release'
+  ) {
+    throw new Error('Skill metadata was not preserved in lookup')
+  }
   let verifiedEmptyResource = false
   for (const entry of entries) {
     if (!Array.isArray(entry.resources)) throw new Error('Example requires static manifests')
@@ -65,6 +78,7 @@ interface ManifestResource {
   digest: string
 }
 interface SkillEntry {
+  _meta?: Record<string, { category?: string }>
   resources?: ManifestResource[]
 }
 

@@ -41,6 +41,18 @@ describe("extension documentation", () => {
     expect(docs).not.toMatch(/claude|cursor|chatgpt|visual studio code/i);
   });
 
+  test("documents current revisions and undefined experiments without implementation claims", () => {
+    expect(read("specification-inventory.mdx")).toContain("2026-10-22");
+    expect(read("specification-inventory.mdx")).toContain(
+      "File Uploads and Filesystems are undefined experiments",
+    );
+    expect(read("experimental/interceptors.mdx")).toContain("interceptor-service.ts");
+    expect(read("experimental/events.mdx")).toContain("-32027");
+    expect(read("skills/configuration.mdx")).toContain("io.modelcontextprotocol.skills/");
+    expect(read("tasks/configuration.mdx")).toContain("draft-b3d28ac");
+    expect(read("server-card.mdx")).not.toContain("status: 'experimental'");
+  });
+
   test("links every documented repository example to an implemented directory", () => {
     for (const path of [
       "examples/tasks/subprocess",
@@ -49,6 +61,10 @@ describe("extension documentation", () => {
       "examples/auth/enterprise",
       "examples/apps-vanilla",
       "examples/apps-react",
+      "examples/core",
+      "examples/skills",
+      "examples/experimental",
+      "examples/events",
     ]) {
       expect(existsSync(resolve(repositoryRoot, path))).toBe(true);
     }

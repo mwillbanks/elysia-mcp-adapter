@@ -21,3 +21,5 @@ The restart demonstration is sequential and preserves one active adapter instanc
 Run `bun --bun run typecheck`, `bun --bun run test`, `bun --bun run build`, and `bun --bun run smoke`.
 
 The production webhook transport keeps HTTPS certificate verification enabled. Private callback addresses require `environment: 'development'` and `allowPrivateAddresses: true`. Clients persist replay cursors; providers do not store them.
+
+Use Bun 1.4.4. The sample selects current proposal `d5316be214be2e76e51462069c1d67e00a5a7619`, including errors `-32023` through `-32027`. Explicit historical revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546` retains `-32011` through `-32015`. Both require legacy-only transport. No modern Events capability is advertised.

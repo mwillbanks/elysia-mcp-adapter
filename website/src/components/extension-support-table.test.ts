@@ -12,6 +12,13 @@ describe("extension support table", () => {
       MCP_EXTENSION_SUPPORT.auth.clientCredentials.identifier,
       MCP_EXTENSION_SUPPORT.auth.enterpriseManagedAuthorization.identifier,
       MCP_EXTENSION_SUPPORT.apps.identifier,
+      MCP_EXTENSION_SUPPORT.skills.identifier,
+      MCP_EXTENSION_SUPPORT.serverCard.identifier,
+      MCP_EXTENSION_SUPPORT.interceptors.identifier,
+      MCP_EXTENSION_SUPPORT.variants.identifier,
+      MCP_EXTENSION_SUPPORT.events.identifier,
+      MCP_EXTENSION_SUPPORT.actionMetadata.identifier,
+      MCP_EXTENSION_SUPPORT.trustAnnotations.identifier,
     ]);
     expect(rows.find(({ extension }) => extension === "Apps")).toMatchObject({
       current: MCP_EXTENSION_SUPPORT.apps.current,

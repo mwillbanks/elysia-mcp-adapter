@@ -48,8 +48,8 @@ app.use(
 
 ## Implemented extensions and versions
 
-`current` selects the reviewed stable implementation when one exists. `draft` selects the newest
-reviewed draft pinned by this release. A supported `YYYY-MM-DD` is immutable, and omitting
+`current` selects the accepted implementation, whose maturity appears in the table. Draft selectors
+are extension-specific: Tasks preserves legacy `draft` and names its current draft `draft-b3d28ac`. A supported `YYYY-MM-DD` is immutable, and omitting
 `version` means `current`. Unsupported versions fail during plugin construction.
 
 <ExtensionSupportTable />
@@ -86,3 +86,13 @@ directory reads, binary resources, and scalable providers explicitly configured.
 Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
 
 Client implementations vary. Use the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) when deciding which capabilities to enable.
+
+## Experimental and undefined contracts
+
+[Interceptors](/docs/extensions/experimental/interceptors), [Events](/docs/extensions/experimental/events),
+[Variants](/docs/extensions/experimental/server-variants), and
+[annotations](/docs/extensions/experimental/annotations) remain opt-in experiments.
+[Server Cards](/docs/extensions/server-card) is stable under Final SEP-2127.
+Client Credentials is draft; Enterprise-Managed Authorization is stable.
+File Uploads and Filesystems have no defined wire contract and are not implemented.
+The [specification inventory](/docs/extensions/specification-inventory) records all reviewed sources.

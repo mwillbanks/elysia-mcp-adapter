@@ -1,4 +1,4 @@
-import { MCP_EVENTS_REVISION, mcp } from '@mwillbanks/elysia-mcp-adapter'
+import { MCP_EVENTS_LATEST_REVISION, mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia } from 'elysia'
 import { InMemoryEventHistory } from './event-source.js'
 
@@ -19,7 +19,7 @@ function createEventApp() {
         },
         extensions: {
           events: {
-            version: MCP_EVENTS_REVISION,
+            version: MCP_EVENTS_LATEST_REVISION,
             cursor: {
               signingKey: 'example-events-cursor-signing-key-at-least-32-bytes',
               ttlMs: 60_000
