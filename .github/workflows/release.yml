@@ -3,11 +3,18 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published GitHub release tag to publish to npm
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   release:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,13 +29,15 @@ jobs:
 
   publish:
     needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.release_created == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
       - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: 1.4.4
@@ -37,6 +46,41 @@ jobs:
           node-version: 26.10
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
+      - name: Verify existing release for manual publication
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_API_URL: ${{ github.api_url }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const expectedTag = `${name.replace(/^@[^/]+\//, '')}-v${version}`;
+          const tag = process.env.RELEASE_TAG;
+          if (name !== '@mwillbanks/elysia-mcp-adapter' || tag !== expectedTag) {
+            throw new Error('Release tag must match the checked-out adapter package version');
+          }
+
+          const response = await fetch(
+            `${process.env.GH_API_URL}/repos/${process.env.GH_REPOSITORY}/releases/tags/${encodeURIComponent(tag)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28'
+              }
+            }
+          );
+          if (!response.ok) throw new Error(`Release lookup failed: ${response.status}`);
+          const release = await response.json();
+          if (release.tag_name !== tag || release.draft !== false || release.prerelease !== false) {
+            throw new Error('Manual publication requires an existing final published GitHub release');
+          }
+          NODE
+      - run: bun link
       - run: bun ci
       - run: bun --bun run build
       - run: npm publish --access public --ignore-scripts
