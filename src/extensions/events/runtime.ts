@@ -10,6 +10,7 @@ import {
   eventPrincipalKey,
   eventVariantKey
 } from './cursor.js'
+import { MCP_EVENTS_LATEST_REVISION } from './types.js'
 import { abortableDelay } from './delay.js'
 import { McpWebhookNetworkError, parseWebhookUrl } from './network.js'
 import {
@@ -73,45 +74,47 @@ export async function listEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  const config = eventOptions(options)
-  await authorizeExtension(config, context)
-  if (params.cursor !== undefined && !config.pagination)
-    throw invalidParams('Events pagination is not configured')
-  const offset = config.pagination
-    ? decodeCursor(params.cursor, 'events/list', params, context, options, config.pagination)
-    : 0
-  const local = [...(getMcpRegistry(app, options).events?.values() ?? [])]
-  const visibleLocal = local
-    .map(({ definition }) => definition)
-    .filter((definition) => hasScopes(definition.authorization, context))
-  const pageSize = config.pagination?.pageSize
-  const page =
-    offset < visibleLocal.length
-      ? localEventPage(visibleLocal, offset, pageSize, config)
-      : await providerEventPage(
-          local,
-          visibleLocal.length,
-          offset,
-          pageSize,
-          config,
-          request,
-          context
-        )
-  return {
-    events: page.events,
-    ...(page.nextOffset !== undefined && config.pagination
-      ? {
-          nextCursor: encodeCursor(
-            'events/list',
-            page.nextOffset,
-            params,
-            context,
-            options,
-            config.pagination
+  return eventOperation(options, async () => {
+    const config = eventOptions(options)
+    await authorizeExtension(config, context)
+    if (params.cursor !== undefined && !config.pagination)
+      throw invalidParams('Events pagination is not configured')
+    const offset = config.pagination
+      ? decodeCursor(params.cursor, 'events/list', params, context, options, config.pagination)
+      : 0
+    const local = [...(getMcpRegistry(app, options).events?.values() ?? [])]
+    const visibleLocal = local
+      .map(({ definition }) => definition)
+      .filter((definition) => hasScopes(definition.authorization, context))
+    const pageSize = config.pagination?.pageSize
+    const page =
+      offset < visibleLocal.length
+        ? localEventPage(visibleLocal, offset, pageSize, config)
+        : await providerEventPage(
+            local,
+            visibleLocal.length,
+            offset,
+            pageSize,
+            config,
+            request,
+            context
           )
-        }
-      : {})
-  }
+    return {
+      events: page.events,
+      ...(page.nextOffset !== undefined && config.pagination
+        ? {
+            nextCursor: encodeCursor(
+              'events/list',
+              page.nextOffset,
+              params,
+              context,
+              options,
+              config.pagination
+            )
+          }
+        : {})
+    }
+  })
 }
 
 interface EventListPage {
@@ -209,16 +212,18 @@ export async function pollEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  const prepared = await prepareEventRequest(app, params, 'poll', options, context)
-  const result = await pollSource(prepared.source, prepared.request, context, options)
-  if (result.terminated) throw eventError(result.terminated)
-  if (prepared.initial) {
-    result.events = []
-    result.hasMore = false
-  }
-  if (prepared.cursorExpired) result.truncated = true
-  await renewPollLease(app, prepared, context, options)
-  return serializePollResult(result, prepared, context, options, false)
+  return eventOperation(options, async () => {
+    const prepared = await prepareEventRequest(app, params, 'poll', options, context)
+    const result = await pollSource(prepared.source, prepared.request, context, options)
+    if (result.terminated) throw eventError(result.terminated)
+    if (prepared.initial) {
+      result.events = []
+      result.hasMore = false
+    }
+    if (prepared.cursorExpired) result.truncated = true
+    await renewPollLease(app, prepared, context, options)
+    return serializePollResult(result, prepared, context, options, false)
+  })
 }
 
 export async function streamEvents(
@@ -228,51 +233,53 @@ export async function streamEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Response> {
-  const prepared = await prepareEventRequest(app, params, 'push', options, context)
-  const initial = await pollSource(prepared.source, prepared.request, context, options)
-  if (initial.terminated) throw eventError(initial.terminated)
-  if (prepared.initial) {
-    initial.events = []
-    initial.hasMore = false
-  }
-  if (prepared.cursorExpired) initial.truncated = true
-  await prepared.source.definition.onSubscribe?.(
-    prepared.request.arguments,
-    String(parentId),
-    context
-  )
-  const originalDescriptor = eventDescriptor(prepared.source.definition)
-  const abort = new AbortController()
-  const relay = () => abort.abort(context.signal?.reason)
-  if (context.signal?.aborted) abort.abort(context.signal.reason)
-  else context.signal?.addEventListener('abort', relay, { once: true })
-  let session: EventStreamSession | undefined
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      session = createEventStreamSession(
-        app,
-        parentId,
-        options,
-        context,
-        prepared,
-        initial,
-        originalDescriptor,
-        abort,
-        relay,
-        controller
-      )
-      void runEventStream(session)
-    },
-    async cancel() {
-      if (session) await cleanupEventStream(session)
+  return eventOperation(options, async () => {
+    const prepared = await prepareEventRequest(app, params, 'push', options, context)
+    const initial = await pollSource(prepared.source, prepared.request, context, options)
+    if (initial.terminated) throw eventError(initial.terminated)
+    if (prepared.initial) {
+      initial.events = []
+      initial.hasMore = false
     }
-  })
-  return new Response(stream, {
-    headers: {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive'
-    }
+    if (prepared.cursorExpired) initial.truncated = true
+    await prepared.source.definition.onSubscribe?.(
+      prepared.request.arguments,
+      String(parentId),
+      context
+    )
+    const originalDescriptor = eventDescriptor(prepared.source.definition)
+    const abort = new AbortController()
+    const relay = () => abort.abort(context.signal?.reason)
+    if (context.signal?.aborted) abort.abort(context.signal.reason)
+    else context.signal?.addEventListener('abort', relay, { once: true })
+    let session: EventStreamSession | undefined
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        session = createEventStreamSession(
+          app,
+          parentId,
+          options,
+          context,
+          prepared,
+          initial,
+          originalDescriptor,
+          abort,
+          relay,
+          controller
+        )
+        void runEventStream(session)
+      },
+      async cancel() {
+        if (session) await cleanupEventStream(session)
+      }
+    })
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive'
+      }
+    })
   })
 }
 
@@ -392,7 +399,7 @@ async function resolveEventStreamSource(session: EventStreamSession): Promise<Ev
     sendEventStream(
       session,
       eventNotification('terminated', {
-        error: terminationForResolution(error),
+        error: revisionEventError(terminationForResolution(error), eventOptions(session.options)),
         _meta: session.meta
       })
     )
@@ -413,7 +420,7 @@ function validateEventStreamSource(session: EventStreamSession, current: EventSo
     session,
     eventNotification('terminated', {
       error: {
-        code: -32014,
+        code: eventErrorCode(-32014, eventOptions(session.options)),
         message: 'Unsupported',
         data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
       },
@@ -438,7 +445,10 @@ async function pollCurrentEventStreamSource(
     if (result.terminated) {
       sendEventStream(
         session,
-        eventNotification('terminated', { error: result.terminated, _meta: session.meta })
+        eventNotification('terminated', {
+          error: revisionEventError(result.terminated, eventOptions(session.options)),
+          _meta: session.meta
+        })
       )
       return { stop: true, serverClosed: true, nextPollMs: previousNextPollMs }
     }
@@ -554,30 +564,34 @@ export async function subscribeEventsWebhook(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  const { config, webhook, principal } = webhookRequestEnvironment(options, context)
-  const prepared = await prepareEventRequest(app, params, 'webhook', options, context)
-  const delivery = parseWebhookDelivery(params.delivery)
-  const identity = deriveWebhookSubscriptionIdentity(
-    principal,
-    delivery.url,
-    prepared.request.name,
-    prepared.request.arguments,
-    config.cursor.signingKey,
-    prepared.variant
-  )
-  const request: WebhookSubscriptionRequest = {
-    app,
-    params,
-    options,
-    context,
-    config,
-    webhook,
-    principal,
-    prepared,
-    delivery,
-    identity
-  }
-  return withWebhookLifecycleLock(app, options, identity.id, () => subscribeWebhookLocked(request))
+  return eventOperation(options, async () => {
+    const { config, webhook, principal } = webhookRequestEnvironment(options, context)
+    const prepared = await prepareEventRequest(app, params, 'webhook', options, context)
+    const delivery = parseWebhookDelivery(params.delivery)
+    const identity = deriveWebhookSubscriptionIdentity(
+      principal,
+      delivery.url,
+      prepared.request.name,
+      prepared.request.arguments,
+      config.cursor.signingKey,
+      prepared.variant
+    )
+    const request: WebhookSubscriptionRequest = {
+      app,
+      params,
+      options,
+      context,
+      config,
+      webhook,
+      principal,
+      prepared,
+      delivery,
+      identity
+    }
+    return withWebhookLifecycleLock(app, options, identity.id, () =>
+      subscribeWebhookLocked(request)
+    )
+  })
 }
 
 interface WebhookDeliveryInput {
@@ -968,28 +982,30 @@ export async function unsubscribeEventsWebhook(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, never>> {
-  const { config, webhook, principal } = webhookRequestEnvironment(options, context)
-  const tuple = parseWebhookUnsubscribeTuple(params)
-  const identity = deriveWebhookSubscriptionIdentity(
-    principal,
-    tuple.url,
-    tuple.name,
-    tuple.arguments,
-    config.cursor.signingKey,
-    eventVariantKey(context.meta)
-  )
-  const request: WebhookUnsubscribeRequest = {
-    app,
-    options,
-    context,
-    webhook,
-    principal,
-    tuple,
-    identity
-  }
-  return withWebhookLifecycleLock(app, options, identity.id, () =>
-    unsubscribeWebhookLocked(request)
-  )
+  return eventOperation(options, async () => {
+    const { config, webhook, principal } = webhookRequestEnvironment(options, context)
+    const tuple = parseWebhookUnsubscribeTuple(params)
+    const identity = deriveWebhookSubscriptionIdentity(
+      principal,
+      tuple.url,
+      tuple.name,
+      tuple.arguments,
+      config.cursor.signingKey,
+      eventVariantKey(context.meta)
+    )
+    const request: WebhookUnsubscribeRequest = {
+      app,
+      options,
+      context,
+      webhook,
+      principal,
+      tuple,
+      identity
+    }
+    return withWebhookLifecycleLock(app, options, identity.id, () =>
+      unsubscribeWebhookLocked(request)
+    )
+  })
 }
 
 interface WebhookUnsubscribeTuple {
@@ -1340,7 +1356,8 @@ async function authorizeWebhookWorkerCycle(
       worker.record,
       forbiddenError(),
       worker.webhook,
-      worker.state.abort.signal
+      worker.state.abort.signal,
+      eventOptions(worker.options)
     )
     markWebhookWorkerTerminal(worker)
     return null
@@ -1371,7 +1388,8 @@ async function resolveWebhookWorkerSource(
       worker.record,
       terminationForResolution(error),
       worker.webhook,
-      worker.state.abort.signal
+      worker.state.abort.signal,
+      eventOptions(worker.options)
     )
     markWebhookWorkerTerminal(worker)
     return null
@@ -1400,7 +1418,8 @@ async function acceptWebhookWorkerDescriptor(
       data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
     },
     worker.webhook,
-    worker.state.abort.signal
+    worker.state.abort.signal,
+    eventOptions(worker.options)
   )
   markWebhookWorkerTerminal(worker)
   return false
@@ -1420,7 +1439,8 @@ async function processWebhookWorkerBatchSafely(
         worker.record,
         result.terminated,
         worker.webhook,
-        worker.state.abort.signal
+        worker.state.abort.signal,
+        eventOptions(worker.options)
       )
       markWebhookWorkerTerminal(worker)
       return 'terminal'
@@ -1575,7 +1595,8 @@ async function handleWebhookWorkerBatchError(
       worker.record,
       forbiddenError(),
       worker.webhook,
-      worker.state.abort.signal
+      worker.state.abort.signal,
+      eventOptions(worker.options)
     )
     markWebhookWorkerTerminal(worker)
     return 'terminal'
@@ -1585,7 +1606,8 @@ async function handleWebhookWorkerBatchError(
       worker.record,
       { code: -32603, message: 'UpstreamError' },
       worker.webhook,
-      worker.state.abort.signal
+      worker.state.abort.signal,
+      eventOptions(worker.options)
     )
     markWebhookWorkerTerminal(worker)
     return 'terminal'
@@ -1731,12 +1753,13 @@ async function terminateWebhook(
   record: McpWebhookSubscriptionRecord,
   error: McpEventError,
   webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  config: NormalizedMcpEventsOptions
 ): Promise<void> {
   try {
     await deliverWebhook(
       record,
-      { type: 'terminated', error },
+      { type: 'terminated', error: revisionEventError(error, config) },
       webhookControlMessageId('terminated'),
       webhook,
       signal
@@ -2005,8 +2028,9 @@ function eventNotification(type: string, params: Record<string, unknown>) {
 
 function terminationForResolution(error: unknown): McpEventError {
   if (error instanceof McpEventProtocolError) {
-    if (error.code === -32012) return forbiddenError()
-    if (error.code === -32011) return { code: -32011, message: 'NotFound', data: { kind: 'event' } }
+    if (error.code === -32012 || error.code === -32024) return forbiddenError()
+    if (error.code === -32011 || error.code === -32023)
+      return { code: -32011, message: 'NotFound', data: { kind: 'event' } }
   }
   return { code: -32603, message: 'UpstreamError' }
 }
@@ -2033,4 +2057,43 @@ function internalError(message: string): McpEventProtocolError {
 
 function eventError(error: McpEventError): McpEventProtocolError {
   return new McpEventProtocolError(error.code, error.message, error.data)
+}
+
+// Internal errors use the historical vocabulary. Only protocol error boundaries translate
+// codes, so event payloads and unrelated JSON-RPC errors retain their original values.
+function eventErrorCode(code: number, config: NormalizedMcpEventsOptions): number {
+  const historical = code <= -32023 && code >= -32027 ? code + 12 : code
+  return config.version === MCP_EVENTS_LATEST_REVISION &&
+    historical <= -32011 &&
+    historical >= -32015
+    ? historical - 12
+    : historical
+}
+
+function revisionEventError(
+  error: McpEventError,
+  config: NormalizedMcpEventsOptions
+): McpEventError {
+  return { ...error, code: eventErrorCode(error.code, config) }
+}
+
+async function eventOperation<T>(
+  options: NormalizedMcpPluginOptions,
+  operation: () => Promise<T>
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof McpEventProtocolError) {
+      const config = options.extensions.events
+      if (!config) throw error
+      throw new McpEventProtocolError(
+        eventErrorCode(error.code, config),
+        error.message,
+        error.data,
+        error.status
+      )
+    }
+    throw internalError('UpstreamError')
+  }
 }
