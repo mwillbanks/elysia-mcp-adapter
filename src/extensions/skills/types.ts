@@ -18,6 +18,8 @@ export interface McpSkillResourceInput {
 export type McpSkillResourceValue = McpSkillBytes | McpSkillResourceInput
 
 export interface McpSkillRegistrationOptions {
+  /** Protocol metadata. Extension-defined keys use io.modelcontextprotocol.skills/. */
+  _meta?: Record<string, unknown>
   /** Supporting files keyed by paths relative to the skill directory. */
   resources?: Readonly<Record<string, McpSkillResourceValue>> | 'dynamic'
   /** Explicit directory resources, keyed by relative path. Empty directories are supported. */
@@ -40,12 +42,14 @@ export interface McpSkillResource {
 }
 
 export interface McpSkill {
+  _meta?: Record<string, unknown>
   uri: string
   frontmatter: { name: string; description: string; [key: string]: unknown }
   resources: McpSkillResource[] | 'dynamic'
 }
 
 export interface McpSkillSource {
+  _meta?: Record<string, unknown>
   uri: string
   skill: McpSkillBytes
   resources?: Readonly<Record<string, McpSkillResourceValue>> | 'dynamic'

@@ -10,6 +10,7 @@ import {
   type McpSkillSource,
   mcp
 } from '../src/index.js'
+import { createProviderSkillDefinition } from '../src/extensions/skills/validation.js'
 import skillSchema from './fixtures/skills-stable.schema.json' with { type: 'json' }
 import { modernRpc } from './helpers.js'
 
@@ -22,6 +23,120 @@ function skill(name: string, extra = '') {
 }
 
 describe('Skills over MCP', () => {
+  test('snapshots explicit metadata and returns it identically from list and get', async () => {
+    const metadata = {
+      'io.modelcontextprotocol.skills/example': { flags: [true, null, 2], label: 'original' },
+      'example.com/custom': 'application metadata',
+      unprefixed: false
+    }
+    const expected = structuredClone(metadata)
+    const app = new Elysia()
+      .use(mcp({ allowedRoutes: [] }))
+      .mcpSkill('skill://metadata/SKILL.md', skill('metadata'), { _meta: metadata })
+    metadata['io.modelcontextprotocol.skills/example'].label = 'changed'
+    metadata['io.modelcontextprotocol.skills/example'].flags.push(false)
+    const listed = await modernRpc(app, 'skills/list')
+    const direct = await modernRpc(app, 'skills/get', { uri: 'skill://metadata/SKILL.md' })
+    expect(listed.body.result.skills[0]._meta).toEqual(expected)
+    expect(direct.body.result.skill).toEqual(listed.body.result.skills[0])
+    const ajv = new Ajv2020({ strict: true })
+    addFormats(ajv)
+    expect(ajv.validate(skillSchema, direct.body.result.skill)).toBe(true)
+    const read = await modernRpc(app, 'resources/read', { uri: 'skill://metadata/SKILL.md' })
+    expect(read.body.result.contents[0].text).toBe(skill('metadata'))
+    expect(direct.body.result.skill.resources[0].digest).toBe(
+      `sha256:${createHash('sha256').update(skill('metadata')).digest('hex')}`
+    )
+  })
+
+  test('preserves provider metadata and isolates definition snapshots', async () => {
+    const source: McpSkillSource = {
+      uri: 'skill://provided-meta/SKILL.md',
+      skill: skill('provided-meta'),
+      _meta: { 'example.org/state': { revision: 1 } }
+    }
+    const definition = createProviderSkillDefinition(source)
+    ;(source._meta?.['example.org/state'] as { revision: number }).revision = 2
+    expect(definition.entry._meta).toEqual({ 'example.org/state': { revision: 1 } })
+    const provider: McpSkillProvider = {
+      list: () => ({ skills: [source] }),
+      get: () => source,
+      read: () => null
+    }
+    const app = new Elysia().use(mcp({ allowedRoutes: [], extensions: { skills: { provider } } }))
+    const listed = await modernRpc(app, 'skills/list')
+    const direct = await modernRpc(app, 'skills/get', { uri: source.uri })
+    expect(listed.body.result.skills[0]._meta).toEqual(source._meta)
+    expect(direct.body.result.skill._meta).toEqual(source._meta)
+  })
+
+  test('rejects malformed metadata at registration and provider boundaries', async () => {
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    const invalid = [
+      null,
+      [],
+      'metadata',
+      { value: undefined },
+      { value: NaN },
+      { value: Infinity },
+      { value: () => 1 },
+      { value: 1n },
+      { value: new Date() },
+      cyclic
+    ]
+    for (const metadata of invalid) {
+      const app = new Elysia().use(mcp({ allowedRoutes: [] }))
+      expect(() =>
+        app.mcpSkill('skill://invalid-meta/SKILL.md', skill('invalid-meta'), {
+          _meta: metadata as Record<string, unknown>
+        })
+      ).toThrow('Skill _meta')
+      const source: McpSkillSource = {
+        uri: 'skill://invalid-meta/SKILL.md',
+        skill: skill('invalid-meta'),
+        _meta: metadata as Record<string, unknown>
+      }
+      const provider: McpSkillProvider = {
+        list: () => ({ skills: [source] }),
+        get: () => source,
+        read: () => null
+      }
+      const provided = new Elysia().use(
+        mcp({ allowedRoutes: [], extensions: { skills: { provider } } })
+      )
+      expect((await modernRpc(provided, 'skills/list')).body.error.code).toBe(-32603)
+      expect((await modernRpc(provided, 'skills/get', { uri: source.uri })).body.error.code).toBe(
+        -32603
+      )
+    }
+  })
+
+  test('rejects Skills requests without required modern protocol metadata', async () => {
+    const app = new Elysia()
+      .use(mcp({ allowedRoutes: [] }))
+      .mcpSkill('skill://modern/SKILL.md', skill('modern'))
+    for (const [method, params] of [
+      ['skills/list', {}],
+      ['skills/get', { uri: 'skill://modern/SKILL.md' }]
+    ] as const) {
+      const response = await app.handle(
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            'mcp-protocol-version': '2026-07-28',
+            'mcp-method': method,
+            ...(method === 'skills/get' ? { 'mcp-name': 'skill://modern/SKILL.md' } : {})
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+        })
+      )
+      expect(((await response.json()) as any).error.code).toBe(-32020)
+    }
+  })
+
   test('keeps pre-Skills public registry and state shapes assignable', () => {
     const registry: McpRegistry = {
       tools: new Map(),
