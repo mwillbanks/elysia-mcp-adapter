@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "bun@1.4.4",
   "scripts": {
-    "build": "bun build server.ts client.ts smoke.ts --outdir dist --target bun",
+    "build": "bun build server.ts client.ts smoke.ts interceptor-service.ts remote-interceptor.ts --outdir dist --target bun",
     "typecheck": "bun check",
     "test": "bun test --bail",
     "smoke": "bun smoke.ts"

@@ -17,6 +17,7 @@
     "examples/events/server.test.ts",
     "examples/events/smoke.ts",
     "examples/events/webhook-process.ts",
+    "examples/experimental/interceptor-service.ts",
     "examples/experimental/server.test.ts",
     "examples/experimental/smoke.ts",
     "examples/skills/server.test.ts",

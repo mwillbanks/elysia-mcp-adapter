@@ -1,5 +1,6 @@
 import { MCP_SERVER_VARIANTS_ID } from '@mwillbanks/elysia-mcp-adapter'
 import { legacyRpc } from './client.js'
+import { runRemoteInterceptorExample } from './remote-interceptor.js'
 import { cardApp, runLocalInterceptorExamples, variantApp } from './server.js'
 
 const card = await cardApp.handle(new Request('http://localhost/mcp/server-card'))
@@ -14,3 +15,12 @@ const initialized = await legacyRpc(variantApp, 'initialize', {
 })
 if (!initialized.response.headers.get('mcp-session-id'))
   throw new Error('Variant smoke check failed')
+
+const remote = await runRemoteInterceptorExample()
+if (
+  remote.pid === process.pid ||
+  remote.configured.result.payload.name !== 'configured:example' ||
+  remote.defaults.result.payload.name !== 'default:example' ||
+  remote.invalid.error?.code !== -32603
+)
+  throw new Error('Remote interceptor smoke check failed')

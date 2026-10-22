@@ -31,6 +31,11 @@ import {
   McpInterceptorExecutionError,
   McpInterceptorTimeoutError
 } from '../extensions/interceptors/index.js'
+import {
+  validInterceptorConfig,
+  validInterceptorContext
+} from '../extensions/interceptors/invocation-validation.js'
+import type { McpInterceptorInvocation } from '../extensions/interceptors/types.js'
 import { MCP_EXTENSION_SUPPORT } from '../extensions/manifest.js'
 import {
   dispatchTaskRequest,
@@ -793,21 +798,13 @@ function assertInterceptorEnabled(options: NormalizedMcpPluginOptions): void {
   }
 }
 
-function interceptorInvocation(params: Record<string, unknown>): {
-  name: string
-  event: string
-  phase: 'request' | 'response'
-  payload: unknown
-  config?: Record<string, unknown>
-  timeoutMs?: number
-} {
-  const nameValid = typeof params.name === 'string'
-  const eventValid = typeof params.event === 'string' && params.event.length > 0
-  const phaseValid = params.phase === 'request' || params.phase === 'response'
-  if (!nameValid || !eventValid || !phaseValid || !Object.hasOwn(params, 'payload')) {
-    throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
-  }
-  if (!validInterceptorConfig(params.config) || !validInterceptorTimeout(params.timeoutMs)) {
+function interceptorInvocation(params: Record<string, unknown>): McpInterceptorInvocation {
+  assertInterceptorEnvelope(params)
+  if (
+    !validInterceptorConfig(params.config) ||
+    !validInterceptorTimeout(params.timeoutMs) ||
+    !validInterceptorContext(params.context)
+  ) {
     throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
   }
   return {
@@ -816,12 +813,18 @@ function interceptorInvocation(params: Record<string, unknown>): {
     phase: params.phase as 'request' | 'response',
     payload: params.payload,
     config: params.config as Record<string, unknown> | undefined,
-    timeoutMs: params.timeoutMs as number | undefined
+    timeoutMs: params.timeoutMs as number | undefined,
+    context: params.context as McpInterceptorInvocation['context']
   }
 }
 
-function validInterceptorConfig(value: unknown): boolean {
-  return value === undefined || isRecord(value)
+function assertInterceptorEnvelope(params: Record<string, unknown>): void {
+  const nameValid = typeof params.name === 'string'
+  const eventValid = typeof params.event === 'string' && params.event.length > 0
+  const phaseValid = params.phase === 'request' || params.phase === 'response'
+  if (!nameValid || !eventValid || !phaseValid || !Object.hasOwn(params, 'payload')) {
+    throw new JsonRpcError(-32602, 'Invalid interceptor invocation')
+  }
 }
 
 function validInterceptorTimeout(value: unknown): boolean {

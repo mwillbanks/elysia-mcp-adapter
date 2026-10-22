@@ -6,6 +6,7 @@ import {
   MCP_TRUST_ANNOTATIONS_ID
 } from '@mwillbanks/elysia-mcp-adapter'
 import { legacyRpc, modernRpc } from './client.js'
+import { runRemoteInterceptorExample } from './remote-interceptor.js'
 import {
   annotationApp,
   cardApp,
@@ -18,6 +19,23 @@ import {
 } from './server.js'
 
 describe('experimental extensions', () => {
+  test('invokes a separate Streamable HTTP interceptor service with stateless configuration', async () => {
+    const remote = await runRemoteInterceptorExample()
+    expect(remote.pid).not.toBe(process.pid)
+    expect(remote.listed.result.interceptors.map((entry: any) => entry.name)).toEqual([
+      'prefix-name'
+    ])
+    expect(remote.configured.result.payload).toEqual({ name: 'configured:example' })
+    expect(remote.defaults.result.payload).toEqual({ name: 'default:example' })
+    expect(remote.defaults.result.info.callerContext).toMatchObject({
+      traceId: 'example-trace',
+      spanId: 'example-span',
+      sessionId: 'caller-session'
+    })
+    expect(remote.invalid.error?.code).toBe(-32603)
+    expect(() => process.kill(remote.pid, 0)).toThrow()
+  })
+
   test('serves a cacheable server card', async () => {
     const first = await cardApp.handle(new Request('http://localhost/mcp/server-card'))
     expect(first.headers.get('content-type')).toContain(MCP_SERVER_CARD_MIME_TYPE)

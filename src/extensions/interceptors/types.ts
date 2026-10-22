@@ -3,6 +3,8 @@ import type { JsonSchema, McpInvocationContext } from '../../types.js'
 export const MCP_INTERCEPTORS_ID = 'io.modelcontextprotocol/interceptors' as const
 export const MCP_INTERCEPTORS_REVISION = 'b60459844cc95f2170297ebe1c84b7de8b752953' as const
 
+export const MCP_INTERCEPTORS_LATEST_REVISION = 'faf1583a9c1b3d059043b191bd21fd44d65049a7' as const
+
 export type McpInterceptorPhase = 'request' | 'response'
 export type McpInterceptorMode = 'active' | 'audit'
 export type McpInterceptorType = 'validation' | 'mutation'
@@ -23,8 +25,8 @@ export interface McpInterceptorHook {
 }
 export interface McpInterceptorDefinition {
   name: string
-  version: string
-  description: string
+  version?: string
+  description?: string
   type: McpInterceptorType
   hooks: McpInterceptorHook[]
   mode?: McpInterceptorMode
@@ -35,6 +37,21 @@ export interface McpInterceptorDefinition {
   payloadSchema?: JsonSchema
 }
 
+/** Invoker-supplied metadata. Never use this principal as authenticated identity. */
+export interface McpInterceptorInvocationContext {
+  principal?: {
+    type: 'user' | 'service' | 'anonymous'
+    id?: string
+    claims?: Record<string, unknown>
+  }
+  traceId?: string
+  spanId?: string
+  timestamp: string
+  sessionId?: string
+  /** Reserved metadata; this adapter does not propagate interceptor state. */
+  interceptorState?: Record<string, unknown>
+}
+
 export interface McpInterceptorInvocation {
   name: string
   event: string
@@ -42,6 +59,7 @@ export interface McpInterceptorInvocation {
   payload: unknown
   config?: Record<string, unknown>
   timeoutMs?: number
+  context?: McpInterceptorInvocationContext
 }
 
 export interface McpValidationResult extends McpInterceptorResultBase {
@@ -81,7 +99,7 @@ export interface McpInterceptorRegistration {
 }
 
 export interface McpInterceptorsOptions {
-  version?: 'current' | typeof MCP_INTERCEPTORS_REVISION
+  version?: 'current' | typeof MCP_INTERCEPTORS_REVISION | typeof MCP_INTERCEPTORS_LATEST_REVISION
 }
 
 export interface McpInterceptorChainEntry {

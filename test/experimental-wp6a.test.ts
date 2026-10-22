@@ -7,6 +7,9 @@ import {
   invokeInterceptor,
   LEGACY_PROTOCOL_VERSION,
   MCP_ACTION_METADATA_ID,
+  MCP_INTERCEPTORS_LATEST_REVISION,
+  MCP_INTERCEPTORS_REVISION,
+  type McpInterceptorInvocation,
   MCP_SERVER_CARD_MIME_TYPE,
   MCP_SERVER_CARD_SCHEMA,
   MCP_SERVER_VARIANT_META_KEY,
@@ -324,6 +327,233 @@ describe('experimental server contracts', () => {
           }
         })
       ).toThrow('clean relative path')
+    }
+  })
+
+  test('preserves untrusted invocation context independently from server authentication', async () => {
+    const suppliedContext = {
+      principal: { type: 'user' as const, id: 'claimed-admin', claims: { roles: ['admin'] } },
+      traceId: 'trace',
+      spanId: 'span',
+      timestamp: '2026-10-22T12:00:00Z',
+      sessionId: 'caller-session',
+      interceptorState: { reserved: ['metadata'] }
+    }
+    const app = new Elysia()
+      .use(
+        mcp({
+          allowedRoutes: [],
+          extensions: { interceptors: { version: MCP_INTERCEPTORS_LATEST_REVISION } }
+        })
+      )
+      .mcpInterceptor(
+        {
+          name: 'metadata',
+          type: 'validation',
+          hooks: [{ events: ['tools/call'], phase: 'request' }]
+        },
+        (invocation, serverContext) => ({
+          valid: true,
+          info: {
+            supplied: invocation.context,
+            authenticated: serverContext.authorization ?? null,
+            authorizationHeader: serverContext.request.headers.get('authorization')
+          }
+        })
+      )
+    const called = await modernRpc(
+      app,
+      'interceptor/invoke',
+      {
+        name: 'metadata',
+        event: 'tools/call',
+        phase: 'request',
+        payload: {},
+        context: suppliedContext
+      },
+      { authorization: 'Bearer actual-credential' }
+    )
+    expect(called.body.result.info).toEqual({
+      supplied: suppliedContext,
+      authenticated: null,
+      authorizationHeader: 'Bearer actual-credential'
+    })
+    const descriptor = await modernRpc(app, 'interceptors/list')
+    expect(descriptor.body.result.interceptors[0]).toMatchObject({
+      name: 'metadata',
+      type: 'validation'
+    })
+    expect(descriptor.body.result.interceptors[0].version).toBeUndefined()
+    for (const context of [
+      null,
+      [],
+      {},
+      { timestamp: 'invalid' },
+      { ...suppliedContext, traceId: 42 },
+      { ...suppliedContext, spanId: [] },
+      { ...suppliedContext, sessionId: {} },
+      { ...suppliedContext, interceptorState: [] },
+      { ...suppliedContext, principal: null },
+      { ...suppliedContext, principal: { type: ['user'] } },
+      { ...suppliedContext, principal: { type: 'administrator' } },
+      { ...suppliedContext, principal: { type: 'user', id: 42 } },
+      { ...suppliedContext, principal: { type: 'user', claims: [] } }
+    ]) {
+      const rejected = await modernRpc(app, 'interceptor/invoke', {
+        name: 'metadata',
+        event: 'tools/call',
+        phase: 'request',
+        payload: {},
+        context
+      })
+      expect(rejected.body.error.code).toBe(-32602)
+    }
+  })
+
+  test('validates interceptor context calendar dates without normalizing valid timestamps', async () => {
+    const app = new Elysia()
+      .use(mcp({ allowedRoutes: [], extensions: { interceptors: {} } }))
+      .mcpInterceptor(
+        {
+          name: 'timestamp',
+          type: 'validation',
+          hooks: [{ events: ['tools/call'], phase: 'request' }]
+        },
+        ({ context }) => ({ valid: true, info: { timestamp: context?.timestamp } })
+      )
+    const call = (timestamp: string) =>
+      modernRpc(app, 'interceptor/invoke', {
+        name: 'timestamp',
+        event: 'tools/call',
+        phase: 'request',
+        payload: {},
+        context: { timestamp }
+      })
+    for (const timestamp of [
+      '2024-02-29T23:59:59.123456789+05:30',
+      '2000-02-29T00:00:00Z',
+      '2026-01-01T00:15:00+01:00',
+      '2026-12-31T23:45:00.000001-01:00'
+    ]) {
+      const accepted = await call(timestamp)
+      expect(accepted.body.result.info.timestamp).toBe(timestamp)
+    }
+    for (const timestamp of [
+      '2026-02-30T12:00:00Z',
+      '2026-02-29T00:00:00Z',
+      '1900-02-29T12:00:00+05:30',
+      '2026-04-31T23:45:00.123-01:00',
+      '2026-00-01T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-01-00T00:00:00Z',
+      '2026-01-32T00:00:00Z',
+      '2026-01-01T25:00:00Z',
+      '2026-01-01T00:60:00Z',
+      '2026-01-01T00:00:60Z',
+      '2026-01-01T00:00:00+24:00'
+    ]) {
+      const rejected = await call(timestamp)
+      expect(rejected.body.error.code).toBe(-32602)
+    }
+  })
+
+  test('isolates caller configuration and context while applying defaults independently per invocation', async () => {
+    const invocation: McpInterceptorInvocation = {
+      name: 'isolated',
+      event: 'tools/call',
+      phase: 'request',
+      payload: { value: 'original' },
+      config: { settings: { prefix: 'configured' } },
+      context: {
+        timestamp: '2026-10-22T12:00:00Z',
+        principal: { type: 'service', claims: { roles: ['reader'] } }
+      }
+    }
+    const original = structuredClone(invocation)
+    const registration: McpInterceptorRegistration = {
+      definition: {
+        name: 'isolated',
+        type: 'mutation',
+        hooks: [{ events: ['tools/call'], phase: 'request' }],
+        configSchema: { type: 'object', required: ['settings'] }
+      },
+      handler: (received) => {
+        const settings = received.config?.settings as { prefix: string } | undefined
+        const prefix = settings?.prefix ?? 'default'
+        if (settings) settings.prefix = 'handler mutation'
+        if (received.context?.principal?.claims)
+          received.context.principal.claims.roles = ['changed']
+        return { modified: true, payload: { prefix, value: received.payload } }
+      }
+    }
+    const serverContext = { request: new Request('http://localhost') }
+    const pending = invokeInterceptor(registration, invocation, serverContext)
+    ;(invocation.config?.settings as { prefix: string }).prefix = 'caller mutation'
+    const result = await pending
+    expect(result).toMatchObject({ payload: { prefix: 'configured' } })
+    expect(invocation.context).toEqual(original.context)
+    expect(invocation.config).toEqual({ settings: { prefix: 'caller mutation' } })
+    const defaults = await invokeInterceptor(
+      registration,
+      {
+        name: 'isolated',
+        event: 'tools/call',
+        phase: 'request',
+        payload: {}
+      },
+      serverContext
+    )
+    expect(defaults).toMatchObject({ payload: { prefix: 'default' } })
+    await expect(
+      invokeInterceptor(registration, { ...original, config: {} }, serverContext)
+    ).rejects.toThrow('execution failed')
+    for (const config of [
+      { settings: undefined },
+      { settings: Number.NaN },
+      { settings: () => true }
+    ]) {
+      await expect(
+        invokeInterceptor(registration, { ...original, config }, serverContext)
+      ).rejects.toThrow('metadata is invalid')
+    }
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    await expect(
+      invokeInterceptor(registration, { ...original, config: cyclic }, serverContext)
+    ).rejects.toThrow('metadata is invalid')
+  })
+
+  test('supports historical and latest explicit revisions and empty closed configuration', async () => {
+    for (const version of [MCP_INTERCEPTORS_REVISION, MCP_INTERCEPTORS_LATEST_REVISION] as const) {
+      const app = new Elysia()
+        .use(mcp({ allowedRoutes: [], extensions: { interceptors: { version } } }))
+        .mcpInterceptor(
+          {
+            name: 'closed',
+            type: 'validation',
+            hooks: [{ events: ['*'], phase: 'request' }],
+            configSchema: { type: 'object', additionalProperties: false }
+          },
+          () => ({ valid: true })
+        )
+      for (const config of [undefined, {}]) {
+        const called = await modernRpc(app, 'interceptor/invoke', {
+          name: 'closed',
+          event: 'tools/call',
+          phase: 'request',
+          payload: {},
+          config
+        })
+        expect(called.body.result.valid).toBe(true)
+      }
+      const rejected = await modernRpc(app, 'interceptor/invoke', {
+        name: 'closed',
+        event: 'tools/call',
+        phase: 'request',
+        payload: {},
+        config: { unexpected: true }
+      })
+      expect(rejected.body.error.code).toBe(-32603)
     }
   })
 
