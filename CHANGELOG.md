@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.4.0...elysia-mcp-adapter-v0.5.0) (2026-10-22)
+
+
+### Features
+
+* align interceptors with latest proposal ([2227a04](https://github.com/mwillbanks/elysia-mcp-adapter/commit/2227a0483b777a144e75888499863e160b825360))
+* **mcp:** update extensions and Bun tooling ([aaf4af2](https://github.com/mwillbanks/elysia-mcp-adapter/commit/aaf4af279d313dabcb5dd698b0b7782a46f3762b))
+* reconcile MCP extension conformance ([eaef190](https://github.com/mwillbanks/elysia-mcp-adapter/commit/eaef1906a77d8975a5934fe8978438fb1f45fef5))
+* update experimental Events error codes ([c04470f](https://github.com/mwillbanks/elysia-mcp-adapter/commit/c04470f13d5b7c4b81ea0ffebf128bf2946e9590))
+* update Skills extension metadata support ([2bc3062](https://github.com/mwillbanks/elysia-mcp-adapter/commit/2bc30629d753e81327ab3b795c330b26fbdbcfdc))
+
 ## [0.4.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.3.0...elysia-mcp-adapter-v0.4.0) (2026-10-08)
 
 ### Features
