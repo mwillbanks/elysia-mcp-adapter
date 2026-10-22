@@ -23,6 +23,22 @@ function skill(name: string, extra = '') {
 }
 
 describe('Skills over MCP', () => {
+  test('retains historical selection while current uses the accepted metadata contract', async () => {
+    for (const version of ['current', '167da6c0d42c247a8f8470228a10ca711e3f6c45'] as const) {
+      const app = new Elysia()
+        .use(mcp({ allowedRoutes: [], extensions: { skills: { version } } }))
+        .mcpSkill('skill://revision/SKILL.md', skill('revision'), {
+          _meta: { 'example.com/revision': version }
+        })
+      const response = await modernRpc(app, 'skills/get', { uri: 'skill://revision/SKILL.md' })
+      expect(response.body.error).toBeUndefined()
+      expect(response.body.result.skill._meta).toEqual({ 'example.com/revision': version })
+      expect(response.body.result.skill.resources[0].digest).toBe(
+        `sha256:${createHash('sha256').update(skill('revision')).digest('hex')}`
+      )
+    }
+  })
+
   test('snapshots explicit metadata and returns it identically from list and get', async () => {
     const metadata = {
       'io.modelcontextprotocol.skills/example': { flags: [true, null, 2], label: 'original' },

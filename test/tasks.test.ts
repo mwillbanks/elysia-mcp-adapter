@@ -19,6 +19,7 @@ import {
   taskCapabilityErrorCode,
   type WorkingTask
 } from '../src/extensions/tasks/index.js'
+import acceptedDraftFixture from './fixtures/tasks-draft-b3d28ac.json' with { type: 'json' }
 import latestDraftFixture from './fixtures/tasks-draft-5246bc3.json' with { type: 'json' }
 
 const capabilityMeta = {
@@ -141,6 +142,31 @@ describe('tasks extension', () => {
       extensions: { 'io.modelcontextprotocol/tasks': latestDraftFixture.capability }
     })
   })
+
+  for (const version of ['2026-07-28', 'draft-b3d28ac', 'draft-5246bc3'] as const) {
+    it(`${version} returns complete for terminal tasks/get while retaining the completed task result`, async () => {
+      expect(resolveTasksVersion(acceptedDraftFixture.version as 'draft-b3d28ac')).toBe(
+        'draft-b3d28ac'
+      )
+      const provider = new TestTaskProvider()
+      const task = completedTask()
+      if (task.status !== 'completed') throw new Error('Expected completed task fixture')
+      provider.tasks.set(task.taskId, task)
+      const controller = createTaskController({ provider, version })
+      const result = await dispatchTaskRequest(controller, {
+        method: 'tasks/get',
+        params: { taskId: task.taskId },
+        context: { request: new Request('http://localhost/mcp'), meta: capabilityMeta }
+      })
+      expect(result).toMatchObject({
+        resultType: acceptedDraftFixture.operationResultType,
+        taskId: task.taskId,
+        status: 'completed',
+        result: task.result
+      })
+      expect(taskCapabilityErrorCode(version)).toBe(-32021)
+    })
+  }
 
   it('creates the version-specific missing capability error', () => {
     const finalError = createMissingTaskCapabilityError()

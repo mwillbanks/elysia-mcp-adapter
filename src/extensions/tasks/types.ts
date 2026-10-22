@@ -4,9 +4,9 @@ export const TASKS_EXTENSION_ID = 'io.modelcontextprotocol/tasks' as const
 
 /**
  * `draft` keeps the original 2c1425d draft codec. `draft-5246bc3` selects the
- * current pinned draft without moving the legacy alias.
+ * previous reviewed draft. `draft-b3d28ac` selects the latest reviewed draft.
  */
-export type TasksVersion = '2026-07-28' | 'draft' | 'draft-5246bc3'
+export type TasksVersion = '2026-07-28' | 'draft' | 'draft-5246bc3' | 'draft-b3d28ac'
 export type TasksVersionInput = TasksVersion | 'current'
 
 /**

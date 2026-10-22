@@ -52,13 +52,13 @@ function configuration(version: McpEventsRevision, provider?: McpEventProvider) 
 }
 
 describe('Events revision error boundaries', () => {
-  test('keeps current historical until conformance acceptance', () => {
+  test('selects the accepted latest revision for current', () => {
     expect(
       normalizeOptions({
         ...configuration(MCP_EVENTS_REVISION),
         extensions: { events: { version: 'current', cursor: { signingKey } } }
       }).extensions.events?.version
-    ).toBe(MCP_EVENTS_REVISION)
+    ).toBe(MCP_EVENTS_LATEST_REVISION)
   })
 
   for (const version of [MCP_EVENTS_REVISION, MCP_EVENTS_LATEST_REVISION]) {

@@ -6,7 +6,7 @@ import {
 } from '../extensions/interceptors/index.js'
 import { MCP_EXTENSION_SUPPORT, resolvePinnedVersion } from '../extensions/manifest.js'
 import { normalizeServerCardOptions } from '../extensions/server-card/index.js'
-import { MCP_SKILLS_VERSION } from '../extensions/skills/index.js'
+import { MCP_SKILLS_VERSION, MCP_SKILLS_HISTORICAL_VERSION } from '../extensions/skills/index.js'
 import { resolveTasksVersion } from '../extensions/tasks/index.js'
 import type { McpPluginOptions, NormalizedMcpPluginOptions } from '../types.js'
 import {
@@ -102,7 +102,7 @@ function normalizeApps(apps: Extensions['apps']): NormalizedMcpPluginOptions['ex
 }
 
 function validateSkills(skills: SkillsOptions): void {
-  const supported = [undefined, 'current', MCP_SKILLS_VERSION].some(
+  const supported = [undefined, 'current', MCP_SKILLS_VERSION, MCP_SKILLS_HISTORICAL_VERSION].some(
     (version) => version === skills.version
   )
   if (!supported) {
@@ -128,7 +128,12 @@ function normalizeSkills(
   validateSkills(skills)
   return {
     ...skills,
-    version: MCP_SKILLS_VERSION,
+    version: resolvePinnedVersion(
+      'skills',
+      skills.version,
+      MCP_EXTENSION_SUPPORT.skills.current,
+      MCP_EXTENSION_SUPPORT.skills.versions
+    ),
     directoryRead: skills.directoryRead ?? false,
     pagination: skills.pagination
       ? { ...skills.pagination, cursorTtlMs: skills.pagination.cursorTtlMs ?? 5 * 60_000 }
@@ -255,9 +260,9 @@ function normalizeEvents(
   return {
     ...events,
     version:
-      events.version === MCP_EVENTS_LATEST_REVISION
-        ? MCP_EVENTS_LATEST_REVISION
-        : resolveExperimentalRevision('events', events.version, MCP_EVENTS_REVISION),
+      events.version === MCP_EVENTS_REVISION
+        ? MCP_EVENTS_REVISION
+        : resolveExperimentalRevision('events', events.version, MCP_EVENTS_LATEST_REVISION),
     cursor: { ...events.cursor, ttlMs: withDefault(events.cursor.ttlMs, 24 * 60 * 60_000) },
     heartbeatMs: withDefault(events.heartbeatMs, 15_000),
     pollIntervalMs: withDefault(events.pollIntervalMs, 5_000),
@@ -287,12 +292,12 @@ export function normalizeExtensions(
       ? {
           ...extensions.interceptors,
           version:
-            extensions.interceptors.version === MCP_INTERCEPTORS_LATEST_REVISION
-              ? MCP_INTERCEPTORS_LATEST_REVISION
+            extensions.interceptors.version === MCP_INTERCEPTORS_REVISION
+              ? MCP_INTERCEPTORS_REVISION
               : resolveExperimentalRevision(
                   'interceptors',
                   extensions.interceptors.version,
-                  MCP_INTERCEPTORS_REVISION
+                  MCP_INTERCEPTORS_LATEST_REVISION
                 )
         }
       : undefined,
