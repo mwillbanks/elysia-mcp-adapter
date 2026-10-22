@@ -26,36 +26,32 @@ Elysia's OpenAPI plugin and this adapter read the same route definition. Define 
 />
 
 ```ts
-import { openapi } from '@elysia/openapi'
-import { mcp } from '@mwillbanks/elysia-mcp-adapter'
-import { Elysia, t } from 'elysia'
+import { openapi } from "@elysia/openapi";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { Elysia, t } from "elysia";
 
 const app = new Elysia()
   .use(openapi())
   .use(mcp())
-  .get(
-    '/users/:id',
-    ({ params }) => ({ id: params.id, displayName: 'Ada' }),
-    {
-      params: t.Object({ id: t.String() }),
-      response: t.Object({
-        id: t.String(),
-        displayName: t.String()
-      }),
-      detail: {
-        operationId: 'users.get',
-        summary: 'Get a user',
-        description: 'Return a user by identifier.',
-        tags: ['Users']
+  .get("/users/:id", ({ params }) => ({ id: params.id, displayName: "Ada" }), {
+    params: t.Object({ id: t.String() }),
+    response: t.Object({
+      id: t.String(),
+      displayName: t.String(),
+    }),
+    detail: {
+      operationId: "users.get",
+      summary: "Get a user",
+      description: "Return a user by identifier.",
+      tags: ["Users"],
+    },
+    mcp: {
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
       },
-      mcp: {
-        annotations: {
-          readOnlyHint: true,
-          idempotentHint: true
-        }
-      }
-    }
-  )
+    },
+  });
 ```
 
 The adapter uses `detail.operationId` as the default tool name and reuses `summary` and `description` for discovery metadata. Elysia route schemas become the MCP input and output JSON Schemas. Route-level `mcp` metadata can override MCP-only naming, descriptions, schemas, annotations, icons, kind, and marshaling without changing the OpenAPI document.
@@ -68,12 +64,12 @@ By default, `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` routes are eligible. Whe
 
 ```ts
 mcp({
-  methods: ['GET', 'POST'],
+  methods: ["GET", "POST"],
   operationNameResolver: ({ method, path, detail }) =>
-    typeof detail?.operationId === 'string'
+    typeof detail?.operationId === "string"
       ? detail.operationId
-      : `${method.toLowerCase()}.${path}`
-})
+      : `${method.toLowerCase()}.${path}`,
+});
 ```
 
 Use `mcp: false` or `mcp: { expose: false }` on a route to keep it out of the registry.

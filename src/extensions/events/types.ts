@@ -107,12 +107,7 @@ export interface McpEventCursorOptions {
 }
 
 export type McpWebhookLastError =
-  | 'connection_refused'
-  | 'timeout'
-  | 'tls_error'
-  | 'http_4xx'
-  | 'http_5xx'
-  | 'challenge_failed'
+  'connection_refused' | 'timeout' | 'tls_error' | 'http_4xx' | 'http_5xx' | 'challenge_failed'
 
 export interface McpWebhookDeliveryStatus {
   active: boolean

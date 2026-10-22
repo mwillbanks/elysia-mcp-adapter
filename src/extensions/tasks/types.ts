@@ -43,9 +43,7 @@ export interface TaskRootsInputRequest {
 }
 
 export type TaskInputRequest =
-  | TaskElicitationInputRequest
-  | TaskSamplingInputRequest
-  | TaskRootsInputRequest
+  TaskElicitationInputRequest | TaskSamplingInputRequest | TaskRootsInputRequest
 
 export type TaskElicitationInputResponse = McpElicitationResult
 export type TaskSamplingInputResponse = McpSamplingResult
@@ -53,9 +51,7 @@ export type TaskRootsInputResponse = McpRootsResult
 
 /** Defined response shapes used by the final and current-draft Tasks codecs. */
 export type TaskDefinedInputResponse =
-  | TaskElicitationInputResponse
-  | TaskSamplingInputResponse
-  | TaskRootsInputResponse
+  TaskElicitationInputResponse | TaskSamplingInputResponse | TaskRootsInputResponse
 
 /**
  * Open legacy response shape exported by the original Tasks draft.
@@ -96,8 +92,9 @@ export interface InputRequiredTask extends Task {
   inputRequests: TaskInputRequests
 }
 
-export interface CompletedTask<TResult extends Record<string, unknown> = Record<string, unknown>>
-  extends Task {
+export interface CompletedTask<
+  TResult extends Record<string, unknown> = Record<string, unknown>
+> extends Task {
   status: 'completed'
   result: TResult
 }
@@ -118,11 +115,7 @@ export interface CancelledTask extends Task {
 }
 
 export type DetailedTask<TResult extends Record<string, unknown> = Record<string, unknown>> =
-  | WorkingTask
-  | InputRequiredTask
-  | CompletedTask<TResult>
-  | FailedTask
-  | CancelledTask
+  WorkingTask | InputRequiredTask | CompletedTask<TResult> | FailedTask | CancelledTask
 
 /** Final SEP-2663 task record selected by `2026-07-28` and `current`. */
 export type Task20260728<TResult extends Record<string, unknown> = Record<string, unknown>> =

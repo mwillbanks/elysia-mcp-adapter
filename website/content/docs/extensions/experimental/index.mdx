@@ -5,13 +5,13 @@ description: Evaluate pinned MCP experiments without silently changing productio
 
 Every experiment is disabled by default. Enable one explicitly and pin the exported revision constant. Selectors identify reviewed upstream commits and never accept semver ranges.
 
-| Experiment | Protocol surface | Adapter opt-in |
-| --- | --- | --- |
-| Interceptors | `interceptors/list`, `interceptor/invoke`, local chain | `extensions.interceptors` and `.mcpInterceptor()` |
-| Server variants | Legacy initialize, session requests, GET SSE | `extensions.variants` with legacy-only transport |
-| Action metadata | Tool annotations | Add `io.modelcontextprotocol/action-metadata` |
-| Trust annotations | Tool result `_meta` | Add `io.modelcontextprotocol/trust-annotations` |
-| Events | Discovery, polling, POST SSE, durable webhooks | `extensions.events` and `.mcpEvent()` with legacy-only transport |
+| Experiment        | Protocol surface                                       | Adapter opt-in                                                   |
+| ----------------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
+| Interceptors      | `interceptors/list`, `interceptor/invoke`, local chain | `extensions.interceptors` and `.mcpInterceptor()`                |
+| Server variants   | Legacy initialize, session requests, GET SSE           | `extensions.variants` with legacy-only transport                 |
+| Action metadata   | Tool annotations                                       | Add `io.modelcontextprotocol/action-metadata`                    |
+| Trust annotations | Tool result `_meta`                                    | Add `io.modelcontextprotocol/trust-annotations`                  |
+| Events            | Discovery, polling, POST SSE, durable webhooks         | `extensions.events` and `.mcpEvent()` with legacy-only transport |
 
 Server Cards are finalized and documented in the [Server Cards guide](/docs/extensions/server-card).
 

@@ -2071,8 +2071,7 @@ describe('experimental events extension', () => {
       terminalObserved = resolve
     })
     let resolverBarrier:
-      | { entered(): void; wait: Promise<void>; release: Promise<void> }
-      | undefined
+      { entered(): void; wait: Promise<void>; release: Promise<void> } | undefined
     const blockNextResolution = () => {
       let entered = () => {}
       let release = () => {}

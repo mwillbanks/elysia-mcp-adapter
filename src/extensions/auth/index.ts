@@ -1,7 +1,4 @@
-export {
-  buildBearerChallenge,
-  parseBearerAuthorization
-} from './bearer.js'
+export { buildBearerChallenge, parseBearerAuthorization } from './bearer.js'
 export {
   MCP_AUTH_VERSION_MANIFEST,
   MCP_CLIENT_CREDENTIALS_CURRENT_VERSION,

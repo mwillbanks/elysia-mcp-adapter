@@ -1,7 +1,7 @@
 {
   "name": "@mwillbanks/elysia-mcp-adapter",
   "version": "0.3.0",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.4",
   "description": "Expose Elysia HTTP routes, prompts, and resources through a native-feeling MCP adapter.",
   "type": "module",
   "workspaces": [
@@ -50,10 +50,10 @@
   ],
   "scripts": {
     "build": "bun scripts/clean-dist.ts && bun --bun tsc -p tsconfig.build.json",
-    "typecheck": "bun --bun tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bun test --bail",
-    "lint": "bun --bun biome check",
-    "format": "bun --bun biome check --write",
+    "lint": "bun fmt --check src test scripts examples \"*.json\" bunfig.toml",
+    "format": "bun fmt src test scripts examples \"*.json\" bunfig.toml && bun run --cwd website format",
     "fallow": "bun --bun ./node_modules/fallow/bin/fallow --no-cache --fail-on-issues && bun --bun ./node_modules/fallow/bin/fallow --root website --no-cache --fail-on-issues",
     "fallow:health": "bun --bun ./node_modules/fallow/bin/fallow health --no-cache --fail-on-issues",
     "examples:setup": "bun link && bun install",
@@ -83,18 +83,17 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@commitlint/cli": "^21.2.3",
-    "@commitlint/config-conventional": "^21.2.3",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/ext-apps": "2.0.3",
     "@sinclair/typebox": "^0.34.52",
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.3",
     "elysia": "^1.4.30",
-    "fallow": "^3.32.0",
+    "fallow": "^3.35.0",
     "husky": "^9.1.7",
     "typescript": "^7.0.2",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "engines": {
     "bun": ">=1.1",

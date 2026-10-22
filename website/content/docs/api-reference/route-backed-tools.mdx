@@ -12,30 +12,30 @@ Route-backed primitives are configured through the route's `mcp` option. Tools a
 type McpRouteOptions =
   | false
   | {
-      expose?: boolean
-      kind?: 'tool' | 'resource' | 'prompt'
-      name?: string
-      title?: string
-      description?: string
-      inputSchema?: unknown
-      outputSchema?: unknown
-      annotations?: McpToolAnnotations
-      icons?: McpIcon[]
-      resource?: McpRouteResourceOptions
-      prompt?: McpRoutePromptOptions
-      marshal?: McpResponseMarshalOptions
-    }
+      expose?: boolean;
+      kind?: "tool" | "resource" | "prompt";
+      name?: string;
+      title?: string;
+      description?: string;
+      inputSchema?: unknown;
+      outputSchema?: unknown;
+      annotations?: McpToolAnnotations;
+      icons?: McpIcon[];
+      resource?: McpRouteResourceOptions;
+      prompt?: McpRoutePromptOptions;
+      marshal?: McpResponseMarshalOptions;
+    };
 ```
 
 ```ts
-app.post('/reports', createReport, {
+app.post("/reports", createReport, {
   body: t.Object({ range: t.String() }),
-  detail: { operationId: 'reports.create' },
+  detail: { operationId: "reports.create" },
   mcp: {
     expose: true,
-    annotations: { destructiveHint: false }
-  }
-})
+    annotations: { destructiveHint: false },
+  },
+});
 ```
 
 `false` and `{ expose: false }` remove a route from MCP discovery. `inputSchema` and `outputSchema` override inferred Elysia schemas only for MCP.
@@ -47,9 +47,9 @@ type McpRouteMatcher =
   | string
   | RegExp
   | {
-      method?: HTTPMethod | HTTPMethod[]
-      path: string | RegExp
-    }
+      method?: HTTPMethod | HTTPMethod[];
+      path: string | RegExp;
+    };
 ```
 
 Matchers are used by `allowedRoutes` and `excludedRoutes`. String paths support the adapter's exact and wildcard matching rules; object matchers also constrain HTTP methods.

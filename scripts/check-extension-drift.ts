@@ -95,7 +95,7 @@ for (const dependency of await declaredRegistryDependencies(packageManifestPaths
   await compareDeclaredPackage(dependency)
 for (const [repository, version] of await declaredActions())
   await compareGithubRelease(repository, version)
-await compareGithubRelease('oven-sh/bun', 'bun-v1.4.2')
+await compareGithubRelease('oven-sh/bun', 'bun-v1.4.4')
 await compareRedisRelease('8.10.2')
 
 const report = [

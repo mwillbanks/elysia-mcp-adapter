@@ -13,18 +13,18 @@ The adapter computes directory results from static provider manifests without a 
 mcp({
   extensions: {
     skills: {
-      version: 'current',
+      version: "current",
       provider,
       directoryRead: true,
       pagination: {
         pageSize: 50,
-        signingKey: process.env.MCP_SKILLS_CURSOR_KEY!
+        signingKey: process.env.MCP_SKILLS_CURSOR_KEY!,
       },
-      cache: { cacheScope: 'private', ttlMs: 0 },
-      authorization: { requiredScopes: ['skills:read'] }
-    }
-  }
-})
+      cache: { cacheScope: "private", ttlMs: 0 },
+      authorization: { requiredScopes: ["skills:read"] },
+    },
+  },
+});
 ```
 
 Cursors are signed and bound to the request, selected server variant, and verified principal.
@@ -40,12 +40,12 @@ filesystem.
 Explicit dynamic skills use `readResource` and `readDirectory` together:
 
 ```ts
-app.mcpSkill('skill://generated/SKILL.md', skillBytes, {
-  resources: 'dynamic',
-  directories: ['empty'],
+app.mcpSkill("skill://generated/SKILL.md", skillBytes, {
+  resources: "dynamic",
+  directories: ["empty"],
   readResource: (uri) => generateResource(uri),
-  readDirectory: (uri, page) => listGeneratedDirectChildren(uri, page)
-})
+  readDirectory: (uri, page) => listGeneratedDirectChildren(uri, page),
+});
 ```
 
 The adapter adds the registered `SKILL.md` and declared directories to dynamic directory results.

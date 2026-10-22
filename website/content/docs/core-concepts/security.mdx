@@ -49,26 +49,24 @@ Better Auth's OAuth Provider plugin can own authorization-server discovery, toke
 Create a resource-server client from the same Better Auth instance:
 
 ```ts
-import { oauthProviderResourceClient } from 'better-auth/client'
-import { auth } from './auth'
+import { oauthProviderResourceClient } from "better-auth/client";
+import { auth } from "./auth";
 
-const oauthResource = oauthProviderResourceClient(auth)
-const resource = 'https://api.example.com'
+const oauthResource = oauthProviderResourceClient(auth);
+const resource = "https://api.example.com";
 ```
 
 Publish protected-resource metadata so MCP clients can discover the authorization server:
 
 ```ts
-import { Elysia } from 'elysia'
+import { Elysia } from "elysia";
 
-const app = new Elysia().get(
-  '/.well-known/oauth-protected-resource',
-  () =>
-    oauthResource.getProtectedResourceMetadata({
-      resource,
-      authorization_servers: ['https://auth.example.com']
-    })
-)
+const app = new Elysia().get("/.well-known/oauth-protected-resource", () =>
+  oauthResource.getProtectedResourceMetadata({
+    resource,
+    authorization_servers: ["https://auth.example.com"],
+  }),
+);
 ```
 
 Verify bearer tokens in an Elysia hook or guard and always require the audience for this resource server:
@@ -76,28 +74,28 @@ Verify bearer tokens in an Elysia hook or guard and always require the audience 
 ```ts
 const app = new Elysia()
   .derive(async ({ request, status }) => {
-    const authorization = request.headers.get('authorization')
-    const accessToken = authorization?.startsWith('Bearer ')
-      ? authorization.slice('Bearer '.length)
-      : undefined
+    const authorization = request.headers.get("authorization");
+    const accessToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : undefined;
 
-    if (!accessToken) return status(401)
+    if (!accessToken) return status(401);
 
     const token = await oauthResource.verifyAccessToken(accessToken, {
-      verifyOptions: { audience: resource }
-    })
+      verifyOptions: { audience: resource },
+    });
 
-    if (!token) return status(401)
-    return { oauthToken: token }
+    if (!token) return status(401);
+    return { oauthToken: token };
   })
   .use(
     mcp({
       headers: {
-        passThroughFromMcpRequest: ['authorization']
-      }
-    })
+        passThroughFromMcpRequest: ["authorization"],
+      },
+    }),
   )
-  .get('/account', ({ oauthToken }) => ({ subject: oauthToken.sub }))
+  .get("/account", ({ oauthToken }) => ({ subject: oauthToken.sub }));
 ```
 
 Keep Better Auth's authorization-server routes mounted according to its Elysia integration. The important boundary is that the MCP client obtains an OAuth token for the API resource, sends it as `Authorization: Bearer ...` to `/mcp`, and Elysia verifies its audience and permissions before the route handler runs.
@@ -107,21 +105,21 @@ Keep Better Auth's authorization-server routes mounted according to its Elysia i
 Elysia's bearer plugin extracts the bearer value into route context. It does **not** validate the credential, so validate it in a hook or guard before protected handlers execute.
 
 ```ts
-import { bearer } from '@elysiajs/bearer'
-import { Elysia } from 'elysia'
+import { bearer } from "@elysiajs/bearer";
+import { Elysia } from "elysia";
 
 const app = new Elysia()
   .use(bearer())
   .use(mcp())
   .onBeforeHandle(async ({ bearer, status }) => {
-    if (!bearer) return status(401)
+    if (!bearer) return status(401);
 
-    const principal = await verifyAccessToken(bearer)
-    if (!principal) return status(401)
+    const principal = await verifyAccessToken(bearer);
+    if (!principal) return status(401);
   })
-  .get('/me', ({ bearer }) => loadProfile(bearer), {
-    detail: { operationId: 'account.me' }
-  })
+  .get("/me", ({ bearer }) => loadProfile(bearer), {
+    detail: { operationId: "account.me" },
+  });
 ```
 
 The default `authorization` pass-through is sufficient for route-backed tools. If you replace the defaults, retain it explicitly:
@@ -129,9 +127,9 @@ The default `authorization` pass-through is sufficient for route-backed tools. I
 ```ts
 mcp({
   headers: {
-    passThroughFromMcpRequest: ['authorization']
-  }
-})
+    passThroughFromMcpRequest: ["authorization"],
+  },
+});
 ```
 
 ## Allow browser origins
@@ -140,9 +138,9 @@ mcp({
 mcp({
   transport: {
     validateOrigin: true,
-    allowedOrigins: ['https://console.example.com']
-  }
-})
+    allowedOrigins: ["https://console.example.com"],
+  },
+});
 ```
 
 Do not disable origin validation just to make a browser client connect. Add the exact trusted origin instead.
@@ -151,7 +149,7 @@ Use a non-HTTP scheme wildcard only when every origin in that browser-extension 
 
 ```ts
 transport: {
-  allowedOrigins: ['chrome-extension://*']
+  allowedOrigins: ["chrome-extension://*"];
 }
 ```
 
@@ -162,10 +160,10 @@ HTTP and HTTPS wildcards, a global `*`, credentialed origins, opaque origins, an
 ```ts
 mcp({
   headers: {
-    passThroughFromMcpRequest: ['authorization'],
-    allowFromToolInput: ['x-request-id']
-  }
-})
+    passThroughFromMcpRequest: ["authorization"],
+    allowFromToolInput: ["x-request-id"],
+  },
+});
 ```
 
 `allowFromToolInput` gives the model control of specific headers. Never add credentials, cookies, forwarding headers, or authorization inputs unless that behavior is intentionally part of the tool contract.
@@ -177,10 +175,10 @@ Prefer an allowlist for production APIs:
 ```ts
 mcp({
   allowedRoutes: [
-    { method: 'GET', path: '/customers/:id' },
-    { method: 'POST', path: '/reports/preview' }
-  ]
-})
+    { method: "GET", path: "/customers/:id" },
+    { method: "POST", path: "/reports/preview" },
+  ],
+});
 ```
 
 Authenticate the MCP endpoint, authorize each route action, validate OAuth audiences, and keep destructive routes opt-in and auditable.

@@ -38,9 +38,9 @@ export async function handleSubscription(
   const hasTaskFilter = Array.isArray(notifications?.taskIds)
   const hasCoreFilter = Boolean(
     notifications?.toolsListChanged ||
-      notifications?.promptsListChanged ||
-      notifications?.resourcesListChanged ||
-      Array.isArray(notifications?.resourceSubscriptions)
+    notifications?.promptsListChanged ||
+    notifications?.resourcesListChanged ||
+    Array.isArray(notifications?.resourceSubscriptions)
   )
   if (hasTaskFilter && hasCoreFilter) {
     return handleMixedSubscription(app, payload, request, options, authorization)

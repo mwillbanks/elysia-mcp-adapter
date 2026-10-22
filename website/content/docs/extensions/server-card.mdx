@@ -8,23 +8,27 @@ Server Cards are a finalized MCP extension. The adapter preserves its pinned sch
 `MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. The selected version record retains `status: 'experimental'` as historical metadata for the immutable schema snapshot. The wire schema and revision selector did not change when the extension became final.
 
 ```ts
-import { MCP_SERVER_CARD_REVISION, MCP_SERVER_CARD_SCHEMA, mcp } from '@mwillbanks/elysia-mcp-adapter'
+import {
+  MCP_SERVER_CARD_REVISION,
+  MCP_SERVER_CARD_SCHEMA,
+  mcp,
+} from "@mwillbanks/elysia-mcp-adapter";
 
 mcp({
-  server: { name: 'com.example/service', version: 'build-42' },
+  server: { name: "com.example/service", version: "build-42" },
   extensions: {
     serverCard: {
       version: MCP_SERVER_CARD_REVISION,
       card: {
         $schema: MCP_SERVER_CARD_SCHEMA,
-        name: 'com.example/service',
-        description: 'Example service',
-        version: 'build-42',
-        remotes: [{ type: 'streamable-http', url: 'https://api.example.com/mcp' }]
-      }
-    }
-  }
-})
+        name: "com.example/service",
+        description: "Example service",
+        version: "build-42",
+        remotes: [{ type: "streamable-http", url: "https://api.example.com/mcp" }],
+      },
+    },
+  },
+});
 ```
 
 The endpoint returns `application/mcp-server-card+json`, `Access-Control-Allow-Origin: *`, a stable ETag, and `Cache-Control`. Matching `If-None-Match` requests return `304`.

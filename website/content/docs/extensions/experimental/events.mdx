@@ -7,17 +7,17 @@ Events are opt-in and pinned to revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c5
 
 ```ts
 mcp({
-  transport: { protocolVersions: ['2025-11-25'] },
+  transport: { protocolVersions: ["2025-11-25"] },
   extensions: {
     events: {
-      version: '6682596d65eec778fe0b8b1f43b4e89d2fe2c546',
+      version: "6682596d65eec778fe0b8b1f43b4e89d2fe2c546",
       cursor: { signingKey: process.env.MCP_EVENT_CURSOR_KEY! },
       heartbeatMs: 15_000,
       maxEvents: 100,
-      maxAgeMs: 300_000
-    }
-  }
-})
+      maxAgeMs: 300_000,
+    },
+  },
+});
 ```
 
 Register events with `.mcpEvent(definition, handler)`. Each definition declares poll, push, or webhook delivery, argument and payload schemas, authorization, and optional subscription lifecycle hooks. `events/list` discovers authorized definitions. `events/poll` treats `cursor: null` as a fresh head and returns no backlog. Clients persist the returned signed cursor and replay from it. Providers do not persist client checkpoints.
