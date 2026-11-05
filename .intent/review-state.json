@@ -76,16 +76,14 @@
       ]
     },
     "source:examples/tasks/README.md": {
-      "fingerprint": "4e367f755b719c0ded7eb94e6fb2d319f33d685ecc0d46ff9b68a589997f1988",
+      "fingerprint": "c6cddfa551d353b9b3e961acd727e6fe1693895baa6d5fe942f1cd0cd7ad9159",
       "snapshot": {
-        "examples/tasks/README.md": "1b8deef15441b275c6b3a7c11433c7d46584603fbaf804b0507aec004bffabb8"
+        "examples/tasks/README.md": "c232b3cece5f6406197dcf76d468686ca39931c6d290789555267ef8c81b62e0"
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "head": "6af18e74b9860ed58406c020ea083bc2235f0510",
       "outcome": "no-change",
-      "reason": "The example documents provider state details. The extension reference already tells consumers to choose a durable provider.",
-      "evidence": [
-        "Checked the SQLite and durable execution examples against the provider selection step."
-      ]
+      "reason": "The example README describes which Redis fixture the tests use. Adapter guidance and public setup are unaffected.",
+      "evidence": ["examples/tasks/test-support.ts", ".github/workflows/ci.yml"]
     },
     "source:website/content/docs/core-concepts/language-preference.mdx": {
       "fingerprint": "4c04755548f97882b9b213a25c9581ecc04d6661398d7acd0acff088002f0cd0",
