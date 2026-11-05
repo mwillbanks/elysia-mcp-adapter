@@ -23,6 +23,7 @@ export function setMcpInvocationContext(request: Request, context: McpHandlerCon
   invocationContexts.set(request, context)
 }
 
+/** Read the invocation for an internal Elysia request. Ordinary HTTP requests have no context. */
 export function getMcpInvocationContext(request: Request): McpHandlerContext | undefined {
   return invocationContexts.get(request)
 }

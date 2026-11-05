@@ -16,6 +16,7 @@ import type {
 import { assertInputRequestCapabilities } from './input-request-validation.js'
 import { McpProtocolError } from './protocol-error.js'
 
+/** Build typed requests for the client input methods supported by the adapter. */
 export const mcpInput = {
   form: (params: McpElicitationFormRequest['params']): McpElicitationFormRequest => ({
     method: 'elicitation/create',
@@ -42,11 +43,14 @@ export type McpInputAnswer<Request extends McpInputRequest> = Request extends Mc
     : ElicitationAnswer
 
 export interface McpInvocationInput {
+  /** Check whether the current client advertises the capability the request requires. */
   supports(request: McpInputRequest): boolean
+  /** Return a retry result. State requires configured continuation signing. */
   require(
     requests: Record<string, McpInputRequest>,
     options?: { state?: string }
   ): McpInputRequiredResult
+  /** Read and validate an answer, or return undefined if the client omitted it. */
   response<Request extends McpInputRequest>(
     key: string,
     request: Request

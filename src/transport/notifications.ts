@@ -19,7 +19,9 @@ export const MCP_LOG_LEVEL_META_KEY = 'io.modelcontextprotocol/logLevel'
 export type McpLogLevel = (typeof LOG_LEVELS)[number]
 
 export interface McpInvocationNotify {
+  /** Send increasing progress values while the active client supplies a progress token. */
   progress(value: number, detail?: { total?: number; message?: string }): void
+  /** Send a compatibility log message when server configuration and the client allow it. */
   message(data: unknown, options?: { level?: McpLogLevel; logger?: string }): void
 }
 

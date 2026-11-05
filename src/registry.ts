@@ -46,6 +46,7 @@ import type {
 type RouteMcpOptions = Exclude<McpRouteOperation['mcp'], false | undefined>
 let defaultRegistryOptions: NormalizedMcpPluginOptions | undefined
 
+/** Resolve the server registry for trusted diagnostics. This does not apply client access rules. */
 export function getMcpRegistry(
   app: AnyElysiaApp,
   overrideOptions?: NormalizedMcpPluginOptions

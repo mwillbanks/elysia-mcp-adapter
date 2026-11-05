@@ -136,6 +136,8 @@ app.use(
 
 Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks keeps `draft` pinned to revision `2c1425d` and exposes the current draft as `draft-b3d28ac`, so updating upstream does not move the legacy codec. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
 
+Workers can create a `McpTaskExecutionContext` with `createMcpTaskExecutionContext(options)`. Pass `McpTaskExecutionContextOptions` with the task ID, the original provider context, and the provider's persistence callbacks. Use `execution.notify.status()` for updates and `execution.input.request()` for client input. Rebuild the context from durable data after a restart. See the [Tasks worker example](./examples/tasks/) for the full flow.
+
 ### Modern core behavior
 
 The `core` option configures published `2026-07-28` utilities:

@@ -17,21 +17,26 @@ export function assertOriginatingTaskInput(
   assertInputRequestCapabilities({ [key]: request }, isRecord(advertised) ? advertised : undefined)
 }
 
+/** Reports durable status and requests input for one owned task. */
 export interface McpTaskExecutionContext {
   readonly taskId: string
   readonly signal?: AbortSignal
   readonly notify: {
+    /** Persist a status message for task polling and subscriptions. */
     status(message: string): Promise<void>
   }
   readonly input: {
+    /** Persist an input request with a key unique for the lifetime of the task. */
     request(key: string, request: McpInputRequest): Promise<void>
   }
 }
 
+/** Data and persistence callbacks used to bind a worker to its task. */
 export interface McpTaskExecutionContextOptions {
   taskId: string
   /** The provider context retained from task creation, including the originating capabilities. */
   context: TaskProviderContext
+  /** Callbacks must enforce ownership and persist changes before resolving. */
   provider: Pick<TaskProvider, 'requestInput' | 'setStatusMessage'>
   signal?: AbortSignal
 }
