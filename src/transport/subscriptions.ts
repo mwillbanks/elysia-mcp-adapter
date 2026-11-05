@@ -18,6 +18,7 @@ import type {
 } from '../types.js'
 import { modernResultMeta } from './core.js'
 import { invocationContextBase, taskRequestContext } from './invocation-context.js'
+import { localizeTaskInputNotification } from './language-response.js'
 import {
   McpProtocolError,
   type McpRequestProtocolContext,
@@ -26,6 +27,7 @@ import {
 import { isRequestId } from './request-id.js'
 import { createSseCapacity } from './sse-capacity.js'
 import { isSameOrDescendantUri } from './subscription-publisher.js'
+import { pendingTaskInputRequests } from './task-input-requests.js'
 
 const JSON_RPC_VERSION = '2.0' as const
 export async function handleSubscription(
@@ -590,12 +592,10 @@ class MixedSubscriptionSession {
       this.cancel()
       return
     }
-    deliverTask(
-      task,
-      this.controller,
-      this.queuedTasks,
-      (message) => this.event(message),
-      this.subscriptionId
+    deliverTask(task, this.controller, this.queuedTasks, (snapshot) =>
+      this.event(
+        taskNotification(snapshot, this.subscriptionId, this.context.protocol, this.options)
+      )
     )
   }
 
@@ -703,12 +703,17 @@ class MixedSubscriptionSession {
 
 function taskNotification(
   task: DetailedTask,
-  subscriptionId: string | number
+  subscriptionId: string | number,
+  protocol: McpRequestProtocolContext,
+  options: NormalizedMcpPluginOptions
 ): Record<string, unknown> {
+  const params = { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId } }
   return {
     jsonrpc: JSON_RPC_VERSION,
     method: 'notifications/tasks',
-    params: { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId } }
+    params: pendingTaskInputRequests(task)
+      ? localizeTaskInputNotification(params, protocol.language, options.core.language)
+      : params
   }
 }
 
@@ -1001,12 +1006,15 @@ class TaskSubscriptionSession {
       void this.close()
       return
     }
-    deliverTask(
-      task,
-      this.controller,
-      this.queued,
-      (message) => this.event(message),
-      this.subscriptionId
+    deliverTask(task, this.controller, this.queued, (snapshot) =>
+      this.event(
+        taskNotification(
+          snapshot,
+          this.subscriptionId,
+          this.prepared.context.protocol,
+          this.options
+        )
+      )
     )
   }
 
@@ -1103,14 +1111,13 @@ function deliverTask(
   task: DetailedTask,
   controller: ReadableStreamDefaultController<Uint8Array> | undefined,
   queue: DetailedTask[],
-  event: (message: unknown) => Uint8Array,
-  subscriptionId: string | number
+  frame: (task: DetailedTask) => Uint8Array
 ): void {
   if (!controller) {
     queue.push(task)
     return
   }
-  controller.enqueue(event(taskNotification(task, subscriptionId)))
+  controller.enqueue(frame(task))
 }
 
 function rejectUnacceptedTask(

@@ -182,7 +182,8 @@ export async function initializeResult(
     serverInfo: {
       name: options.server.name,
       version: options.server.version,
-      title: options.server.title
+      title: options.server.title,
+      description: options.server.description
     },
     instructions: options.server.instructions
   }

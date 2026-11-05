@@ -47,6 +47,9 @@ export function invocationContextBase(
     signal: context.signal ?? request.signal,
     meta: isRecord(params._meta) ? params._meta : undefined,
     protocolVersion: context.protocol.version,
+    ...(context.protocol.language && {
+      contentLanguage: context.protocol.language.contentLanguage
+    }),
     clientCapabilities: context.protocol.clientCapabilities,
     clientInfo: context.protocol.clientInfo,
     authorization: context.authorization,

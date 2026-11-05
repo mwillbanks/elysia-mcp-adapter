@@ -35,6 +35,7 @@ function normalizeServer(options: McpPluginOptions): NormalizedMcpPluginOptions[
     name: options.server?.name ?? 'elysia-mcp-adapter',
     version: options.server?.version ?? '0.1.0',
     title: options.server?.title,
+    description: options.server?.description,
     instructions: options.server?.instructions
   }
 }

@@ -1,0 +1,48 @@
+---
+title: Request language preferences
+description: Use a client language preference to localize MCP display strings for one request.
+icon: Languages
+---
+
+The adapter can apply the accepted [SEP-2792](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2792) when you enable `core.language`. The implementation follows the [pinned specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/65f75c48df509f94afc8b039ae641a0fa4856a88/seps/2792-i18n-language-negotiation.md). Clients can send the preference without capability negotiation.
+
+## Configure a display catalog
+
+Supply supported BCP 47 tags, a supported default, and a synchronous callback that returns host-provided strings.
+
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(
+  mcp({
+    core: {
+      language: {
+        supportedLanguages: ["en", "fr-CA"],
+        defaultLanguage: "en",
+        localize({ language, field, id }) {
+          if (language === "fr-CA" && field === "tool.title" && id === "weather") {
+            return "Météo";
+          }
+        },
+      },
+    },
+  }),
+);
+```
+
+The callback receives the selected language, method, display field, path, original string, and a stable item identifier when available. Return `undefined` to keep the original string. Treat original strings as written in the configured default language. If a response contains both selected-language and default-language text, its language field lists both tags.
+
+The adapter localizes server information, discovery titles and descriptions, tool annotation titles, prompt argument labels, progress messages, and elicitation display text. Pending task input is localized on creation, polling, and task subscriptions. Elicitation form property keys, schema values, URIs, method names, error messages, and other identifiers remain stable. Handlers can read `context.contentLanguage` as request-scoped fallback context for application content. Give explicit language arguments precedence when they control that content.
+
+## Send one preference per request
+
+Put the exact preference string in `params._meta["io.modelcontextprotocol/acceptLanguage"]` and send the same value in `Accept-Language`. The adapter matches weighted ranges and falls back to the configured default when no language matches.
+
+A header by itself creates no MCP preference. The adapter accepts canonical metadata if an intermediary strips the header. If both are present and differ, it returns HTTP `400` and JSON-RPC `HeaderMismatch` (`-32020`). Casing, internal spacing, and the spelling of weights matter for this exact comparison.
+
+For legacy JSON-RPC batches, the adapter validates all request mirrors before dispatch. Each item uses its own preference. The batch sends one HTTP `Content-Language` field if its reported languages agree exactly. If they differ, each item's canonical metadata carries its language. A batch with a stripped request mirror stays private.
+
+Localized results and notifications carry `io.modelcontextprotocol/contentLanguage` in their own `_meta`. With `core.language` enabled, JSON responses mirror a valid canonical value in `Content-Language`, including when the host reports it without a request preference. The adapter omits the HTTP language field on SSE streams, where individual messages can use different languages.
+
+HTTP responses that can vary by language send `Vary: Accept-Language`. If the header is stripped, the adapter keeps that response private for HTTP and MCP caches. MCP client caches must key by the original preference string, including when different strings select the same language.

@@ -2,6 +2,7 @@ import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
 import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
 import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
+import { type McpRequestLanguage, resolveHttpRequestLanguage } from './language.js'
 import { MCP_LOG_LEVEL_META_KEY, type McpLogLevel, requestLogLevel } from './notifications.js'
 import { McpProtocolError } from './protocol-error.js'
 import { requestTargetName } from './protocol-routing.js'
@@ -22,6 +23,7 @@ export interface McpRequestProtocolContext {
   clientInfo?: McpClientInfo
   progressToken?: string | number
   logLevel?: McpLogLevel
+  language?: McpRequestLanguage
   meta?: Record<string, unknown>
 }
 
@@ -46,12 +48,18 @@ export function resolveRequestProtocol(
     })
   }
 
+  const language = resolveHttpRequestLanguage(
+    options.core.language,
+    payload.params,
+    request.headers
+  )
   const modern = requestedVersion === MODERN_PROTOCOL_VERSION
   if (!modern) {
     return {
       version: LEGACY_PROTOCOL_VERSION,
       modern: false,
       clientCapabilities: {},
+      language,
       meta
     }
   }
@@ -81,6 +89,7 @@ export function resolveRequestProtocol(
     clientInfo,
     progressToken,
     logLevel,
+    language,
     meta
   }
 }
@@ -175,7 +184,8 @@ export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
       'io.modelcontextprotocol/serverInfo': {
         name: options.server.name,
         version: options.server.version,
-        title: options.server.title
+        title: options.server.title,
+        description: options.server.description
       }
     },
     instructions: options.server.instructions

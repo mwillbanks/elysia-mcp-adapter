@@ -84,6 +84,12 @@ import {
 } from './discovery.js'
 import { exceedsInputElementLimit } from './input-limits.js'
 import { invocationContextBase, taskRequestContext } from './invocation-context.js'
+import {
+  applyLanguageResponseHeaders,
+  languageResponseHeader,
+  localizeLanguageProgress
+} from './language-response.js'
+import { type McpRequestLanguage, resolveHttpRequestLanguage } from './language.js'
 import { handleLegacyAuxiliaryMethod, type LegacySessionRuntime } from './legacy-sessions.js'
 import { assertMirroredToolHeaders, assertValidMirroredHeaderSchema } from './mirrored-headers.js'
 import {
@@ -107,6 +113,7 @@ import {
   type SkillRequestRuntime
 } from './skill-requests.js'
 import { handleSubscription, sseResponse } from './subscriptions.js'
+import { markTaskCreationResult } from './task-input-requests.js'
 import {
   resolveActiveVariant,
   type VariantSelectionRuntime,
@@ -197,7 +204,51 @@ async function handleAuthorizedHttpRequest(
   if (request.method !== 'POST') return methodNotAllowedResponse()
   const parsed = await readRequestPayload(request, options)
   if (parsed instanceof Response) return parsed
-  return handlePostPayload(app, parsed.payload, request, options, authorization)
+  if (!options.core.language) {
+    return handlePostPayload(app, parsed.payload, request, options, authorization)
+  }
+  return handleLanguagePost(app, parsed.payload, request, options, authorization)
+}
+
+async function handleLanguagePost(
+  app: AnyElysiaApp,
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
+): Promise<Response> {
+  const language = resolvePostLanguage(payload, request, options)
+  if (language instanceof Response) return language
+  const response = await handlePostPayload(app, payload, request, options, authorization)
+  applyLanguageResponseHeaders(response.headers, true, language)
+  return response
+}
+
+function resolvePostLanguage(
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): McpRequestLanguage | Response | undefined {
+  if (Array.isArray(payload) && usesModernErrorEnvelope(request, options)) return undefined
+  const messages: unknown[] = Array.isArray(payload) ? payload : [payload]
+  let language: McpRequestLanguage | undefined
+  for (const message of messages) {
+    if (!isJsonRpcRequest(message)) continue
+    try {
+      const resolved = resolveHttpRequestLanguage(
+        options.core.language,
+        message.params,
+        request.headers
+      )
+      language ??= resolved
+    } catch (error) {
+      const id = errorIdForRequest(request, options, message)
+      return jsonResponse(normalizeDispatchError(id, error), errorStatus(error), {
+        vary: 'Accept-Language'
+      })
+    }
+  }
+  return language
 }
 
 async function readRequestPayload(
@@ -273,7 +324,12 @@ async function handleBatchPayload(
     const outcome = await handleJsonRpcMessage(app, item, request, options, authorization)
     if (outcome.response) responses.push(outcome.response)
   }
-  return responses.length === 0 ? new Response(null, { status: 202 }) : jsonResponse(responses)
+  if (responses.length === 0) return new Response(null, { status: 202 })
+  return jsonResponse(
+    responses,
+    200,
+    languageResponseHeader(responses, options.core.language !== undefined)
+  )
 }
 
 async function handleEventStreamRequest(
@@ -331,7 +387,7 @@ function outcomeHeaders(
   options: NormalizedMcpPluginOptions,
   authorization?: McpAuthorizationContext
 ): HeadersInit {
-  const headers: Record<string, string> = {}
+  const headers = languageResponseHeader(outcome.response, options.core.language !== undefined)
   const session = initializedSessionId(request)
   if (session) headers['mcp-session-id'] = session
   if (outcome.status === 403 && options.extensions.auth) {
@@ -1049,7 +1105,7 @@ async function createToolTask(
   const controller = taskController(options)
   invocation.task = controller
   setTaskController(request, controller)
-  return controller.create(
+  const created = await controller.create(
     {
       mode: tool.taskExecution === 'required' ? 'required' : 'optional',
       ttlMs: tasks.defaultTtl,
@@ -1079,6 +1135,7 @@ async function createToolTask(
     },
     taskRequestContext(request, params, context)
   )
+  return markTaskCreationResult(created)
 }
 
 function assertToolInputElementLimit(args: unknown, options: NormalizedMcpPluginOptions): void {
@@ -1574,7 +1631,12 @@ function requestNotificationChannels(
     const { progressToken } = protocol
     const logLevel = options.core.logging ? protocol.logLevel : undefined
     if (progressToken === undefined && logLevel === undefined) return undefined
-    return { progressToken, logLevel }
+    return {
+      progressToken,
+      logLevel,
+      localizeProgress: (params) =>
+        localizeLanguageProgress(params, protocol.language, options.core.language)
+    }
   } catch {
     // Dispatch invalid envelopes through the ordinary JSON error path.
     return undefined

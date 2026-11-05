@@ -11,7 +11,9 @@ import {
   modernResultMeta,
   prepareInputRequiredResult
 } from './core.js'
+import { localizeLanguageResult } from './language-response.js'
 import type { McpRequestProtocolContext } from './protocol.js'
+import { taskResultInputRequests } from './task-input-requests.js'
 
 export interface ResultSerializationRuntime {
   error: (code: number, message: string) => Error
@@ -72,6 +74,18 @@ async function addCachePolicy(
   return { ...result, ...(await cachePolicy(method, context, options)) }
 }
 
+async function serializeModernResult(
+  method: string,
+  result: Record<string, unknown>,
+  params: Record<string, unknown>,
+  context: McpInvocationContext,
+  options: NormalizedMcpPluginOptions
+): Promise<Record<string, unknown>> {
+  const prepared = prepareInputRequiredResult(result, method, params, context, options)
+  if (isInputRequiredResult(prepared)) return inputRequiredMetadata(prepared, options)
+  return addCachePolicy(method, modernMetadata(result, options), params, context, options)
+}
+
 export async function serializeProtocolResult(
   method: string,
   result: unknown,
@@ -83,8 +97,15 @@ export async function serializeProtocolResult(
 ): Promise<unknown> {
   if (!isRecord(result)) return result
   if (method === 'tools/call') assertTrustResultMetadata(result._meta)
-  if (!protocol.modern) return assertLegacyResult(result, runtime)
-  const prepared = prepareInputRequiredResult(result, method, params, context, options)
-  if (isInputRequiredResult(prepared)) return inputRequiredMetadata(prepared, options)
-  return addCachePolicy(method, modernMetadata(result, options), params, context, options)
+  const pendingTaskInput = taskResultInputRequests(method, result) !== undefined
+  const serialized = protocol.modern
+    ? await serializeModernResult(method, result, params, context, options)
+    : assertLegacyResult(result, runtime)
+  return localizeLanguageResult(
+    method,
+    serialized,
+    protocol.language,
+    options.core.language,
+    pendingTaskInput
+  )
 }

@@ -466,7 +466,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'draft',
     approval: 'accepted',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.language.source,
     proposal: pull(2792)
   },

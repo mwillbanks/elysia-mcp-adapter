@@ -39,6 +39,7 @@ import type {
 } from './extensions/tasks/index.js'
 import type { McpVariantsOptions } from './extensions/variants/index.js'
 import type { McpInvocationInput } from './transport/input.js'
+import type { McpLanguageOptions, NormalizedMcpLanguageOptions } from './transport/language.js'
 import type { McpInvocationNotify } from './transport/notifications.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
@@ -279,6 +280,8 @@ export interface McpSubscriptionOptions {
 }
 
 export interface McpCoreOptions {
+  /** Opt in to request-scoped SEP-2792 language negotiation. */
+  language?: McpLanguageOptions
   /** Opt in to deprecated, request-scoped notifications/message on modern MCP. */
   logging?: boolean
   /** Reject tool inputs whose nested object members and array elements exceed this limit. */
@@ -306,6 +309,7 @@ export interface McpServerInfo {
   name: string
   version: string
   title?: string
+  description?: string
   instructions?: string
 }
 
@@ -463,6 +467,7 @@ export interface NormalizedMcpPluginOptions extends Required<
   }
   core: {
     logging: boolean
+    language?: NormalizedMcpLanguageOptions
     maxToolInputElements?: number
     continuation?: McpContinuationOptions & { ttlMs: number; singleUse: boolean }
     pagination?: McpPaginationOptions & { cursorTtlMs: number }
@@ -507,6 +512,8 @@ export interface McpInvocationContext {
   signal?: AbortSignal
   meta?: Record<string, unknown>
   protocolVersion?: McpProtocolVersion
+  /** Selected language for this request, for use when domain arguments omit a language. */
+  contentLanguage?: string
   clientCapabilities?: Record<string, unknown>
   clientInfo?: McpClientInfo
   inputResponses?: McpInputResponses
