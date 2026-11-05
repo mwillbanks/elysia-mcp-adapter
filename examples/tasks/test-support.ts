@@ -9,6 +9,9 @@ interface RedisProcess {
 }
 
 export async function startRedisFixture(): Promise<RedisFixture> {
+  const serviceUrl = Bun.env.TASKS_TEST_REDIS_URL
+  if (serviceUrl) return { url: serviceUrl, async close() {} }
+
   const listener = Bun.listen({
     hostname: '127.0.0.1',
     port: 0,
