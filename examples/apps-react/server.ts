@@ -22,7 +22,12 @@ const app = new Elysia()
   .use(mcp({ allowedRoutes: [], extensions: { apps: {} } }))
   .mcpTool('tasks.open', result, {
     description: 'Open the task board',
-    app: { resourceUri: appUri, visibility: ['model', 'app'] }
+    app: { resourceUri: appUri, visibility: ['model', 'app'] },
+    prompt: {
+      name: 'task-board',
+      title: 'Open the task board',
+      render: (_args, { toolName }) => `Open my task board by calling the ${toolName} tool.`
+    }
   })
   .mcpTool(
     'tasks.toggle',

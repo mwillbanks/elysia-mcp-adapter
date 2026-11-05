@@ -250,6 +250,7 @@ function modernPrimitiveCapabilities(
 ): Record<string, unknown> {
   const registry = getMcpRegistry(app, options)
   const capabilities: Record<string, unknown> = {}
+  if (options.core.logging) capabilities.logging = {}
   addToolCapabilities(capabilities, registry.tools.size, options)
   addResourceCapabilities(
     capabilities,

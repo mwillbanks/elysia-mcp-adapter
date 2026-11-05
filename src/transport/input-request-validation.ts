@@ -1,7 +1,6 @@
 import { isRecord } from '../internal.js'
 import { isSamplingContentValue } from '../schema/content.js'
 import { isValidUri } from '../schema/validate.js'
-import type { McpInputRequest } from '../types.js'
 import { McpProtocolError } from './protocol-error.js'
 
 type InputMethod = 'elicitation/create' | 'roots/list' | 'sampling/createMessage'
@@ -29,7 +28,7 @@ const METHOD_CAPABILITIES = new Map<string, string>([
 ])
 
 export function assertInputRequestCapabilities(
-  requests: Record<string, McpInputRequest>,
+  requests: Record<string, unknown>,
   capabilities: Record<string, unknown> | undefined
 ): void {
   for (const [key, request] of Object.entries(requests)) {

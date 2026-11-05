@@ -10,7 +10,8 @@ import {
   type TaskExecutionScheduler,
   type TaskInputResponses,
   type TaskProvider,
-  type TaskProviderContext
+  type TaskProviderContext,
+  type TaskSubscriptionContext
 } from '../src/index.js'
 import { modernRpc, rpc } from './helpers.js'
 
@@ -564,6 +565,57 @@ describe('integrated Tasks', () => {
     expect(provider.subscriptionClosed).toBe(true)
   })
 
+  test('subscribes to durable task status only for the authenticated owner', async () => {
+    const provider = new IntegrationTaskProvider()
+    const resource = 'https://api.example.com/mcp'
+    const issuer = 'https://auth.example.com'
+    provider.owners.set('owned', JSON.stringify([issuer, 'owner', null]))
+    provider.tasks.set('owned', {
+      taskId: 'owned',
+      status: 'working',
+      createdAt: '2026-07-28T12:00:00.000Z',
+      lastUpdatedAt: '2026-07-28T12:00:00.000Z',
+      ttlMs: null,
+      statusMessage: 'Durable worker update'
+    })
+    const app = new Elysia().use(
+      mcp({
+        extensions: {
+          tasks: { provider },
+          auth: {
+            resource,
+            authorizationServers: [issuer],
+            verifyAccessToken: async (subject) => ({
+              tokenType: 'access_token',
+              issuer,
+              subject,
+              audience: resource,
+              scopes: [],
+              expiresAt: 4_000_000_000
+            })
+          }
+        }
+      })
+    )
+    for (const subject of ['other', 'owner']) {
+      const response = await taskSubscriptionRequest(app, ['owned'], undefined, `Bearer ${subject}`)
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      try {
+        const acknowledgement = decoder.decode((await reader.read()).value)
+        if (subject === 'owner') {
+          expect(acknowledgement).toContain('"taskIds":["owned"]')
+          const update = decoder.decode((await reader.read()).value)
+          expect(update).toContain('Durable worker update')
+        } else {
+          expect(acknowledgement).toContain('"taskIds":[]')
+        }
+      } finally {
+        await reader.cancel()
+      }
+    }
+  })
+
   test('acknowledges only provider-accepted task subscriptions', async () => {
     const provider = new IntegrationTaskProvider()
     provider.acceptedTaskIds = ['accepted']
@@ -719,9 +771,11 @@ describe('integrated Tasks', () => {
                 return (async function* () {
                   try {
                     yield { method: 'notifications/tools/list_changed' as const }
-                    await new Promise<void>((resolve) => {
-                      context.signal?.addEventListener('abort', () => resolve(), { once: true })
-                    })
+                    if (!context.signal?.aborted) {
+                      await new Promise<void>((resolve) => {
+                        context.signal?.addEventListener('abort', () => resolve(), { once: true })
+                      })
+                    }
                   } finally {
                     coreAborted = context.signal?.aborted === true
                     resolveCoreCleanup()
@@ -782,6 +836,72 @@ describe('integrated Tasks', () => {
     expect(coreAborted).toBe(true)
     expect(provider.subscriptionClosed).toBe(true)
     await reader.cancel()
+  })
+
+  test('closes a mixed subscription when the client disconnects during task setup', async () => {
+    const provider = new IntegrationTaskProvider()
+    const listenStarted = Promise.withResolvers<void>()
+    const releaseListen = Promise.withResolvers<void>()
+    const closeTask = Promise.withResolvers<void>()
+    const closeCore = Promise.withResolvers<void>()
+    let taskCloseCalls = 0
+    Object.defineProperty(provider, 'listen', {
+      value: async () => {
+        listenStarted.resolve()
+        await releaseListen.promise
+        return {
+          acceptedTaskIds: ['observed'],
+          close: () => {
+            taskCloseCalls++
+            closeTask.resolve()
+          },
+          done: closeTask.promise
+        }
+      }
+    })
+    const app = new Elysia().use(
+      mcp({
+        extensions: { tasks: { provider } },
+        core: {
+          subscriptions: {
+            toolsListChanged: true,
+            provider: {
+              subscribe() {
+                const iterator: AsyncIterableIterator<McpServerNotification> = {
+                  [Symbol.asyncIterator]() {
+                    return this
+                  },
+                  next: async () => {
+                    throw new Error('Aborted stream must not start')
+                  },
+                  return: async () => {
+                    closeCore.resolve()
+                    return { done: true, value: undefined }
+                  }
+                }
+                return iterator
+              }
+            }
+          }
+        }
+      })
+    )
+    const disconnect = new AbortController()
+    const pending = mixedSubscriptionRequest(
+      app,
+      {
+        taskIds: ['observed'],
+        toolsListChanged: true
+      },
+      disconnect.signal
+    )
+    await listenStarted.promise
+    disconnect.abort()
+    releaseListen.resolve()
+    const response = await pending
+    expect((await response.body!.getReader().read()).done).toBe(true)
+    await Promise.all([closeCore.promise, closeTask.promise])
+    expect(taskCloseCalls).toBe(1)
   })
 
   test('cleans core subscriptions when mixed task setup fails', async () => {
@@ -1078,14 +1198,22 @@ class IntegrationTaskProvider implements TaskProvider {
     return true
   }
 
-  listen(taskIds: readonly string[], listener: (task: DetailedTask) => void) {
+  listen(
+    taskIds: readonly string[],
+    listener: (task: DetailedTask) => void,
+    context: TaskSubscriptionContext
+  ) {
     this.subscriptionListener = listener
-    for (const taskId of taskIds) {
+    const owned = taskIds.filter((taskId) => {
+      const owner = this.owners.get(taskId)
+      return owner === undefined || owner === context.principalKey
+    })
+    for (const taskId of owned) {
       const task = this.tasks.get(taskId)
       if (task) listener(task)
     }
     return {
-      acceptedTaskIds: this.acceptedTaskIds,
+      acceptedTaskIds: this.acceptedTaskIds ?? owned,
       close: async () => {
         this.subscriptionClosed = true
         this.subscriptionCloseCalls += 1
@@ -1107,7 +1235,12 @@ function workingIntegrationTask(taskId: string): DetailedTask {
   }
 }
 
-function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[], signal?: AbortSignal) {
+function taskSubscriptionRequest(
+  app: Elysia,
+  taskIds: readonly string[],
+  signal?: AbortSignal,
+  authorization?: string
+) {
   return app.handle(
     new Request('http://localhost/mcp', {
       method: 'POST',
@@ -1115,7 +1248,8 @@ function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[], signal
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
         'mcp-protocol-version': '2026-07-28',
-        'mcp-method': 'subscriptions/listen'
+        'mcp-method': 'subscriptions/listen',
+        ...(authorization ? { authorization } : {})
       },
       signal,
       body: JSON.stringify({
@@ -1135,7 +1269,11 @@ function taskSubscriptionRequest(app: Elysia, taskIds: readonly string[], signal
   )
 }
 
-function mixedSubscriptionRequest(app: Elysia, notifications: Record<string, unknown>) {
+function mixedSubscriptionRequest(
+  app: Elysia,
+  notifications: Record<string, unknown>,
+  signal?: AbortSignal
+) {
   return app.handle(
     new Request('http://localhost/mcp', {
       method: 'POST',
@@ -1145,6 +1283,7 @@ function mixedSubscriptionRequest(app: Elysia, notifications: Record<string, unk
         'mcp-protocol-version': '2026-07-28',
         'mcp-method': 'subscriptions/listen'
       },
+      signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 9,

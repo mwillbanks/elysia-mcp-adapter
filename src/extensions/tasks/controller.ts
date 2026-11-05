@@ -7,6 +7,7 @@ import {
   toDurableTaskProviderContext
 } from './codec.js'
 import { createInvalidTaskParamsError, createMissingTaskCapabilityError } from './errors.js'
+import { assertOriginatingTaskInput } from './execution-context.js'
 import {
   type CancelTaskResult,
   type CreateTaskResult,
@@ -119,8 +120,18 @@ export class TaskController {
     request: TaskInputRequest,
     context: TaskRequestContext
   ): Promise<void> {
-    if (key.length === 0) throw createInvalidTaskParamsError('Task input request key is required')
-    const accepted = await this.provider.requestInput(taskId, key, request, this.context(context))
+    if (key.length === 0) {
+      throw createInvalidTaskParamsError('Task input request key is required')
+    }
+    const owner = this.context(context)
+    // Raw controller calls have no originating peer to negotiate capabilities with.
+    if (
+      owner.meta?.['io.modelcontextprotocol/protocolVersion'] !== undefined ||
+      owner.meta?.['io.modelcontextprotocol/clientCapabilities'] !== undefined
+    ) {
+      assertOriginatingTaskInput(key, request, owner.meta)
+    }
+    const accepted = await this.provider.requestInput(taskId, key, request, owner)
     if (accepted === false) {
       throw createInvalidTaskParamsError(`Unknown task or reused input request key: ${taskId}`)
     }

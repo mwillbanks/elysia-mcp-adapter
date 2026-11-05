@@ -16,7 +16,7 @@ export function mcp(options: McpPluginOptions = {}) {
   const normalized = normalizeOptions(options)
 
   return function elysiaMcpAdapter<T extends AnyElysiaApp>(app: T) {
-    ensureMcpState(app)
+    ensureMcpState(app).pluginOptions = normalized
     installMcpMethods(app)
 
     const withMacro = app.macro({

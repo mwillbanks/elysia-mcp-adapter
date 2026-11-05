@@ -6,6 +6,8 @@ icon: RefreshCcw
 
 The adapter selects MCP `2026-07-28` by default. Every modern POST includes matching protocol and method headers. Calls and reads also include a target header. `_meta` requires the protocol version and client capabilities. Client information is optional and validated when present. `Accept` lists JSON and event streams.
 
+For handler examples and delivery rules, see [Messaging and Input](/docs/core-concepts/messaging).
+
 ## Multi round-trip requests
 
 Tools, resource reads, and prompts can return `McpInputRequiredResult`. The client fulfills declared elicitation, sampling, or roots requests. It retries the original method with `inputResponses` and the exact `requestState`.

@@ -2,6 +2,7 @@ import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
 import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
 import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
+import { MCP_LOG_LEVEL_META_KEY, type McpLogLevel, requestLogLevel } from './notifications.js'
 import { McpProtocolError } from './protocol-error.js'
 import { requestTargetName } from './protocol-routing.js'
 
@@ -19,6 +20,8 @@ export interface McpRequestProtocolContext {
   modern: boolean
   clientCapabilities: Record<string, unknown>
   clientInfo?: McpClientInfo
+  progressToken?: string | number
+  logLevel?: McpLogLevel
   meta?: Record<string, unknown>
 }
 
@@ -63,7 +66,9 @@ export function resolveRequestProtocol(
 
   assertRoutingHeaders(request, payload)
   assertAcceptHeader(request)
-  assertProgressToken(meta?.progressToken)
+  const progressToken = meta?.progressToken
+  assertProgressToken(progressToken)
+  const logLevel = requestLogLevel(meta?.[MCP_LOG_LEVEL_META_KEY])
 
   const capabilities = meta?.[CLIENT_CAPABILITIES_META_KEY]
   const clientInfo = meta?.[CLIENT_INFO_META_KEY]
@@ -74,11 +79,13 @@ export function resolveRequestProtocol(
     modern: true,
     clientCapabilities: capabilities,
     clientInfo,
+    progressToken,
+    logLevel,
     meta
   }
 }
 
-function assertProgressToken(value: unknown): void {
+function assertProgressToken(value: unknown): asserts value is string | number | undefined {
   if (
     value === undefined ||
     typeof value === 'string' ||

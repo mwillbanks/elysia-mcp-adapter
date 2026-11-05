@@ -32,9 +32,16 @@ describe('modern core example', () => {
     const progress = await request(app, 'tools/call', {
       name: 'index',
       arguments: {},
-      _meta: { progressToken: 'index-progress' }
+      _meta: {
+        progressToken: 'index-progress',
+        'io.modelcontextprotocol/logLevel': 'info'
+      }
     })
-    expect(await progress.text()).toContain('notifications/progress')
+    const progressBody = await progress.text()
+    expect(progressBody).toContain('notifications/progress')
+    expect(progressBody).toContain('notifications/message')
+    expect(progressBody).toContain('Index scan complete')
+    expect(progressBody).toContain('"result"')
 
     const cancellable = await request(app, 'tools/call', {
       name: 'wait-for-cancel',

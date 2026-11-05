@@ -1,12 +1,17 @@
 import { isRecord } from '../internal.js'
-import type { McpInputResponse } from '../types.js'
+import type {
+  McpElicitationResult,
+  McpInputResponse,
+  McpRootsResult,
+  McpSamplingResult
+} from '../types.js'
 import { isValidUri } from './validate.js'
 
 export function isMcpInputResponse(value: unknown): value is McpInputResponse {
   return isMcpElicitationResult(value) || isMcpRootsResult(value) || isMcpSamplingResult(value)
 }
 
-export function isMcpElicitationResult(value: unknown): boolean {
+export function isMcpElicitationResult(value: unknown): value is McpElicitationResult {
   if (!isRecord(value)) return false
   if (value.action !== 'accept' && value.action !== 'decline' && value.action !== 'cancel') {
     return false
@@ -25,7 +30,7 @@ export function isMcpElicitationResult(value: unknown): boolean {
   )
 }
 
-export function isMcpRootsResult(value: unknown): boolean {
+export function isMcpRootsResult(value: unknown): value is McpRootsResult {
   return (
     isRecord(value) &&
     Array.isArray(value.roots) &&
@@ -39,7 +44,7 @@ export function isMcpRootsResult(value: unknown): boolean {
   )
 }
 
-export function isMcpSamplingResult(value: unknown): boolean {
+export function isMcpSamplingResult(value: unknown): value is McpSamplingResult {
   return (
     isRecord(value) &&
     (value.role === 'user' || value.role === 'assistant') &&

@@ -41,6 +41,7 @@ export function normalizeCore(options: McpPluginOptions): NormalizedMcpPluginOpt
   assertNonNegativeInteger(ttlMs, 'Cache ttlMs')
   return {
     maxToolInputElements,
+    logging: core?.logging === true,
     continuation: core?.continuation
       ? {
           ...core.continuation,

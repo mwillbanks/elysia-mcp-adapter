@@ -31,10 +31,13 @@ import type {
 import type {
   TaskController,
   TaskExecutionMode,
+  McpTaskExecutionContext,
   TaskProvider,
   TasksVersionInput
 } from './extensions/tasks/index.js'
 import type { McpVariantsOptions } from './extensions/variants/index.js'
+import type { McpInvocationInput } from './transport/input.js'
+import type { McpInvocationNotify } from './transport/notifications.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
 
@@ -258,7 +261,8 @@ export type McpServerNotification =
 export interface McpSubscriptionProvider {
   subscribe(
     filter: Readonly<McpSubscriptionFilter>,
-    context: McpInvocationContext
+    context: McpInvocationContext,
+    authorizeResourceUpdate?: (uri: string) => boolean
   ): AsyncIterable<McpServerNotification> | Promise<AsyncIterable<McpServerNotification>>
 }
 
@@ -272,6 +276,8 @@ export interface McpSubscriptionOptions {
 }
 
 export interface McpCoreOptions {
+  /** Opt in to deprecated, request-scoped notifications/message on modern MCP. */
+  logging?: boolean
   /** Reject tool inputs whose nested object members and array elements exceed this limit. */
   maxToolInputElements?: number
   continuation?: McpContinuationOptions
@@ -341,7 +347,7 @@ export interface McpRouteResourceOptions {
   complete?: McpCompletionHandler
   mapUriToInput?: (
     variables: Record<string, string>,
-    context: McpResourceInvocationContext
+    context: McpResourceHandlerContext
   ) => RouteInvocationInput
 }
 
@@ -351,8 +357,9 @@ export interface McpRoutePromptOptions {
   complete?: McpCompletionHandler
   mapArgsToInput?: (
     args: Record<string, unknown>,
-    context: McpPromptInvocationContext
+    context: McpPromptHandlerContext
   ) => RouteInvocationInput
+  render?: never
 }
 
 export type McpRouteOptions =
@@ -371,7 +378,7 @@ export type McpRouteOptions =
       taskExecution?: TaskExecutionMode
       app?: McpAppToolOptions
       resource?: McpRouteResourceOptions
-      prompt?: McpRoutePromptOptions
+      prompt?: McpRoutePromptOptions | McpCompanionPromptOptions
       marshal?: McpResponseMarshalOptions
     }
 
@@ -448,6 +455,7 @@ export interface NormalizedMcpPluginOptions extends Required<
     events?: NormalizedMcpEventsOptions
   }
   core: {
+    logging: boolean
     maxToolInputElements?: number
     continuation?: McpContinuationOptions & { ttlMs: number; singleUse: boolean }
     pagination?: McpPaginationOptions & { cursorTtlMs: number }
@@ -496,9 +504,17 @@ export interface McpInvocationContext {
   clientInfo?: McpClientInfo
   inputResponses?: McpInputResponses
   requestState?: string
+  notify?: McpInvocationNotify
+  input?: McpInvocationInput
   reportProgress?: (progress: number, options?: { total?: number; message?: string }) => void
   authorization?: Readonly<McpAuthorizationContext>
   task?: TaskController
+  taskExecution?: McpTaskExecutionContext
+}
+
+export interface McpHandlerContext extends McpInvocationContext {
+  notify: McpInvocationNotify
+  input: McpInvocationInput
 }
 
 export interface McpResourceInvocationContext extends McpInvocationContext {
@@ -509,6 +525,9 @@ export interface McpResourceInvocationContext extends McpInvocationContext {
 export interface McpPromptInvocationContext extends McpInvocationContext {
   name: string
 }
+
+export type McpResourceHandlerContext = McpResourceInvocationContext & McpHandlerContext
+export type McpPromptHandlerContext = McpPromptInvocationContext & McpHandlerContext
 
 export type McpTextContent = {
   type: 'text'
@@ -575,6 +594,8 @@ export interface McpToolDefinition {
   authorization?: McpAuthorizationOptions
   taskExecution?: TaskExecutionMode
   app?: McpAppToolOptions
+  prompt?: McpCompanionPromptOptions
+  beforeTask?: McpBeforeTaskHandler
   invoke: (args: unknown, context: McpInvocationContext) => Promise<McpToolHandlerResult>
 }
 
@@ -647,6 +668,7 @@ export type McpPromptHandlerResult = McpPromptResult | McpInputRequiredResult
 export interface McpPromptDefinition {
   source: 'route' | 'explicit'
   name: string
+  linkedToolName?: string
   title?: string
   description?: string
   arguments?: McpPromptArgument[]
@@ -671,11 +693,11 @@ export interface McpRegistry {
 
 export type McpToolHandler<Input = unknown> = (
   input: Input,
-  context: McpInvocationContext
+  context: McpHandlerContext
 ) => Promise<McpToolHandlerResult | unknown> | McpToolHandlerResult | unknown
 
 export type McpResourceHandler = (
-  context: McpResourceInvocationContext
+  context: McpResourceHandlerContext
 ) =>
   | Promise<
       | McpResourceReadResult
@@ -692,7 +714,7 @@ export type McpResourceHandler = (
 
 export type McpPromptHandler<Args extends Record<string, unknown> = Record<string, unknown>> = (
   args: Args,
-  context: McpPromptInvocationContext
+  context: McpPromptHandlerContext
 ) =>
   | Promise<McpPromptResult | McpPromptMessage[] | McpInputRequiredResult | string>
   | McpInputRequiredResult
@@ -700,7 +722,31 @@ export type McpPromptHandler<Args extends Record<string, unknown> = Record<strin
   | McpPromptMessage[]
   | string
 
-export interface McpToolOptions {
+export interface McpCompanionPromptInvocationContext extends McpPromptHandlerContext {
+  toolName: string
+}
+
+export interface McpCompanionPromptOptions {
+  name?: string
+  title?: string
+  description?: string
+  argsSchema?: unknown
+  arguments?: McpPromptArgument[]
+  complete?: McpCompletionHandler
+  render: (
+    args: Record<string, unknown>,
+    context: McpCompanionPromptInvocationContext
+  ) => ReturnType<McpPromptHandler>
+  mapArgsToInput?: never
+}
+
+export type McpBeforeTaskHandler<Input = unknown> = (
+  input: Input,
+  context: McpHandlerContext
+) => McpInputRequiredResult | void | Promise<McpInputRequiredResult | void>
+
+export interface McpToolOptions<Input = unknown> {
+  beforeTask?: McpBeforeTaskHandler<Input>
   title?: string
   description?: string
   inputSchema?: unknown
@@ -710,6 +756,7 @@ export interface McpToolOptions {
   authorization?: McpAuthorizationOptions
   taskExecution?: TaskExecutionMode
   app?: McpAppToolOptions
+  prompt?: McpCompanionPromptOptions
 }
 
 export interface McpResourceOptions {
@@ -753,7 +800,7 @@ export interface McpAdapterState {
 export interface ExplicitToolRegistration {
   name: string
   handler: McpToolHandler<any>
-  options: McpToolOptions
+  options: McpToolOptions<any>
 }
 
 export interface ExplicitResourceRegistration {

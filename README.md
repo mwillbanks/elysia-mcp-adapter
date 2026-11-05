@@ -99,7 +99,7 @@ const app = new Elysia()
   .mcpPrompt('review-error', ({ message }: { message: string }) => `Review this error: ${message}`)
 ```
 
-Routes become tools by default. Resources and prompts require explicit route metadata or the standalone methods above.
+Routes become tools by default. Resources and prompts require explicit route metadata or the standalone methods above. Add a `prompt` option to an explicit or route-backed tool to register an associated prompt that guides the host to call that tool; use `.mcpPrompt()` for standalone prompts.
 
 ## MCP extensions
 
@@ -152,7 +152,9 @@ mcp({
 })
 ```
 
-Tools, resource reads, and prompts can return `McpInputRequiredResult`. Invocation contexts expose validated `inputResponses`, restored `requestState`, client metadata, an abort signal, and `reportProgress()`. Route handlers read the same request-scoped values with `getMcpInvocationContext(request)`. Prompt and resource-template registrations accept completion callbacks. Pagination and subscriptions remain disabled until configured. Signing keys must contain at least 32 bytes. Single-use continuations require an application provider.
+Tools, resource reads, and prompts can return `McpInputRequiredResult`. Invocation contexts expose `notify.progress()`, opt-in `notify.message()`, and typed `input` helpers alongside the existing `reportProgress()`, `inputResponses`, and `requestState` APIs. Route handlers read the same request-scoped values with `getMcpInvocationContext(request)`. Prompt and resource-template registrations accept completion callbacks. Pagination and subscriptions remain disabled until configured. Signing keys must contain at least 32 bytes. Single-use continuations require an application provider.
+
+See the [messaging guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/messaging/) for live and durable updates, input, subscriptions, and tool-linked prompts. Set `prompt` on a tool to add a companion prompt without duplicating its registration.
 
 `core.maxToolInputElements` optionally rejects oversized nested tool inputs before route handlers or task providers run. It counts object members and array elements and leaves input unlimited when omitted. `transport.allowedOrigins` accepts exact serialized origins and explicit non-HTTP scheme patterns such as `chrome-extension://*`. HTTP, HTTPS, and global wildcards remain forbidden.
 

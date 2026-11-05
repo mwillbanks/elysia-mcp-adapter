@@ -1,5 +1,5 @@
 import { resolveAuthVersion } from '../extensions/auth/index.js'
-import { MCP_EVENTS_LATEST_REVISION, MCP_EVENTS_REVISION } from '../extensions/events/index.js'
+import { MCP_EVENTS_LATEST_REVISION, MCP_EVENTS_REVISION } from '../extensions/events/types.js'
 import {
   MCP_INTERCEPTORS_LATEST_REVISION,
   MCP_INTERCEPTORS_REVISION

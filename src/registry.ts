@@ -3,6 +3,7 @@ import {
   assertCompatibleSkillDefinitions,
   buildSkillDefinition
 } from './extensions/skills/index.js'
+import { withInvocationHelpers } from './invoke/context.js'
 import {
   coercePromptResult,
   coerceResourceResult,
@@ -11,6 +12,7 @@ import {
 } from './invoke/marshal-response.js'
 import { invokeRoutePrompt, invokeRouteResource, invokeRouteTool } from './invoke/route.js'
 import { humanizeOperationName, sanitizeMcpName } from './naming.js'
+import { normalizeOptions } from './options.js'
 import { isUriTemplate, matchUriTemplate, templateName } from './resource-template.js'
 import { shouldExposeRoute } from './route-filters.js'
 import { listRouteOperations, routeFingerprint } from './route-inspector.js'
@@ -29,9 +31,11 @@ import type {
   ExplicitResourceRegistration,
   ExplicitToolRegistration,
   JsonSchema,
+  McpCompanionPromptOptions,
   McpPromptDefinition,
   McpRegistry,
   McpResourceDefinition,
+  McpResourceInvocationContext,
   McpResourceTemplateDefinition,
   McpRouteKind,
   McpRouteOperation,
@@ -40,15 +44,19 @@ import type {
 } from './types.js'
 
 type RouteMcpOptions = Exclude<McpRouteOperation['mcp'], false | undefined>
+let defaultRegistryOptions: NormalizedMcpPluginOptions | undefined
 
 export function getMcpRegistry(
   app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
+  overrideOptions?: NormalizedMcpPluginOptions
 ): McpRegistry & {
   skills: NonNullable<McpRegistry['skills']>
   events: NonNullable<McpRegistry['events']>
 } {
   const state = ensureMcpState(app)
+  const options = state.pluginOptions ?? (defaultRegistryOptions ??= normalizeOptions())
+  // Diagnostic overrides must not replace the live registry snapshot used by change listeners.
+  if (overrideOptions && overrideOptions !== options) return buildMcpRegistry(app, overrideOptions)
   const fingerprint = routeFingerprint(app)
 
   if (
@@ -97,6 +105,9 @@ function buildMcpRegistry(
   }
   addExplicitDefinitions(state, registry, options)
   addRouteDefinitions(app, registry, options)
+  for (const tool of registry.tools.values()) {
+    if (tool.prompt) addPrompt(registry, createCompanionPrompt(tool, tool.prompt, options), options)
+  }
   return registry
 }
 
@@ -236,12 +247,14 @@ function createExplicitTool(
     icons: registration.options.icons,
     authorization: registration.options.authorization,
     taskExecution: registration.options.taskExecution ?? 'optional',
+    beforeTask: registration.options.beforeTask,
     app: registration.options.app,
+    prompt: registration.options.prompt,
     invoke: async (args, context) => {
       const validation = validateJsonSchema(inputSchema, args ?? {})
       if (!validation.ok) return createValidationToolError(validation.issues)
 
-      const result = await registration.handler(args ?? {}, context)
+      const result = await registration.handler(args ?? {}, withInvocationHelpers(context))
       return coerceToolResult(result)
     }
   }
@@ -265,8 +278,8 @@ function createExplicitResource(
     authorization: registration.options.authorization,
     app: registration.options.app,
     complete: registration.options.complete,
-    read: async (context: any) => {
-      const result = await registration.handler(context)
+    read: async (context: McpResourceInvocationContext) => {
+      const result = await registration.handler(withInvocationHelpers(context))
       return coerceResourceResult(result, context.uri, registration.options.mimeType)
     }
   }
@@ -303,9 +316,47 @@ function createExplicitPrompt(
     complete: registration.options.complete,
     get: async (args, context) => {
       assertValidPromptArgs(argsSchema, args ?? {})
-      const result = await registration.handler(args ?? {}, context)
+      const result = await registration.handler(args ?? {}, withInvocationHelpers(context))
       return coercePromptResult(result)
     }
+  }
+}
+
+function createCompanionPrompt(
+  tool: McpToolDefinition,
+  prompt: McpCompanionPromptOptions,
+  options: NormalizedMcpPluginOptions
+): McpPromptDefinition {
+  if (tool.app?.visibility && !tool.app.visibility.includes('model')) {
+    throw new TypeError(`MCP App-only tool ${tool.name} cannot have a companion prompt`)
+  }
+  const definition = createExplicitPrompt(
+    {
+      name: prompt.name ?? tool.name,
+      options: {
+        title: prompt.title,
+        description: prompt.description,
+        argsSchema: prompt.argsSchema ?? companionArgumentsSchema(prompt.arguments),
+        arguments: prompt.arguments,
+        authorization: tool.authorization,
+        complete: prompt.complete
+      },
+      handler: (args, context) => prompt.render(args, { ...context, toolName: tool.name })
+    },
+    options
+  )
+  return { ...definition, source: tool.source, linkedToolName: tool.name }
+}
+
+function companionArgumentsSchema(
+  args: McpCompanionPromptOptions['arguments']
+): JsonSchema | undefined {
+  if (!args) return undefined
+  return {
+    type: 'object',
+    properties: Object.fromEntries(args.map(({ name }) => [name, { type: 'string' }])),
+    required: args.filter((argument) => argument.required).map(({ name }) => name),
+    additionalProperties: false
   }
 }
 
@@ -338,6 +389,7 @@ function createRouteTool(
     authorization: routeMcp.authorization,
     taskExecution: firstDefined(routeMcp.taskExecution, 'optional'),
     app: routeMcp.app,
+    prompt: routeMcp.prompt?.render ? routeMcp.prompt : undefined,
     invoke: (args, context) => invokeRouteTool(operation, args ?? {}, inputSchema, context, options)
   }
 }

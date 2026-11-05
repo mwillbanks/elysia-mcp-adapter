@@ -2,19 +2,26 @@ import { MCP_STATE_SYMBOL } from './constants.js'
 import type { McpEventRegistration } from './extensions/events/index.js'
 import type { McpInterceptorRegistration } from './extensions/interceptors/index.js'
 import type { ExplicitSkillRegistration } from './extensions/skills/index.js'
-import type { AnyElysiaApp, McpAdapterState } from './types.js'
+import type {
+  AnyElysiaApp,
+  McpAdapterState,
+  McpAuthorizationOptions,
+  NormalizedMcpPluginOptions
+} from './types.js'
 
 export type InitializedMcpAdapterState = McpAdapterState & {
+  pluginOptions?: NormalizedMcpPluginOptions
   explicitSkills: Map<string, ExplicitSkillRegistration>
   explicitInterceptors: Map<string, McpInterceptorRegistration>
   explicitEvents: Map<string, McpEventRegistration>
 }
 
 export type McpRegistryChangeKind = 'tools' | 'resources' | 'prompts' | 'events'
-const REGISTRY_CHANGE_LISTENERS = new WeakMap<
-  AnyElysiaApp,
-  Set<(kind: McpRegistryChangeKind) => void>
->()
+type McpRegistryChangeListener = (
+  kind: McpRegistryChangeKind,
+  authorizationAlternatives?: readonly (McpAuthorizationOptions | undefined)[]
+) => void
+const REGISTRY_CHANGE_LISTENERS = new WeakMap<AnyElysiaApp, Set<McpRegistryChangeListener>>()
 
 export function ensureMcpState(app: AnyElysiaApp): InitializedMcpAdapterState {
   const holder = app as unknown as { [MCP_STATE_SYMBOL]?: McpAdapterState }
@@ -41,13 +48,26 @@ export function ensureMcpState(app: AnyElysiaApp): InitializedMcpAdapterState {
 export function invalidateRegistry(app: AnyElysiaApp, kind?: McpRegistryChangeKind): void {
   const state = ensureMcpState(app)
   state.version += 1
-  state.registryCache = undefined
-  if (kind) for (const listener of REGISTRY_CHANGE_LISTENERS.get(app) ?? []) listener(kind)
+  if (kind) notifyRegistryChange(app, kind)
+}
+
+export function notifyRegistryChange(
+  app: AnyElysiaApp,
+  kind: McpRegistryChangeKind,
+  authorizationAlternatives?: readonly (McpAuthorizationOptions | undefined)[]
+): void {
+  for (const listener of REGISTRY_CHANGE_LISTENERS.get(app) ?? []) {
+    listener(kind, authorizationAlternatives)
+  }
+}
+
+export function hasRegistryChangeListeners(app: AnyElysiaApp): boolean {
+  return REGISTRY_CHANGE_LISTENERS.has(app)
 }
 
 export function onRegistryChange(
   app: AnyElysiaApp,
-  listener: (kind: McpRegistryChangeKind) => void
+  listener: McpRegistryChangeListener
 ): () => void {
   let listeners = REGISTRY_CHANGE_LISTENERS.get(app)
   if (!listeners) {

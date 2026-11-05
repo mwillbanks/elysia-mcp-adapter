@@ -100,6 +100,23 @@ Each row names the final implementation, test, documentation, and runnable examp
 | Event discovery, polling, SSE, webhook delivery, replay, TTL, ownership, signing, and network defenses                  | Triggers/events and Standard Webhooks records           | `src/extensions/events/`                                                                | `test/events.test.ts`, `test/events-network.test.ts`, event schema and isolated TLS fixtures | Events guide; `examples/events/`                              |
 | Host approval, skill execution, consent, evidence retrieval, and external interceptor calls                             | Host-owned or undefined behavior                        | Unavailable as server automation                                                        | Server tests verify opt-in boundaries and metadata preservation                              | Security and limitation guides                                |
 
+## Messaging support and upstream maturity
+
+| Pattern                                                                                                        | Upstream maturity                          | Adapter support                                                         |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------- |
+| Request progress, input round trips, and subscriptions                                                         | Published core 2026-07-28                  | Streamable HTTP with typed handler helpers and filtered subscriptions   |
+| Request log messages                                                                                           | Published core, deprecated                 | Opt-in compatibility via `core.logging`                                 |
+| Tasks input and status                                                                                         | Published 2026-07-28 plus reviewed drafts  | Stable and pinned draft codecs; providers own durable state             |
+| Apps view messages and tool input or result delivery                                                           | Published Apps profile plus reviewed draft | Server resources and tool metadata; host and Apps SDK own view messages |
+| Events replay, SSE, and webhooks                                                                               | Reviewed experimental Events revisions     | Opt-in, pinned legacy profiles                                          |
+| [Partial tool output](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2998)                  | Proposal; original pull request closed     | Tracked only                                                            |
+| [Task interaction, partial results, and resumable streams](https://plan.modelcontextprotocol.io/seps)          | Proposals                                  | Tracked only; task snapshots are supported                              |
+| [File input for tools and elicitation](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2356) | Under review                               | Tracked only; no new upload or elicitation wire contract                |
+
+The [messaging guide](/docs/core-concepts/messaging) describes which channels developers can use.
+An accepted proposal does not imply a shipped codec. Newly reviewed protocols remain inventory
+entries until an explicit compatibility decision promotes a pinned implementation.
+
 ## Host responsibilities and boundaries
 
 Hosts approve tools, skills, elicitation, sampling, roots, UI resources, and external calls. Hosts

@@ -1,6 +1,7 @@
 import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
 import type {
+  McpHandlerContext,
   McpInvocationContext,
   McpRouteOperation,
   NormalizedMcpPluginOptions,
@@ -51,7 +52,7 @@ function nonEmptyRecord(value: Record<string, unknown>): Record<string, unknown>
 export function buildInternalRequest(
   operation: McpRouteOperation,
   input: RouteInvocationInput,
-  context: McpInvocationContext,
+  context: McpHandlerContext,
   options: NormalizedMcpPluginOptions
 ): Request {
   const url = buildInternalUrl(operation.path, input.params ?? {}, input.query ?? {})
