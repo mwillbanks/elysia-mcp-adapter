@@ -32,12 +32,12 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "539639f8dd7a183af961f3a2f01e2595db9d2151f40b1d31c383f53238a41cb8",
+      "fingerprint": "b2aa414e2599574b3ffe5a9cb0bd0b398d915b772ad879f91dfb0363e0c475be",
       "snapshot": {
         "README.md": "40dd8211ced998a6c4387f4f6d37095524c90c4e7c79e0e2a5b0c43a88fd3b81",
         "_artifacts/domain_map.yaml": "45c2fa7634565fad530e15249b232ca2ad862fc4e88d2c4de900d8902de6e6da",
         "_artifacts/skill_spec.md": "8c00fc5c68344afed276f4167cbd21824abbe75e28650bbffa44476651fa6363",
-        "_artifacts/skill_tree.yaml": "f6e9ff6482e80b4151dc887efff4db4eb3a27b45368e046c6d75b49806cc7bba",
+        "_artifacts/skill_tree.yaml": "8d3eb0600977eb16f6bb026b7c014bdbe1f1f9e4aeeaf828135e66d010bf9997",
         "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
         "skills/elysia-mcp-adapter/references/extensions.md": "58c3c6894c4703f796550b227602fd24ba8b51649cacb374559416a1d34cdc3b",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
@@ -53,14 +53,14 @@
         "website/content/docs/extensions/specification-inventory.mdx": "880852d1ca40de9a78c875a1c45db2aca0d18038db4855dd771db9b715710ec3",
         "website/content/docs/extensions/versioning.mdx": "804d009d2da9449b80b44a943b30b6c48e059cb3b1b8d58c73cac9d0dc8dec3f"
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "head": "95184b293d9f1ea6aac593fa40ee636ae8efbe81",
+      "outcome": "updated",
+      "reason": "Excluded generated release metadata from unmapped review. The domain map, skill specification, and skill tree still cover the same adapter guidance and canonical sources.",
       "evidence": [
-        "planning:_artifacts",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
+        "_artifacts/domain_map.yaml",
+        "_artifacts/skill_spec.md",
+        "_artifacts/skill_tree.yaml",
+        "Release PR #13 changes only the generated changelog, release manifest, and package version."
       ]
     },
     "source:examples/events/README.md": {

@@ -29,6 +29,9 @@ skills:
       - references/transport-authorization.md
 review:
   ignore:
+    # Release Please generates these files from commit history.
+    - .release-please-manifest.json
+    - CHANGELOG.md
     - .github/**
     - examples/**/*.ts
     - examples/**/*.tsx
