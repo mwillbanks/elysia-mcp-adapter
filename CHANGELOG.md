@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.5.0...elysia-mcp-adapter-v0.6.0) (2026-11-05)
+
+
+### Features
+
+* add structured authorization denials ([3d47637](https://github.com/mwillbanks/elysia-mcp-adapter/commit/3d476379304b6f1fbc9db526662407379d27b282))
+* advance the governed Interceptors draft ([c50bee7](https://github.com/mwillbanks/elysia-mcp-adapter/commit/c50bee7cee4fafe3059c0562fd7a708cdb1edc35))
+* align Events with the modern draft ([9c7947f](https://github.com/mwillbanks/elysia-mcp-adapter/commit/9c7947f961cccd35ad18e7e4fae20f7b98cd501f))
+* align MCP core and official extensions ([72f0eb8](https://github.com/mwillbanks/elysia-mcp-adapter/commit/72f0eb882af5111b9beea73c1a58d4d244a55720))
+* enforce governed draft retirement ([eaeee65](https://github.com/mwillbanks/elysia-mcp-adapter/commit/eaeee654cedd408924228089ae0ee47c16ed810d))
+* **mcp:** add messaging and companion prompts ([#12](https://github.com/mwillbanks/elysia-mcp-adapter/issues/12)) ([32721f8](https://github.com/mwillbanks/elysia-mcp-adapter/commit/32721f89f69c642946a6ec0e37f57f95dd8e8351))
+* **mcp:** govern specification support and ship Agent Skills ([125d234](https://github.com/mwillbanks/elysia-mcp-adapter/commit/125d23479cb68493aaa60f4d6abacf6466fea289))
+* report MCP specification lifecycle notices ([3d380f9](https://github.com/mwillbanks/elysia-mcp-adapter/commit/3d380f9d82192d2c19a5d8a5d3697b9b5b6a160d))
+* ship adapter guidance with TanStack Intent ([95184b2](https://github.com/mwillbanks/elysia-mcp-adapter/commit/95184b293d9f1ea6aac593fa40ee636ae8efbe81))
+* support DPoP-bound MCP requests ([18dd5fa](https://github.com/mwillbanks/elysia-mcp-adapter/commit/18dd5fa9df9967642508feed007e13aa1d138c3c))
+* support draft Server Card extension metadata ([fb1c8e2](https://github.com/mwillbanks/elysia-mcp-adapter/commit/fb1c8e288b2595f71846198169b2065f8713cdc2))
+* support request language preferences ([800558f](https://github.com/mwillbanks/elysia-mcp-adapter/commit/800558f687645ff05cd4028a2158eb805d2bd1a3))
+
+
+### Bug Fixes
+
+* exclude generated release files from Intent ([fe1b16c](https://github.com/mwillbanks/elysia-mcp-adapter/commit/fe1b16c8fa3ec7b8a0d83174177b09e57dd032ef))
+* **release:** exclude generated files from Intent review ([6af18e7](https://github.com/mwillbanks/elysia-mcp-adapter/commit/6af18e74b9860ed58406c020ea083bc2235f0510))
+
 ## [0.5.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.4.0...elysia-mcp-adapter-v0.5.0) (2026-10-22)
 
 
