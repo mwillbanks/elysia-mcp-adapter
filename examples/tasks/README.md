@@ -52,12 +52,12 @@ before invocation.
 variant the real Worker's processor invokes the ephemeral scheduler injected by that registration.
 The end-to-end test proves the complete modern `tools/call` to `tasks/get` flow through `app.handle`.
 
-The BullMQ tests start an isolated Redis instance on a dynamic loopback port. They use a local
-`redis-server` executable when available. On Linux CI runners without that executable, set
-`TASKS_TEST_REDIS_IMAGE` to an image already present in Docker. The fixture uses `--pull=never`,
-host networking, and a unique container name, then removes that exact container during cleanup.
-For example, CI uses `TASKS_TEST_REDIS_IMAGE=redis:8.10.3-alpine` after its Redis service loads the
-pinned image.
+CI supplies `TASKS_TEST_REDIS_URL` for its dedicated Redis service. The BullMQ tests use
+unique queue names and leave the service running for the job. For local tests, the fixture starts
+an isolated Redis instance on a dynamic loopback port. It uses a local `redis-server` executable
+when available. On Linux without that executable, set `TASKS_TEST_REDIS_IMAGE` to an image already
+present in Docker. The fixture uses `--pull=never`, host networking, and a unique container name,
+then removes that exact container during cleanup.
 
 Neither demo persists executable callbacks. The BullMQ provider accepts a trusted
 `resolveScheduler` callback that reconstructs a scheduler from the persisted method descriptor and
