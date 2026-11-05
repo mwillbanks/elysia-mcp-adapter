@@ -182,7 +182,7 @@ The repository includes tested, package-root examples for every extension:
 
 Server Cards are a finalized MCP extension. They publish advisory discovery metadata at `GET /mcp/server-card`. They use `application/mcp-server-card+json`, CORS, ETags, and conditional caching. Use HTTPS in production. Loopback HTTP is development-only. Cards must not contain credentials, private topology, or primitive catalogs. Clients decide whether and when to fetch them.
 
-`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. Its selected version record also reports `status: 'stable'` under Final SEP-2127.
+`MCP_EXTENSION_SUPPORT` reports Beta maturity for Tasks, Skills over MCP, and Server Cards. The approved Server Cards wire baseline still reports `status: 'stable'` under Final SEP-2127.
 
 ### Experimental extension policy
 

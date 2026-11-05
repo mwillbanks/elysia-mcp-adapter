@@ -1,3 +1,9 @@
+import {
+  isMcpServerSpecificationEligible,
+  MCP_SPECIFICATION_GOVERNANCE_SOURCES,
+  MCP_SPECIFICATION_INVENTORY,
+  MCP_SPECIFICATION_PROPOSAL_HEADS
+} from '../src/extensions/governance.js'
 import { MCP_EXTENSION_LATEST_REVIEWED, MCP_EXTENSION_SUPPORT } from '../src/extensions/manifest.js'
 import {
   auditMcpExtensionRepositories,
@@ -26,10 +32,25 @@ const headers = {
   'user-agent': 'elysia-mcp-adapter-extension-watch',
   ...(token ? { authorization: `Bearer ${token}` } : {})
 }
+const sourceHeaders = { 'user-agent': headers['user-agent'] }
 const drift: string[] = []
 const observations: string[] = []
 const compatibilityRecords = collectManifestRecords(MCP_EXTENSION_SUPPORT)
-const records = collectManifestRecords(MCP_EXTENSION_LATEST_REVIEWED)
+const governanceRecords = collectManifestRecords(MCP_SPECIFICATION_GOVERNANCE_SOURCES)
+const records = [...collectManifestRecords(MCP_EXTENSION_LATEST_REVIEWED), ...governanceRecords]
+const historicalPaths = new Set<string>([
+  MCP_EXTENSION_LATEST_REVIEWED.authClientCredentials.source.path,
+  MCP_EXTENSION_LATEST_REVIEWED.authEnterprise.source.path,
+  MCP_EXTENSION_LATEST_REVIEWED.skillsStable.source.path
+])
+const activeRecords = records.filter(({ source }) => !source || !historicalPaths.has(source.path))
+
+for (const [name, record] of Object.entries(MCP_SPECIFICATION_INVENTORY)) {
+  const eligible = isMcpServerSpecificationEligible(record)
+  observations.push(`${name}: ${record.stage}, ${record.approval}, ${record.disposition}`)
+  if ((record.disposition === 'planned' || record.disposition === 'implemented') && !eligible)
+    drift.push(`The ${name} server contract is missing implementation authority.`)
+}
 const packageManifestPaths = [
   'package.json',
   'website/package.json',
@@ -82,21 +103,23 @@ try {
   drift.push(`Extension repository discovery is unavailable: ${errorMessage(error)}.`)
 }
 
-// Every historical alias is integrity-checked, but only latest-reviewed records
-// are compared with repository heads and package registries. Old aliases are
-// intentionally immutable snapshots and must not produce perpetual head drift.
+// Integrity-check historical pins. Compare only active paths with upstream head bytes.
 for (const source of uniqueSources([...compatibilityRecords, ...records]))
   await verifySource(source)
-for (const [repository, sources] of groupSourcesByRepository(records)) {
+for (const [repository, sources] of groupSourcesByRepository(activeRecords)) {
   await compareRepositoryHead(repository, sources)
 }
-for (const source of uniquePackageSources(records)) await compareNpmPackage(source)
+for (const proposal of MCP_SPECIFICATION_PROPOSAL_HEADS) await compareProposal(proposal)
+const currentPackages = new Map(
+  uniquePackageSources(activeRecords).map((source) => [source.packageName, source])
+)
+for (const source of currentPackages.values()) await compareNpmPackage(source)
 for (const dependency of await declaredRegistryDependencies(packageManifestPaths))
   await compareDeclaredPackage(dependency)
 for (const [repository, version] of await declaredActions())
-  await compareGithubRelease(repository, version)
+  await compareGithubRelease(repository, version, githubActionMajor)
 await compareGithubRelease('oven-sh/bun', 'bun-v1.4.4')
-await compareRedisRelease('8.10.2')
+await compareRedisRelease('8.10.3')
 
 const report = [
   '## MCP extension upstream drift report',
@@ -123,8 +146,39 @@ if (output) {
 // source or registry record that requires review before an alias changes.
 if (drift.length > 0) process.exitCode = 1
 
+async function compareProposal(proposal: (typeof MCP_SPECIFICATION_PROPOSAL_HEADS)[number]) {
+  const { repository, number, pin, accepted } = proposal
+  const label = `${repository}#${number}`
+  try {
+    const metadata = await githubJson(`https://api.github.com/repos/${repository}/pulls/${number}`)
+    if (proposalStatusChanged(metadata, accepted))
+      drift.push(`Proposal ${label} changed state or approval and needs review.`)
+    if (await sourceChangedAt(pin, proposalRevision(metadata)))
+      drift.push(`Proposal ${label} changed its specification bytes.`)
+  } catch (error) {
+    drift.push(`Proposal ${label} is unavailable: ${errorMessage(error)}.`)
+  }
+}
+
+function proposalStatusChanged(metadata: Record<string, unknown>, accepted: boolean): boolean {
+  const hasApproval =
+    Array.isArray(metadata.labels) && metadata.labels.some((item) => item?.name === 'accepted')
+  return metadata.state !== 'open' || hasApproval !== accepted
+}
+
+function proposalRevision(metadata: Record<string, unknown>): string {
+  const head = metadata.head as { sha?: unknown } | undefined
+  const revision = upstreamString(head?.sha, 'proposal head SHA')
+  if (!/^[a-f0-9]{40}$/u.test(revision)) throw new Error('Invalid proposal head SHA')
+  return revision
+}
+
 async function compareRepositoryHead(repository: string, sources: Source[]): Promise<void> {
-  const headSources = sources.filter((source) => source.trackHead !== false)
+  const headSources = [
+    ...new Map(
+      sources.filter((source) => source.trackHead !== false).map((source) => [source.path, source])
+    ).values()
+  ]
   if (headSources.length === 0) return
   const repositoryPath = new URL(repository).pathname.replace(/^\//u, '').replace(/\.git$/u, '')
   const branch = await repositoryDefaultBranch(repositoryPath)
@@ -136,14 +190,23 @@ async function compareRepositoryHead(repository: string, sources: Source[]): Pro
     return
   }
   observations.push(`${repositoryPath} ${branch}: \`${current}\``)
-  drift.push(
-    ...headSources
-      .filter((source) => current !== source.revision)
-      .map(
-        (source) =>
-          `Upstream advanced beyond \`${source.path}\` (reviewed \`${source.revision}\`, head \`${current}\`).`
-      )
-  )
+  for (const source of headSources) await compareHeadSource(repositoryPath, source, current)
+}
+
+async function compareHeadSource(repository: string, source: Source, revision: string) {
+  const label = `${repository}/${source.path}`
+  try {
+    if (await sourceChangedAt(source, revision))
+      drift.push(`Upstream contract changed at \`${label}\` (head \`${revision}\`).`)
+  } catch (error) {
+    drift.push(`Current source is unavailable at \`${label}\`: ${errorMessage(error)}.`)
+  }
+}
+
+async function sourceChangedAt(source: Source, revision: string): Promise<boolean> {
+  if (revision === source.revision) return false
+  const url = pinnedGithubUrl({ ...source, revision })
+  return hashSource(await readUpstreamBytes(url, sourceHeaders)) !== source.sha256
 }
 
 async function repositoryDefaultBranch(repositoryPath: string): Promise<string> {
@@ -257,18 +320,26 @@ async function compareDeclaredPackage(dependency: DeclaredDependency): Promise<v
   }
 }
 
-async function compareGithubRelease(repository: string, expected: string): Promise<void> {
+async function compareGithubRelease(
+  repository: string,
+  expected: string,
+  normalize: (tag: string) => string | undefined = (tag) => tag
+): Promise<void> {
   try {
     const latest = await githubValue(
       `https://api.github.com/repos/${repository}/releases/latest`,
       (value) => value.tag_name
     )
     observations.push(`${repository}: \`${latest}\``)
-    if (latest !== expected)
+    if (normalize(latest) !== expected)
       drift.push(`${repository} advanced beyond reviewed release \`${expected}\` to \`${latest}\`.`)
   } catch (error) {
     drift.push(`Release metadata is unavailable for ${repository}: ${errorMessage(error)}.`)
   }
+}
+
+function githubActionMajor(tag: string): string | undefined {
+  return /^v[0-9]+(?=\.|$)/u.exec(tag)?.[0]
 }
 
 async function declaredActions(): Promise<Map<string, string>> {
@@ -276,7 +347,7 @@ async function declaredActions(): Promise<Map<string, string>> {
   for (const path of new Bun.Glob('.github/workflows/*.{yml,yaml}').scanSync('.')) {
     const source = await Bun.file(path).text()
     for (const [, repository, version] of source.matchAll(
-      /\buses:\s*([\w.-]+\/[\w.-]+)@(v?[\w.-]+)/gu
+      /\buses:\s*['"]?([\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@([\w.-]+)/gu
     )) {
       recordActionVersion(actions, repository, version)
     }
@@ -289,6 +360,8 @@ function recordActionVersion(
   repository: string,
   version: string
 ): void {
+  if (!/^v[0-9]+$/u.test(version))
+    drift.push(`GitHub Action ${repository} must use a major tag; found \`${version}\`.`)
   const existing = actions.get(repository)
   if (existing && existing !== version)
     drift.push(
@@ -339,13 +412,16 @@ async function githubValue(url: string, select: (value: Record<string, string>) 
 async function verifySource(source: Source): Promise<void> {
   const url = source.url ?? pinnedGithubUrl(source)
   try {
-    const bytes = await readUpstreamBytes(url, headers)
-    const hash = new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
-    if (hash !== source.sha256)
+    const bytes = await readUpstreamBytes(url, sourceHeaders)
+    if (hashSource(bytes) !== source.sha256)
       drift.push(`Pinned source hash changed unexpectedly: \`${source.path}\`.`)
   } catch (error) {
     drift.push(`Pinned source is unavailable (${errorMessage(error)}): \`${source.path}\`.`)
   }
+}
+
+function hashSource(bytes: ArrayBuffer): string {
+  return new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
 }
 
 function errorMessage(error: unknown): string {

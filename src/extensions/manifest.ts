@@ -23,7 +23,7 @@ export interface McpExtensionVersionRecord {
  * These records are deliberately separate from MCP_EXTENSION_SUPPORT. A source
  * can be current upstream without being implemented by this adapter yet.
  */
-export type McpExtensionMaturity = 'stable' | 'draft' | 'experimental' | 'undefined'
+export type McpExtensionMaturity = 'stable' | 'beta' | 'draft' | 'experimental' | 'undefined'
 
 export interface McpLatestExtensionRecord {
   identifier?: string
@@ -63,6 +63,7 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   tasks: {
     identifier: 'io.modelcontextprotocol/tasks',
+    maturity: 'beta',
     current: '2026-07-28',
     draft: 'draft-b3d28ac',
     versions: {
@@ -220,6 +221,7 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   skills: {
     identifier: 'io.modelcontextprotocol/skills',
+    maturity: 'beta',
     current: 'c1aa87e4c381c82b99aa37471d0eae4ab50f9985',
     versions: {
       c1aa87e4c381c82b99aa37471d0eae4ab50f9985: {
@@ -246,7 +248,7 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     current: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
     versions: {
       '526201bbc80231daa40ffcdecfc9da4e54e5dc93': {
@@ -650,7 +652,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   tasksStable: {
     identifier: 'io.modelcontextprotocol/tasks',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: '2026-07-28',
     availability: 'reviewed',
     source: {
@@ -730,7 +732,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   skillsStable: {
     identifier: 'io.modelcontextprotocol/skills',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: '2026-07-28',
     availability: 'reviewed',
     source: {
@@ -754,7 +756,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: 'final',
     availability: 'reviewed',
     source: {
@@ -766,7 +768,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   serverCardFinalSep: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: 'final',
     availability: 'reviewed',
     source: {
@@ -856,9 +858,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/standard-webhooks/standard-webhooks',
-      revision: '7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b',
+      revision: 'ab6844147ce9cdb0d2dbf2e60d1ea85001fd2554',
       path: 'spec/standard-webhooks.md',
-      sha256: '47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082'
+      sha256: 'c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31'
     }
   },
   ianaIpv4SpecialRegistry: {

@@ -3,16 +3,62 @@ title: MCP specification inventory
 description: Immutable upstream sources, protocol eras, and implementation ownership.
 ---
 
-Reviewed on **2026-10-22**. The exported `MCP_EXTENSION_LATEST_REVIEWED` records reviewed
-sources. `MCP_EXTENSION_SUPPORT` records implemented selectors and historical compatibility.
-A repository commit change alone does not change specification content or maturity.
-Current Skills, Interceptors, Events, and the named Tasks draft now select accepted revisions.
-Explicit historical selections remain available.
+Reviewed on **2026-11-05**. The governance inventory records upstream maturity, approval of the
+exact wire revision, and adapter support separately. The historical manifest records the wire
+revisions and sources already reviewed or shipped.
 
-Server Cards is stable under Final SEP-2127, including its selected schema record.
-File Uploads and Filesystems are undefined experiments. Neither defines an authoritative wire
-identifier, methods, schema, codec, or configuration API. Neither is advertised as implemented.
-Their repositories remain inventoried alongside the other nine public extension repositories.
+## Eligibility and release policy
+
+A released specification or formally accepted proposal can enter the server implementation queue.
+An unapproved contract needs a published draft and evidence linking the specific contract to a
+recognized MCP group. A charter for the same topic does not by itself establish ownership.
+See the [group charters](https://modelcontextprotocol.io/community/working-interest-groups),
+[SEP guidelines](https://modelcontextprotocol.io/community/sep-guidelines), and
+[extension lifecycle](https://modelcontextprotocol.io/seps/3392-extension-lifecycle).
+
+- Approved wire revisions retain their documented compatibility. MCP lists Tasks, Skills over MCP,
+  and Server Cards as Beta even though each has an approved baseline.
+- An unapproved feature exposes one current revision through explicit opt-in. A patch can advance
+  the pin and replace its wire contract. Use the documented replacement when an old exact pin is
+  rejected. Historical records remain available for provenance.
+- A superseded or abandoned feature first receives a deprecation notice with migration guidance.
+  A later minor can remove its configuration, capability advertisement, and dispatch.
+
+| Contract                              | Authority and disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core 2026-07-28 and core draft        | The pinned current and draft JSON schemas are byte-identical. The tools prose change corrects the placement of annotations in an example.                                                                                                                                                                                                                                                                                                                                                     |
+| Apps                                  | The published contract is unchanged. The new Apps WG draft changes host framing and View SDK behavior.                                                                                                                                                                                                                                                                                                                                                                                        |
+| Tasks and Skills over MCP             | Final SEP-2663 and SEP-2640 establish the approved Beta baselines. Tasks draft wire bytes are unchanged. Skills moved to the Beta path without changing the MDX wire specification.                                                                                                                                                                                                                                                                                                           |
+| Server Cards                          | Final SEP-2127 and the existing schema establish the approved Beta baseline. The [draft extension metadata map](https://github.com/modelcontextprotocol/ext-server-card/pull/55) is a separate revision.                                                                                                                                                                                                                                                                                      |
+| OAuth profiles                        | The published client credentials and enterprise profiles now both identify 2026-07-28. The reviewed changes from the adapter's previous pins are revision and status labels.                                                                                                                                                                                                                                                                                                                  |
+| Events and Interceptors               | The chartered groups maintain [Events SEP-3415](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415) and [Interceptors SEP-2624](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2624). The Events proposal adds a modern transport contract.                                                                                                                                                                                                            |
+| Action Metadata and Trust Annotations | The Tool Annotations Interest Group links its experimental repository, which publishes both drafts. They remain experimental.                                                                                                                                                                                                                                                                                                                                                                 |
+| Per-request language preference       | [SEP-2792](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2792) is formally accepted while its wire proposal remains a draft.                                                                                                                                                                                                                                                                                                                                              |
+| Structured authorization denials      | The [Authorization IG charter](https://modelcontextprotocol.io/community/interest-groups/auth) lists the active Fine-Grained Authorization Working Group and its SEP-2643 thread. The [pinned SEP-2643 draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c74b0c9321e89a904780d1024d895232fbb03820/seps/2643-structured-authorization-denials.md#acknowledgments) identifies the Working Group as its authoring and review body and defines the server denial envelope. |
+| DPoP and Workload Identity Federation | The [Auth group minutes](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/2117) track both exact proposals. DPoP defines applicable resource-server proof validation. Workload Identity Federation adds client and authorization-server duties.                                                                                                                                                                                                                       |
+| Server Variants                       | [SEP-2053](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2053) closed unmerged. Keep the shipped opt-in for this release with a deprecation warning. Use distinct MCP endpoints for separate tool sets. [SEP-3279](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3279) is a separate result negotiation proposal.                                                                                                                                     |
+| WebSocket transport                   | [SEP-1287](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1287) closed unmerged. The reviewed sources establish no group ownership for this specific proposal. Inventory only.                                                                                                                                                                                                                                                                                             |
+| File Uploads and Filesystems          | Both groups have published charters. Their incubators lack an implementable wire contract. Inventory only.                                                                                                                                                                                                                                                                                                                                                                                    |
+
+File Uploads and Filesystems are undefined experiments until their groups publish wire contracts.
+
+The reviewed open drafts for [tool failure reporting](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2145),
+[structured tool failures](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3313),
+[completion metadata](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2293),
+[type constraints](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2778),
+[transport representation](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3498),
+and [resumable task event streams](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2694)
+remain inventory-only. The reviewed sources do not establish proposal-specific ownership or acceptance.
+The [remote elicitation clarification](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2343)
+adds guidance without a new wire contract. The [CIMD proposal](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3149)
+applies to OAuth clients and authorization servers. The [SDK extension proposal](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3371)
+addresses SDK interface conventions.
+
+The [deprecated features register](https://modelcontextprotocol.io/specification/2026-07-28/deprecated)
+covers Roots, Sampling, and protocol Logging. Pass file locations as explicit arguments or
+resources, call the model provider API from the application, and use OpenTelemetry for observability.
+The Sampling include-context values follow Sampling's schedule. OAuth Dynamic Client Registration is
+an authorization-server concern. The old HTTP+SSE transport is distinct from Streamable HTTP SSE.
 
 ## Toolchain
 
@@ -21,13 +67,13 @@ lockfiles. Workspace links and public compatibility ranges remain intact. Format
 `bun fmt`; typechecks use `bun check`. Fallow remains enabled. Standalone Biome, oxlint, and
 oxfmt are absent. TypeScript 7.0.2 generates declarations; packed consumers also check TypeScript
 5.8.3 compatibility. The website's TypeScript patch retains the native synchronous compiler API,
-with a semantic API regression test. CI uses Redis 8.10.2 for real task-provider checks.
+with a semantic API regression test. CI uses Redis 8.10.3 for real task-provider checks.
 
-## Reviewed sources
+## Historical review snapshot
 
-These immutable sources cover all eleven official and experimental extension repositories,
-delegated formats, core contracts, and webhook network policy. Undefined records describe
-inventory only. The manifest-derived support table lists every implemented revision.
+These immutable sources record the 2026-10-22 review across official and experimental extension
+repositories, delegated formats, core contracts, and webhook network policy. Current governance
+pins and their SHA-256 hashes are in the adapter's governance catalog.
 
 | Record                    | Maturity     | Immutable source                                                                                                                                                                                                                                                                               | SHA-256                                                            |
 | ------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -70,7 +116,7 @@ inventory only. The manifest-derived support table lists every implemented revis
 | variantsRepository        | experimental | [cfc05d6f5eb8829f9896d44a6d47360bd15c3b5c](https://github.com/modelcontextprotocol/experimental-ext-variants/blob/cfc05d6f5eb8829f9896d44a6d47360bd15c3b5c/README.md) · README.md                                                                                                              | `dca88077d719d5c8d55fa128234a05d013f9bff3775005bdf2478d2752f57af6` |
 | toolAnnotations           | experimental | [fecace78a9552f70ba735d750fc3c4b190e20429](https://github.com/modelcontextprotocol/experimental-ext-tool-annotations/blob/fecace78a9552f70ba735d750fc3c4b190e20429/README.md) · README.md                                                                                                      | `914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb` |
 | triggersEvents            | experimental | [d5316be214be2e76e51462069c1d67e00a5a7619](https://github.com/modelcontextprotocol/experimental-ext-triggers-events/blob/d5316be214be2e76e51462069c1d67e00a5a7619/docs/design-sketch-proposal.md) · docs/design-sketch-proposal.md                                                             | `4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59` |
-| standardWebhooks          | stable       | [7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b](https://github.com/standard-webhooks/standard-webhooks/blob/7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b/spec/standard-webhooks.md) · spec/standard-webhooks.md                                                                                         | `47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082` |
+| standardWebhooks          | stable       | [ab6844147ce9cdb0d2dbf2e60d1ea85001fd2554](https://github.com/standard-webhooks/standard-webhooks/blob/ab6844147ce9cdb0d2dbf2e60d1ea85001fd2554/spec/standard-webhooks.md) · spec/standard-webhooks.md                                                                                         | `c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31` |
 | ianaIpv4SpecialRegistry   | stable       | [iana-ipv4-special-registry-1.csv](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry-1.csv) · iana-ipv4-special-registry-1.csv                                                                                                                            | `cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac` |
 | ianaIpv6SpecialRegistry   | stable       | [iana-ipv6-special-registry-1.csv](https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry-1.csv) · iana-ipv6-special-registry-1.csv                                                                                                                            | `bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66` |
 | actionMetadata            | experimental | [fecace78a9552f70ba735d750fc3c4b190e20429](https://github.com/modelcontextprotocol/experimental-ext-tool-annotations/blob/fecace78a9552f70ba735d750fc3c4b190e20429/specification/draft/action-metadata.mdx) · specification/draft/action-metadata.mdx                                          | `985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f` |
@@ -78,10 +124,9 @@ inventory only. The manifest-derived support table lists every implemented revis
 | fileUploads               | undefined    | [e4b12c99aa01ef16a53c3c99a620c7da38b292fd](https://github.com/modelcontextprotocol/experimental-ext-file-uploads/blob/e4b12c99aa01ef16a53c3c99a620c7da38b292fd/README.md) · README.md                                                                                                          | `0321ca91f3eddc140c8ab2973549b9b2feecf2b7700dd04722ccf57270d27d24` |
 | filesystems               | undefined    | [6a61117ab2a2e21e90546c3a28cc081b9761dc64](https://github.com/modelcontextprotocol/experimental-ext-filesystems/blob/6a61117ab2a2e21e90546c3a28cc081b9761dc64/README.md) · README.md                                                                                                           | `feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993` |
 
-Apps stable and draft, both authorization profiles, Variants, annotations, and Server Cards
-retain their reviewed contracts. Interoperability and security suites cover their existing
-behavior. Current Tasks draft terminal `tasks/get` responses use `resultType: "complete"`;
-legacy draft selections remain distinct.
+Interoperability and security suites cover the shipped contracts. The current Tasks draft uses
+`resultType: "complete"` for terminal `tasks/get` responses. Consult the release policy and
+support table for accepted selectors.
 
 ## Server requirement map
 
@@ -111,7 +156,7 @@ Each row names the final implementation, test, documentation, and runnable examp
 | Events replay, SSE, and webhooks                                                                               | Reviewed experimental Events revisions     | Opt-in, pinned legacy profiles                                          |
 | [Partial tool output](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2998)                  | Proposal; original pull request closed     | Tracked only                                                            |
 | [Task interaction, partial results, and resumable streams](https://plan.modelcontextprotocol.io/seps)          | Proposals                                  | Tracked only; task snapshots are supported                              |
-| [File input for tools and elicitation](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2356) | Under review                               | Tracked only; no new upload or elicitation wire contract                |
+| [File input for tools and elicitation](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2356) | Proposal closed unmerged                   | Tracked only; no new upload or elicitation wire contract                |
 
 The [messaging guide](/docs/core-concepts/messaging) describes which channels developers can use.
 An accepted proposal does not imply a shipped codec. Newly reviewed protocols remain inventory
@@ -134,11 +179,10 @@ normative source and an explicit opt-in contract before implementation.
 
 ## Drift and promotion rules
 
-`bun run extensions:check-drift` walks both the compatibility manifest and the latest-reviewed
-inventory. It verifies each recorded source byte-for-byte, discovers every public MCP extension repository
-across paginated organization results, checks every reviewed repository default branch, and checks every package record that includes a package name and version. It reports drift without
-rewriting aliases. Network failures and unavailable inventory records are explicit failures.
+`bun run extensions:check-drift` verifies immutable source hashes and compares active source bytes
+at repository default heads. An unrelated repository commit does not imply a contract change.
+The check also discovers new public extension repositories and compares the declared GitHub Action
+major tags with current upstream releases. It reports missing sources and drift for review.
 
-Promote a reviewed record only after the owning work product adds protocol fixtures, affected-path
-tests, documentation, examples, and a compatibility decision. Keep the old source record when a
-new alias is added so existing clients retain their selected implementation.
+Before promotion, record the exact proposal's eligibility and add protocol fixtures, affected-path
+tests, documentation, and the compatibility decision. Keep superseded pins as audit evidence.

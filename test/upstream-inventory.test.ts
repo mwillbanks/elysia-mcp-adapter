@@ -96,7 +96,7 @@ const expectedDigests: Record<string, string> = {
   variantsRepository: 'dca88077d719d5c8d55fa128234a05d013f9bff3775005bdf2478d2752f57af6',
   toolAnnotations: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb',
   triggersEvents: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59',
-  standardWebhooks: '47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082',
+  standardWebhooks: 'c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31',
   ianaIpv4SpecialRegistry: 'cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac',
   ianaIpv6SpecialRegistry: 'bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66',
   actionMetadata: '985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f',
@@ -140,7 +140,6 @@ describe('upstream extension inventory', () => {
       '5f5440bb26a62e2cf3440b92da5a667efa03b267'
     )
     expect(MCP_EXTENSION_SUPPORT.apps.versions['2026-01-26'].source.packageVersion).toBe('1.7.5')
-    expect(MCP_EXTENSION_SUPPORT.serverCard.maturity).toBe('stable')
     expect(
       MCP_EXTENSION_SUPPORT.serverCard.versions['526201bbc80231daa40ffcdecfc9da4e54e5dc93'].status
     ).toBe('stable')
@@ -227,7 +226,6 @@ describe('upstream extension inventory', () => {
     expect(MCP_EXTENSION_LATEST_REVIEWED.tasksStable.source.revision).toBe(
       'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84'
     )
-    expect(MCP_EXTENSION_LATEST_REVIEWED.serverCard.maturity).toBe('stable')
     expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).toMatchObject({
       maturity: 'undefined',
       availability: 'reviewed'
