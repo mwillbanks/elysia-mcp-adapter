@@ -134,20 +134,15 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
       sha256: '6e33a33762783a02dc4c13c889dda5b8d7c525649012cf77da12d80c04ce6851'
     }
   },
-  clientCredentials: {
+  clientCredentials: MCP_EXTENSION_LATEST_REVIEWED.authClientCredentials,
+  enterpriseAuth: MCP_EXTENSION_LATEST_REVIEWED.authEnterprise,
+  clientCredentialsDraftHistorical: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: '15ca394e00a66434520b9ade26294999295a43ae',
-      path: 'specification/stable/oauth-client-credentials/2026-07-28/oauth-client-credentials.mdx',
-      sha256: '5690dfd64fe3fc8bfedb1e0aa86bbfb56a893b90b0386a3df1f4f2f6a541d277'
-    }
-  },
-  enterpriseAuth: {
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: '15ca394e00a66434520b9ade26294999295a43ae',
-      path: 'specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx',
-      sha256: '4e603853161fa8bf0e49c07497437fc36c5078a2c40c9c87cb7ff244d09349ce'
+      revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
+      path: 'specification/draft/oauth-client-credentials.mdx',
+      sha256: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f',
+      trackHead: false
     }
   },
   interceptorsRepo: {
@@ -430,14 +425,22 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'stable',
     approval: 'released',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.clientCredentials.source
+  },
+  clientCredentialsDraftHistorical: {
+    stage: 'draft',
+    approval: 'unapproved',
+    scope: 'server',
+    disposition: 'inventory',
+    source: sources.clientCredentialsDraftHistorical.source,
+    reason: 'The approved 2026-07-28 revision supersedes the former draft selector.'
   },
   enterpriseAuth: {
     stage: 'stable',
     approval: 'released',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.enterpriseAuth.source
   },
   events: {

@@ -96,9 +96,31 @@ function assertProgressToken(value: unknown): asserts value is string | number |
   throw new McpProtocolError(-32020, 'progressToken must be a string or integer', 400)
 }
 
+// Split lists and parameters only outside quoted parameter values.
+const WELL_FORMED_ACCEPT_QUOTES = /^(?:[^"]|"(?:[^"\\]|\\.)*")*$/u
+const ACCEPT_MEDIA_RANGES = /(?:[^",]+|"(?:[^"\\]|\\.)*")+/gu
+const ACCEPT_MEDIA_PARAMETERS = /(?:[^";]+|"(?:[^"\\]|\\.)*")+/gu
+const POSITIVE_QUALITY = /^(?:1(?:\.0{0,3})?|0\.(?=[0-9]{0,2}[1-9])[0-9]{1,3})$/u
+
+function acceptedMediaType(range: string): string | undefined {
+  const [mediaType, ...parameters] = range.match(ACCEPT_MEDIA_PARAMETERS) ?? []
+  const weights = parameters
+    .map((parameter) => parameter.trim().toLowerCase())
+    .filter((parameter) => /^q(?:\s*=|$)/u.test(parameter))
+  if (weights.length > 1) return undefined
+  const [weight] = weights
+  if (weight !== undefined && !POSITIVE_QUALITY.test(weight.replace(/^q\s*=\s*/u, '')))
+    return undefined
+  return mediaType?.trim().toLowerCase()
+}
+
 function assertAcceptHeader(request: Request): void {
-  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
-  if (accept.includes('application/json') && accept.includes('text/event-stream')) return
+  const accept = request.headers.get('accept') ?? ''
+  if (WELL_FORMED_ACCEPT_QUOTES.test(accept)) {
+    const ranges = accept.match(ACCEPT_MEDIA_RANGES) ?? []
+    const supported = new Set(ranges.map(acceptedMediaType))
+    if (supported.has('application/json') && supported.has('text/event-stream')) return
+  }
   throw new McpProtocolError(
     -32020,
     'Modern MCP requests must accept application/json and text/event-stream',

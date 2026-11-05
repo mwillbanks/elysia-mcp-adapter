@@ -245,14 +245,14 @@ uses `bun check`. Fallow remains the static analysis gate. No standalone lint pa
 
 Skills preserves optional JSON `_meta` on registrations and provider sources. Extension-owned keys
 use `io.modelcontextprotocol.skills/`. Resource digests still cover exact published bytes.
-Interceptors use the current `faf1583a` proposal, including timestamped invocation context,
+Interceptors use the current `07c89a24` proposal, including timestamped invocation context,
 optional span/session identifiers, and per-call configuration validation. See the separate HTTP
 service in `examples/experimental`; local chain helpers remain local utilities.
 Events uses proposal `d5316be2` and codes `-32023` through `-32027`; explicitly selecting
 `6682596d` retains historical codes. Events and Variants remain legacy transport experiments.
 
-Apps and Enterprise-Managed Authorization are stable. Client Credentials is draft.
-Server Cards follows Final SEP-2127. Tasks exposes stable and pinned draft selections.
+Apps, Client Credentials, and Enterprise-Managed Authorization have approved profiles.
+Server Cards follows Final SEP-2127. Tasks exposes approved and pinned draft selections.
 File Uploads and Filesystems have no defined wire contract: they are inventoried, not implemented.
 See the website specification inventory for immutable sources, hashes, limitations, and all selectors.
 

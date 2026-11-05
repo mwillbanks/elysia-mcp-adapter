@@ -7,6 +7,7 @@ on:
       - '.github/workflows/docs.yml'
       - 'examples/**'
       - 'logo.svg'
+      - 'src/extensions/governance.ts'
       - 'src/extensions/manifest.ts'
       - 'website/**'
   pull_request:
@@ -14,6 +15,7 @@ on:
       - '.github/workflows/docs.yml'
       - 'examples/**'
       - 'logo.svg'
+      - 'src/extensions/governance.ts'
       - 'src/extensions/manifest.ts'
       - 'website/**'
   workflow_dispatch:

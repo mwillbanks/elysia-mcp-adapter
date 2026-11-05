@@ -158,25 +158,34 @@ export const MCP_EXTENSION_SUPPORT = {
     },
     clientCredentials: {
       identifier: 'io.modelcontextprotocol/oauth-client-credentials',
-      current: 'draft',
-      draft: 'draft',
+      current: '2026-07-28',
       versions: {
-        draft: {
-          status: 'draft',
-          includedAt: '2026-07-30',
+        '2026-07-28': {
+          status: 'stable',
+          includedAt: '2026-11-05',
           source: {
             repository: 'https://github.com/modelcontextprotocol/ext-auth',
-            revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-            path: 'specification/draft/oauth-client-credentials.mdx',
-            sha256: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f'
+            revision: '15ca394e00a66434520b9ade26294999295a43ae',
+            path: 'specification/stable/oauth-client-credentials/2026-07-28/oauth-client-credentials.mdx',
+            sha256: '5690dfd64fe3fc8bfedb1e0aa86bbfb56a893b90b0386a3df1f4f2f6a541d277'
           }
         }
       }
     },
     enterpriseManagedAuthorization: {
       identifier: 'io.modelcontextprotocol/enterprise-managed-authorization',
-      current: '2026-06-17',
+      current: '2026-07-28',
       versions: {
+        '2026-07-28': {
+          status: 'stable',
+          includedAt: '2026-11-05',
+          source: {
+            repository: 'https://github.com/modelcontextprotocol/ext-auth',
+            revision: '15ca394e00a66434520b9ade26294999295a43ae',
+            path: 'specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx',
+            sha256: '4e603853161fa8bf0e49c07497437fc36c5078a2c40c9c87cb7ff244d09349ce'
+          }
+        },
         '2026-06-17': {
           status: 'stable',
           includedAt: '2026-07-30',
@@ -681,26 +690,16 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   authEnterprise: {
     identifier: 'io.modelcontextprotocol/enterprise-managed-authorization',
     maturity: 'stable',
-    protocolEra: '2026-06-17',
+    protocolEra: '2026-07-28',
     availability: 'reviewed',
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-      path: 'specification/stable/enterprise-managed-authorization.mdx',
-      sha256: 'df4fe01daec0eac6069e17a293d4ed7e197ab20463038d806f71e63b22fd8986'
-    }
+    source: MCP_EXTENSION_SUPPORT.auth.enterpriseManagedAuthorization.versions['2026-07-28'].source
   },
   authClientCredentials: {
     identifier: 'io.modelcontextprotocol/oauth-client-credentials',
-    maturity: 'draft',
-    protocolEra: 'draft',
+    maturity: 'stable',
+    protocolEra: '2026-07-28',
     availability: 'reviewed',
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-      path: 'specification/draft/oauth-client-credentials.mdx',
-      sha256: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f'
-    }
+    source: MCP_EXTENSION_SUPPORT.auth.clientCredentials.versions['2026-07-28'].source
   },
   appsStable: {
     identifier: 'io.modelcontextprotocol/ui',

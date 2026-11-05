@@ -38,12 +38,8 @@ const observations: string[] = []
 const compatibilityRecords = collectManifestRecords(MCP_EXTENSION_SUPPORT)
 const governanceRecords = collectManifestRecords(MCP_SPECIFICATION_GOVERNANCE_SOURCES)
 const records = [...collectManifestRecords(MCP_EXTENSION_LATEST_REVIEWED), ...governanceRecords]
-const historicalPaths = new Set<string>([
-  MCP_EXTENSION_LATEST_REVIEWED.authClientCredentials.source.path,
-  MCP_EXTENSION_LATEST_REVIEWED.authEnterprise.source.path,
-  MCP_EXTENSION_LATEST_REVIEWED.skillsStable.source.path
-])
-const activeRecords = records.filter(({ source }) => !source || !historicalPaths.has(source.path))
+const historicalSkillsPath = MCP_EXTENSION_LATEST_REVIEWED.skillsStable.source.path
+const activeRecords = records.filter(({ source }) => source?.path !== historicalSkillsPath)
 
 for (const [name, record] of Object.entries(MCP_SPECIFICATION_INVENTORY)) {
   const eligible = isMcpServerSpecificationEligible(record)

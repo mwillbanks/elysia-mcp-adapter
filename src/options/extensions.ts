@@ -71,7 +71,7 @@ function normalizeAuthProfiles(
               version: resolveAuthVersion(
                 'client-credentials',
                 clientCredentials.version
-              ) as 'draft'
+              ) as '2026-07-28'
             }
           : undefined,
     enterpriseManaged:
@@ -79,10 +79,8 @@ function normalizeAuthProfiles(
         ? true
         : enterpriseManaged
           ? {
-              version: resolveAuthVersion(
-                'enterprise-managed',
-                enterpriseManaged.version
-              ) as '2026-06-17'
+              version: resolveAuthVersion('enterprise-managed', enterpriseManaged.version) as
+                '2026-07-28' | '2026-06-17'
             }
           : undefined
   }
