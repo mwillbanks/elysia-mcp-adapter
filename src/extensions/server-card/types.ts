@@ -2,6 +2,17 @@ import type { McpIcon } from '../../types.js'
 
 export const MCP_SERVER_CARD_ID = 'io.modelcontextprotocol/server-card' as const
 export const MCP_SERVER_CARD_REVISION = '526201bbc80231daa40ffcdecfc9da4e54e5dc93' as const
+export const MCP_SERVER_CARD_DRAFT_REVISION = '76c9875e65dea657f4e3ec0079e5a0885c801fa8' as const
+
+export type McpServerCardRevision =
+  typeof MCP_SERVER_CARD_REVISION | typeof MCP_SERVER_CARD_DRAFT_REVISION
+
+export type McpServerCardExtensionValue =
+  string | number | boolean | McpServerCardExtensionValue[] | McpServerCardExtensionInfo
+
+export interface McpServerCardExtensionInfo {
+  [key: string]: McpServerCardExtensionValue
+}
 export const MCP_SERVER_CARD_MIME_TYPE = 'application/mcp-server-card+json' as const
 export const MCP_SERVER_CARD_SCHEMA =
   'https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json' as const
@@ -18,6 +29,8 @@ export interface McpServerCard {
     type: 'sse' | 'streamable-http'
     url: string
     supportedProtocolVersions?: string[]
+    /** Public connection information. Requires the explicit Server Card draft revision. */
+    extensions?: Record<string, McpServerCardExtensionInfo>
     variables?: Record<string, Record<string, unknown>>
     headers?: Array<Record<string, unknown> & { name: string }>
   }>
@@ -26,7 +39,7 @@ export interface McpServerCard {
 }
 
 export interface McpServerCardOptions {
-  version?: 'current' | typeof MCP_SERVER_CARD_REVISION
+  version?: 'current' | McpServerCardRevision
   card: McpServerCard
   maxAgeSeconds?: number
   /** Production requires HTTPS. Development permits loopback HTTP only. */

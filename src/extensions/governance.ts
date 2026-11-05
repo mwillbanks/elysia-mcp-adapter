@@ -411,7 +411,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'draft',
     approval: 'unapproved',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.serverCardExtensions.source,
     proposal: 'https://github.com/modelcontextprotocol/ext-server-card/pull/55',
     group: {

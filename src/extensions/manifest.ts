@@ -261,6 +261,7 @@ export const MCP_EXTENSION_SUPPORT = {
     identifier: 'io.modelcontextprotocol/server-card',
     maturity: 'beta',
     current: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
+    draft: '76c9875e65dea657f4e3ec0079e5a0885c801fa8',
     versions: {
       '526201bbc80231daa40ffcdecfc9da4e54e5dc93': {
         status: 'stable',
@@ -270,6 +271,17 @@ export const MCP_EXTENSION_SUPPORT = {
           revision: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
           path: 'schema.json',
           sha256: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042'
+        }
+      },
+      '76c9875e65dea657f4e3ec0079e5a0885c801fa8': {
+        status: 'draft',
+        includedAt: '2026-11-05',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/ext-server-card',
+          revision: '76c9875e65dea657f4e3ec0079e5a0885c801fa8',
+          path: 'schema.json',
+          sha256: 'f6ec5128a849171edabcdcb5a7d4df2d3ed932d4a15e617aec6be2deb3a694c9',
+          trackHead: false
         }
       }
     }
