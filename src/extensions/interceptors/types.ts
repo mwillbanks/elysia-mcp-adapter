@@ -1,9 +1,9 @@
 import type { JsonSchema, McpInvocationContext } from '../../types.js'
+import { MCP_EXTENSION_SUPPORT } from '../manifest.js'
 
 export const MCP_INTERCEPTORS_ID = 'io.modelcontextprotocol/interceptors' as const
-export const MCP_INTERCEPTORS_REVISION = 'b60459844cc95f2170297ebe1c84b7de8b752953' as const
-
-export const MCP_INTERCEPTORS_LATEST_REVISION = 'faf1583a9c1b3d059043b191bd21fd44d65049a7' as const
+export const MCP_INTERCEPTORS_REVISION = MCP_EXTENSION_SUPPORT.interceptors.current
+export const MCP_INTERCEPTORS_LATEST_REVISION = MCP_INTERCEPTORS_REVISION
 
 export type McpInterceptorPhase = 'request' | 'response'
 export type McpInterceptorMode = 'active' | 'audit'
@@ -99,7 +99,7 @@ export interface McpInterceptorRegistration {
 }
 
 export interface McpInterceptorsOptions {
-  version?: 'current' | typeof MCP_INTERCEPTORS_REVISION | typeof MCP_INTERCEPTORS_LATEST_REVISION
+  version?: 'current' | typeof MCP_INTERCEPTORS_REVISION
 }
 
 export interface McpInterceptorChainEntry {

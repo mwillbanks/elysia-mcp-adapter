@@ -296,8 +296,20 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   interceptors: {
     identifier: 'io.modelcontextprotocol/interceptors',
-    current: 'faf1583a9c1b3d059043b191bd21fd44d65049a7',
+    current: '07c89a24879eb2231e2afb72942643ebc8dfe485',
     versions: {
+      '07c89a24879eb2231e2afb72942643ebc8dfe485': {
+        status: 'experimental',
+        includedAt: '2026-11-05',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/experimental-ext-interceptors',
+          revision: '07c89a24879eb2231e2afb72942643ebc8dfe485',
+          path: 'docs/sep.md',
+          sha256: '0f37696aaa74f269aa5cdb1e1048fa243d9d5c1cf5c400490d92606817af74c2'
+        }
+      }
+    },
+    historicalDrafts: {
       faf1583a9c1b3d059043b191bd21fd44d65049a7: {
         status: 'experimental',
         includedAt: '2026-10-22',
@@ -825,9 +837,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/experimental-ext-interceptors',
-      revision: 'faf1583a9c1b3d059043b191bd21fd44d65049a7',
+      revision: '07c89a24879eb2231e2afb72942643ebc8dfe485',
       path: 'docs/sep.md',
-      sha256: 'e486a4e7a50f2a704bf94785d0de48a66ab727c24991a44a281193ba4ce5bb7e'
+      sha256: '0f37696aaa74f269aa5cdb1e1048fa243d9d5c1cf5c400490d92606817af74c2'
     }
   },
   variants: {
@@ -979,7 +991,7 @@ export function resolvePinnedVersion<T extends Record<string, unknown>>(
   versions: T
 ): keyof T & string {
   const candidate = requested === undefined || requested === 'current' ? current : requested
-  if (candidate in versions) return candidate as keyof T & string
+  if (Object.hasOwn(versions, candidate)) return candidate as keyof T & string
 
   const supported = ['current', ...Object.keys(versions)].join(', ')
   throw new TypeError(

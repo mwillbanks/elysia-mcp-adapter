@@ -1,11 +1,8 @@
 import { normalizeDpopOptions, resolveAuthVersion } from '../extensions/auth/index.js'
 import { normalizeStructuredAuthorizationDenials } from '../extensions/auth/structured-denials.js'
 import { resolveEventRevision } from '../extensions/events/types.js'
-import {
-  MCP_INTERCEPTORS_LATEST_REVISION,
-  MCP_INTERCEPTORS_REVISION
-} from '../extensions/interceptors/index.js'
 import { MCP_EXTENSION_SUPPORT, resolvePinnedVersion } from '../extensions/manifest.js'
+import { resolveGovernedDraftRevision } from '../extensions/revision-policy.js'
 import { normalizeServerCardOptions } from '../extensions/server-card/index.js'
 import { MCP_SKILLS_VERSION, MCP_SKILLS_HISTORICAL_VERSION } from '../extensions/skills/index.js'
 import { resolveTasksVersion } from '../extensions/tasks/index.js'
@@ -16,7 +13,6 @@ import {
   assertSigningKey,
   assertTimerDelay,
   MAX_TIMER_DELAY_MS,
-  resolveExperimentalRevision,
   withDefault
 } from './validation.js'
 import { normalizeVariants } from './variants.js'
@@ -289,14 +285,11 @@ export function normalizeExtensions(
     interceptors: extensions?.interceptors
       ? {
           ...extensions.interceptors,
-          version:
-            extensions.interceptors.version === MCP_INTERCEPTORS_REVISION
-              ? MCP_INTERCEPTORS_REVISION
-              : resolveExperimentalRevision(
-                  'interceptors',
-                  extensions.interceptors.version,
-                  MCP_INTERCEPTORS_LATEST_REVISION
-                )
+          version: resolveGovernedDraftRevision('Interceptors', extensions.interceptors.version, {
+            current: MCP_EXTENSION_SUPPORT.interceptors.current,
+            superseded: Object.keys(MCP_EXTENSION_SUPPORT.interceptors.historicalDrafts),
+            migration: 'Use "current" and review the Interceptors draft contract.'
+          })
         }
       : undefined,
     variants: normalizeVariants(extensions?.variants),

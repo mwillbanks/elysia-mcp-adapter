@@ -441,7 +441,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'experimental',
     approval: 'unapproved',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.interceptorsRepo.source,
     proposal: pull(2624),
     group: interceptorGroup

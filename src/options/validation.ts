@@ -28,12 +28,3 @@ export function assertTimerDelay(value: number | undefined, label: string, maxim
     throw new RangeError(`${label} must not exceed ${maximum} milliseconds`)
   }
 }
-
-export function resolveExperimentalRevision<T extends string>(
-  label: string,
-  value: 'current' | T | undefined,
-  revision: T
-): T {
-  if (value === undefined || value === 'current' || value === revision) return revision
-  throw new TypeError(`Unsupported ${label} revision: ${value}`)
-}
