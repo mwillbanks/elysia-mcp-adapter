@@ -77,16 +77,6 @@ export const MCP_EXTENSION_SUPPORT = {
           sha256: 'f311ca76f5d10545cf422a947af4f8a257f197cdd0ec6709b5fee0a2a65bcf80'
         }
       },
-      draft: {
-        status: 'draft',
-        includedAt: '2026-07-30',
-        source: {
-          repository: 'https://github.com/modelcontextprotocol/ext-tasks',
-          revision: '2c1425d9a288b9b1f489430fe1e00bb392b47e48',
-          path: 'specification/draft/tasks.md',
-          sha256: 'ae908a883d8489f1ebfee47496dd8818f182b467a4196c17df98b40a3d8b2b11'
-        }
-      },
       'draft-b3d28ac': {
         status: 'draft',
         includedAt: '2026-10-22',
@@ -95,6 +85,18 @@ export const MCP_EXTENSION_SUPPORT = {
           revision: 'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84',
           path: 'specification/draft/tasks.md',
           sha256: '5d1dd2d95c287f7defa97b20823990a3908f9ed93d49977ac8d5de559b6ff49b'
+        }
+      }
+    },
+    historicalDrafts: {
+      draft: {
+        status: 'draft',
+        includedAt: '2026-07-30',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/ext-tasks',
+          revision: '2c1425d9a288b9b1f489430fe1e00bb392b47e48',
+          path: 'specification/draft/tasks.md',
+          sha256: 'ae908a883d8489f1ebfee47496dd8818f182b467a4196c17df98b40a3d8b2b11'
         }
       },
       'draft-5246bc3': {

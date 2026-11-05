@@ -6,6 +6,8 @@ import {
   type McpLatestExtensionRecord,
   resolveLatestReviewedVersion
 } from '../src/extensions/manifest.js'
+import originalTasksDraft from './fixtures/tasks-draft-2c1425d.json' with { type: 'json' }
+import supersededTasksDraft from './fixtures/tasks-draft-5246bc3.json' with { type: 'json' }
 
 const expectedLatestKeys = [
   'coreTypeScriptSchema',
@@ -166,6 +168,17 @@ describe('upstream extension inventory', () => {
       expect(normalized.extensions.interceptors?.version).toBe(interceptorVersion)
     }
     expect(MCP_EXTENSION_SUPPORT.tasks.draft).toBe('draft-b3d28ac')
+  })
+
+  test('retains superseded Tasks wire pins outside the active support map', () => {
+    const { versions, historicalDrafts } = MCP_EXTENSION_SUPPORT.tasks
+    expect(Object.keys(versions)).toEqual(['2026-07-28', 'draft-b3d28ac'])
+    expect(originalTasksDraft.upstreamCommit).toBe(historicalDrafts.draft.source.revision)
+    expect(originalTasksDraft.sourceSha256).toBe(historicalDrafts.draft.source.sha256)
+    expect(supersededTasksDraft.upstreamCommit).toBe(
+      historicalDrafts['draft-5246bc3'].source.revision
+    )
+    expect(supersededTasksDraft.sourceSha256).toBe(historicalDrafts['draft-5246bc3'].source.sha256)
   })
 
   test('does not advertise undefined experiment APIs', () => {

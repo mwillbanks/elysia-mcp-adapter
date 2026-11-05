@@ -3,11 +3,8 @@ import type { McpTaskExecutionContext } from './execution-context.js'
 
 export const TASKS_EXTENSION_ID = 'io.modelcontextprotocol/tasks' as const
 
-/**
- * `draft` keeps the original 2c1425d draft codec. `draft-5246bc3` selects the
- * previous reviewed draft. `draft-b3d28ac` selects the latest reviewed draft.
- */
-export type TasksVersion = '2026-07-28' | 'draft' | 'draft-5246bc3' | 'draft-b3d28ac'
+/** The approved revision and the current opt-in draft. */
+export type TasksVersion = '2026-07-28' | 'draft-b3d28ac'
 export type TasksVersionInput = TasksVersion | 'current'
 
 /**
@@ -122,11 +119,11 @@ export type DetailedTask<TResult extends Record<string, unknown> = Record<string
 export type Task20260728<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult>
 
-/** Pinned ext-tasks draft record; its capability error code differs from the final codec. */
+/** Record shape shared by the current Tasks draft and the approved revision. */
 export type TaskDraft<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult>
 
-/** Current ext-tasks draft pinned at revision 5246bc3. */
+/** @deprecated Historical type for the superseded ext-tasks draft at revision 5246bc3. */
 export type TaskDraft5246bc3<TResult extends Record<string, unknown> = Record<string, unknown>> =
   DetailedTask<TResult>
 

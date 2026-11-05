@@ -1,17 +1,20 @@
-import { MCP_EXTENSION_SUPPORT, resolvePinnedVersion } from '../manifest.js'
+import { MCP_EXTENSION_SUPPORT } from '../manifest.js'
+import { resolveGovernedDraftRevision } from '../revision-policy.js'
 import type { TasksVersion, TasksVersionInput } from './types.js'
 
 export const CURRENT_TASKS_VERSION: TasksVersion = MCP_EXTENSION_SUPPORT.tasks.current
 
 export function resolveTasksVersion(version: TasksVersionInput = 'current'): TasksVersion {
-  return resolvePinnedVersion(
-    'tasks',
-    version,
-    MCP_EXTENSION_SUPPORT.tasks.current,
-    MCP_EXTENSION_SUPPORT.tasks.versions
-  )
+  const { current, draft, historicalDrafts } = MCP_EXTENSION_SUPPORT.tasks
+  if (version === 'current' || version === current) return current
+  return resolveGovernedDraftRevision('tasks', version, {
+    current: draft,
+    superseded: Object.keys(historicalDrafts),
+    migration: `Select "${current}" for the approved contract or adapt the integration to "${draft}".`
+  })
 }
 
-export function taskCapabilityErrorCode(version: TasksVersionInput = 'current'): -32021 | -32003 {
-  return resolveTasksVersion(version) === 'draft' ? -32003 : -32021
+export function taskCapabilityErrorCode(version: TasksVersionInput = 'current'): -32021 {
+  resolveTasksVersion(version)
+  return -32021
 }
