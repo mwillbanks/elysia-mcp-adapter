@@ -11,7 +11,6 @@ import {
   setTaskController,
   type TaskDurableCreateRequest,
   type TaskExecutionScheduler,
-  type TaskInputResponse,
   type TaskInputResponses,
   TaskProtocolError,
   type TaskProvider,
@@ -20,7 +19,6 @@ import {
   type WorkingTask
 } from '../src/extensions/tasks/index.js'
 import acceptedDraftFixture from './fixtures/tasks-draft-b3d28ac.json' with { type: 'json' }
-import latestDraftFixture from './fixtures/tasks-draft-5246bc3.json' with { type: 'json' }
 
 const capabilityMeta = {
   'io.modelcontextprotocol/clientCapabilities': {
@@ -29,12 +27,6 @@ const capabilityMeta = {
     }
   }
 }
-
-interface CompatibleLegacyTaskInputResponse extends TaskInputResponse {
-  approved: boolean
-}
-
-const compatibleLegacyResponse: CompatibleLegacyTaskInputResponse = { approved: true }
 
 function workingTask(taskId = 'task-1'): WorkingTask {
   return {
@@ -124,26 +116,33 @@ describe('tasks extension', () => {
     expect(resolveTasksVersion()).toBe('2026-07-28')
     expect(resolveTasksVersion('current')).toBe('2026-07-28')
     expect(resolveTasksVersion('2026-07-28')).toBe('2026-07-28')
-    expect(resolveTasksVersion('draft')).toBe('draft')
-    expect(resolveTasksVersion('draft-5246bc3')).toBe('draft-5246bc3')
+    expect(resolveTasksVersion('draft-b3d28ac')).toBe('draft-b3d28ac')
     expect(taskCapabilityErrorCode('current')).toBe(-32021)
-    expect(taskCapabilityErrorCode('draft')).toBe(-32003)
-    expect(taskCapabilityErrorCode('draft-5246bc3')).toBe(-32021)
-    expect(() => resolveTasksVersion('2025-11-25' as 'draft')).toThrow('Unsupported tasks')
+    expect(taskCapabilityErrorCode('draft-b3d28ac')).toBe(-32021)
+    for (const oldRevision of ['draft', 'draft-5246bc3']) {
+      expect(() => resolveTasksVersion(oldRevision as 'draft-b3d28ac')).toThrow(
+        `tasks revision "${oldRevision}" was superseded. Select "2026-07-28"`
+      )
+    }
+    expect(() => resolveTasksVersion('2025-11-25' as 'draft-b3d28ac')).toThrow('Unsupported tasks')
   })
 
   it('matches the independently recorded current draft contract', () => {
-    expect(latestDraftFixture.version).toBe('draft-5246bc3')
-    expect(latestDraftFixture.missingCapabilityError).toBe(-32021)
-    expect(resolveTasksVersion('draft-5246bc3')).toBe('draft-5246bc3')
-    expect(taskCapabilityErrorCode('draft-5246bc3')).toBe(-32021)
-    expect(latestDraftFixture.extension).toBe('io.modelcontextprotocol/tasks')
-    expect(createTaskController({ provider: new TestTaskProvider() }).capability()).toEqual({
-      extensions: { 'io.modelcontextprotocol/tasks': latestDraftFixture.capability }
+    expect(acceptedDraftFixture.version).toBe('draft-b3d28ac')
+    expect(acceptedDraftFixture.missingCapabilityError).toBe(-32021)
+    expect(resolveTasksVersion('draft-b3d28ac')).toBe('draft-b3d28ac')
+    expect(acceptedDraftFixture.extension).toBe('io.modelcontextprotocol/tasks')
+    expect(
+      createTaskController({
+        provider: new TestTaskProvider(),
+        version: 'draft-b3d28ac'
+      }).capability()
+    ).toEqual({
+      extensions: { 'io.modelcontextprotocol/tasks': acceptedDraftFixture.capability }
     })
   })
 
-  for (const version of ['2026-07-28', 'draft-b3d28ac', 'draft-5246bc3'] as const) {
+  for (const version of ['2026-07-28', 'draft-b3d28ac'] as const) {
     it(`${version} returns complete for terminal tasks/get while retaining the completed task result`, async () => {
       expect(resolveTasksVersion(acceptedDraftFixture.version as 'draft-b3d28ac')).toBe(
         'draft-b3d28ac'
@@ -170,7 +169,7 @@ describe('tasks extension', () => {
 
   it('creates the version-specific missing capability error', () => {
     const finalError = createMissingTaskCapabilityError()
-    const draftError = createMissingTaskCapabilityError('draft')
+    const draftError = createMissingTaskCapabilityError('draft-b3d28ac')
 
     expect(finalError).toBeInstanceOf(TaskProtocolError)
     expect(finalError).toMatchObject({
@@ -182,7 +181,7 @@ describe('tasks extension', () => {
         }
       }
     })
-    expect(draftError.code).toBe(-32003)
+    expect(draftError.code).toBe(-32021)
   })
 
   it('requires the provider to make a created task immediately readable', async () => {
@@ -370,7 +369,7 @@ describe('tasks extension', () => {
 
   it('rejects task methods without per-request capability declaration', async () => {
     const provider = new TestTaskProvider()
-    const controller = createTaskController({ provider, version: 'draft' })
+    const controller = createTaskController({ provider, version: 'draft-b3d28ac' })
 
     await expect(
       dispatchTaskRequest(controller, {
@@ -378,7 +377,7 @@ describe('tasks extension', () => {
         params: { taskId: 'task-1' },
         context: { request: new Request('http://localhost/mcp') }
       })
-    ).rejects.toMatchObject({ code: -32003 })
+    ).rejects.toMatchObject({ code: -32021 })
   })
 
   it('rejects malformed parameters and unknown task IDs', async () => {
@@ -440,26 +439,16 @@ describe('tasks extension', () => {
     expect(Object.getPrototypeOf(stored)).toBe(Object.prototype)
   })
 
-  it('preserves open legacy responses and enforces modern core response contracts', async () => {
+  it('enforces core response contracts on the current Tasks draft', async () => {
     const provider = new TestTaskProvider()
     const context = { request: new Request('http://localhost/mcp'), meta: capabilityMeta }
-    provider.tasks.set('legacy', {
-      ...workingTask('legacy'),
-      status: 'input_required',
-      inputRequests: { custom: { method: 'roots/list' } }
-    })
-    await createTaskController({ provider, version: 'draft' }).update(
-      'legacy',
-      { custom: compatibleLegacyResponse },
-      context
-    )
 
     provider.tasks.set('roots', {
       ...workingTask('roots'),
       status: 'input_required',
       inputRequests: { root: { method: 'roots/list' } }
     })
-    const controller = createTaskController({ provider, version: 'draft-5246bc3' })
+    const controller = createTaskController({ provider, version: 'draft-b3d28ac' })
     await expect(
       controller.update('roots', { root: { roots: [{ uri: 'x y' }] } }, context)
     ).rejects.toThrow('file URI')

@@ -23,7 +23,7 @@ export interface McpExtensionVersionRecord {
  * These records are deliberately separate from MCP_EXTENSION_SUPPORT. A source
  * can be current upstream without being implemented by this adapter yet.
  */
-export type McpExtensionMaturity = 'stable' | 'draft' | 'experimental' | 'undefined'
+export type McpExtensionMaturity = 'stable' | 'beta' | 'draft' | 'experimental' | 'undefined'
 
 export interface McpLatestExtensionRecord {
   identifier?: string
@@ -33,6 +33,14 @@ export interface McpLatestExtensionRecord {
   source?: McpExtensionSource
   reason?: string
 }
+
+const eventsDraftSource = {
+  repository: 'https://github.com/pja-ant/modelcontextprotocol',
+  revision: 'b08e4f9dd684f39d846d94089487fbeb28e666f5',
+  path: 'seps/0000-events-extension.md',
+  sha256: 'ba056d7f8afb9c61dbfff6820ec25f691cd7eefaa1f55fd73c03ba6983bf40fa',
+  trackHead: false
+} as const satisfies McpExtensionSource
 
 export const MCP_EXTENSION_SUPPORT = {
   protocol: {
@@ -63,6 +71,7 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   tasks: {
     identifier: 'io.modelcontextprotocol/tasks',
+    maturity: 'beta',
     current: '2026-07-28',
     draft: 'draft-b3d28ac',
     versions: {
@@ -76,16 +85,6 @@ export const MCP_EXTENSION_SUPPORT = {
           sha256: 'f311ca76f5d10545cf422a947af4f8a257f197cdd0ec6709b5fee0a2a65bcf80'
         }
       },
-      draft: {
-        status: 'draft',
-        includedAt: '2026-07-30',
-        source: {
-          repository: 'https://github.com/modelcontextprotocol/ext-tasks',
-          revision: '2c1425d9a288b9b1f489430fe1e00bb392b47e48',
-          path: 'specification/draft/tasks.md',
-          sha256: 'ae908a883d8489f1ebfee47496dd8818f182b467a4196c17df98b40a3d8b2b11'
-        }
-      },
       'draft-b3d28ac': {
         status: 'draft',
         includedAt: '2026-10-22',
@@ -94,6 +93,18 @@ export const MCP_EXTENSION_SUPPORT = {
           revision: 'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84',
           path: 'specification/draft/tasks.md',
           sha256: '5d1dd2d95c287f7defa97b20823990a3908f9ed93d49977ac8d5de559b6ff49b'
+        }
+      }
+    },
+    historicalDrafts: {
+      draft: {
+        status: 'draft',
+        includedAt: '2026-07-30',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/ext-tasks',
+          revision: '2c1425d9a288b9b1f489430fe1e00bb392b47e48',
+          path: 'specification/draft/tasks.md',
+          sha256: 'ae908a883d8489f1ebfee47496dd8818f182b467a4196c17df98b40a3d8b2b11'
         }
       },
       'draft-5246bc3': {
@@ -129,7 +140,7 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-          revision: '41d9e938e9a9edf23a69429be180cad172e00f4e',
+          revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
           path: 'docs/specification/draft/basic/authorization/index.mdx',
           sha256: '7559c591b265ef71549f02775423c8c1ae152028601ee331da12f66bec0baa55'
         }
@@ -157,25 +168,34 @@ export const MCP_EXTENSION_SUPPORT = {
     },
     clientCredentials: {
       identifier: 'io.modelcontextprotocol/oauth-client-credentials',
-      current: 'draft',
-      draft: 'draft',
+      current: '2026-07-28',
       versions: {
-        draft: {
-          status: 'draft',
-          includedAt: '2026-07-30',
+        '2026-07-28': {
+          status: 'stable',
+          includedAt: '2026-11-05',
           source: {
             repository: 'https://github.com/modelcontextprotocol/ext-auth',
-            revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-            path: 'specification/draft/oauth-client-credentials.mdx',
-            sha256: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f'
+            revision: '15ca394e00a66434520b9ade26294999295a43ae',
+            path: 'specification/stable/oauth-client-credentials/2026-07-28/oauth-client-credentials.mdx',
+            sha256: '5690dfd64fe3fc8bfedb1e0aa86bbfb56a893b90b0386a3df1f4f2f6a541d277'
           }
         }
       }
     },
     enterpriseManagedAuthorization: {
       identifier: 'io.modelcontextprotocol/enterprise-managed-authorization',
-      current: '2026-06-17',
+      current: '2026-07-28',
       versions: {
+        '2026-07-28': {
+          status: 'stable',
+          includedAt: '2026-11-05',
+          source: {
+            repository: 'https://github.com/modelcontextprotocol/ext-auth',
+            revision: '15ca394e00a66434520b9ade26294999295a43ae',
+            path: 'specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx',
+            sha256: '4e603853161fa8bf0e49c07497437fc36c5078a2c40c9c87cb7ff244d09349ce'
+          }
+        },
         '2026-06-17': {
           status: 'stable',
           includedAt: '2026-07-30',
@@ -210,16 +230,16 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/ext-apps',
-          revision: 'v1.7.5',
+          revision: '19256f52cad5517ba8272581ed2e11d6a81273d5',
           path: 'specification/draft/apps.mdx',
-          sha256: '00e97500a71cd46f27a0c661a3c9ee4df60cf64ba7b069e41227ddf8d41b4269',
-          packageVersion: '1.7.5'
+          sha256: '9a38887ea6aaae24c97200ca41620cf5b0404aa69ed55c5bd95e48b32a84dfa1'
         }
       }
     }
   },
   skills: {
     identifier: 'io.modelcontextprotocol/skills',
+    maturity: 'beta',
     current: 'c1aa87e4c381c82b99aa37471d0eae4ab50f9985',
     versions: {
       c1aa87e4c381c82b99aa37471d0eae4ab50f9985: {
@@ -246,8 +266,9 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     current: '526201bbc80231daa40ffcdecfc9da4e54e5dc93',
+    draft: '76c9875e65dea657f4e3ec0079e5a0885c801fa8',
     versions: {
       '526201bbc80231daa40ffcdecfc9da4e54e5dc93': {
         status: 'stable',
@@ -258,13 +279,36 @@ export const MCP_EXTENSION_SUPPORT = {
           path: 'schema.json',
           sha256: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042'
         }
+      },
+      '76c9875e65dea657f4e3ec0079e5a0885c801fa8': {
+        status: 'draft',
+        includedAt: '2026-11-05',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/ext-server-card',
+          revision: '76c9875e65dea657f4e3ec0079e5a0885c801fa8',
+          path: 'schema.json',
+          sha256: 'f6ec5128a849171edabcdcb5a7d4df2d3ed932d4a15e617aec6be2deb3a694c9',
+          trackHead: false
+        }
       }
     }
   },
   interceptors: {
     identifier: 'io.modelcontextprotocol/interceptors',
-    current: 'faf1583a9c1b3d059043b191bd21fd44d65049a7',
+    current: '07c89a24879eb2231e2afb72942643ebc8dfe485',
     versions: {
+      '07c89a24879eb2231e2afb72942643ebc8dfe485': {
+        status: 'experimental',
+        includedAt: '2026-11-05',
+        source: {
+          repository: 'https://github.com/modelcontextprotocol/experimental-ext-interceptors',
+          revision: '07c89a24879eb2231e2afb72942643ebc8dfe485',
+          path: 'docs/sep.md',
+          sha256: '0f37696aaa74f269aa5cdb1e1048fa243d9d5c1cf5c400490d92606817af74c2'
+        }
+      }
+    },
+    historicalDrafts: {
       faf1583a9c1b3d059043b191bd21fd44d65049a7: {
         status: 'experimental',
         includedAt: '2026-10-22',
@@ -306,8 +350,15 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   events: {
     identifier: 'io.modelcontextprotocol/events',
-    current: 'd5316be214be2e76e51462069c1d67e00a5a7619',
+    current: eventsDraftSource.revision,
     versions: {
+      [eventsDraftSource.revision]: {
+        status: 'draft',
+        includedAt: '2026-11-05',
+        source: eventsDraftSource
+      }
+    },
+    historicalDrafts: {
       d5316be214be2e76e51462069c1d67e00a5a7619: {
         status: 'experimental',
         includedAt: '2026-10-22',
@@ -650,7 +701,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   tasksStable: {
     identifier: 'io.modelcontextprotocol/tasks',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: '2026-07-28',
     availability: 'reviewed',
     source: {
@@ -679,26 +730,16 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   authEnterprise: {
     identifier: 'io.modelcontextprotocol/enterprise-managed-authorization',
     maturity: 'stable',
-    protocolEra: '2026-06-17',
+    protocolEra: '2026-07-28',
     availability: 'reviewed',
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-      path: 'specification/stable/enterprise-managed-authorization.mdx',
-      sha256: 'df4fe01daec0eac6069e17a293d4ed7e197ab20463038d806f71e63b22fd8986'
-    }
+    source: MCP_EXTENSION_SUPPORT.auth.enterpriseManagedAuthorization.versions['2026-07-28'].source
   },
   authClientCredentials: {
     identifier: 'io.modelcontextprotocol/oauth-client-credentials',
-    maturity: 'draft',
-    protocolEra: 'draft',
+    maturity: 'stable',
+    protocolEra: '2026-07-28',
     availability: 'reviewed',
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/ext-auth',
-      revision: 'fb374c7db2b34f18ca9183882e0beecdf661892b',
-      path: 'specification/draft/oauth-client-credentials.mdx',
-      sha256: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f'
-    }
+    source: MCP_EXTENSION_SUPPORT.auth.clientCredentials.versions['2026-07-28'].source
   },
   appsStable: {
     identifier: 'io.modelcontextprotocol/ui',
@@ -730,7 +771,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   skillsStable: {
     identifier: 'io.modelcontextprotocol/skills',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: '2026-07-28',
     availability: 'reviewed',
     source: {
@@ -754,7 +795,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   serverCard: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: 'final',
     availability: 'reviewed',
     source: {
@@ -766,7 +807,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
   },
   serverCardFinalSep: {
     identifier: 'io.modelcontextprotocol/server-card',
-    maturity: 'stable',
+    maturity: 'beta',
     protocolEra: 'final',
     availability: 'reviewed',
     source: {
@@ -795,9 +836,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/experimental-ext-interceptors',
-      revision: 'faf1583a9c1b3d059043b191bd21fd44d65049a7',
+      revision: '07c89a24879eb2231e2afb72942643ebc8dfe485',
       path: 'docs/sep.md',
-      sha256: 'e486a4e7a50f2a704bf94785d0de48a66ab727c24991a44a281193ba4ce5bb7e'
+      sha256: '0f37696aaa74f269aa5cdb1e1048fa243d9d5c1cf5c400490d92606817af74c2'
     }
   },
   variants: {
@@ -837,17 +878,24 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
       sha256: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb'
     }
   },
+  events: {
+    identifier: MCP_EXTENSION_SUPPORT.events.identifier,
+    maturity: 'draft',
+    protocolEra: '2026-07-28',
+    availability: 'reviewed',
+    source: eventsDraftSource
+  },
   triggersEvents: {
     identifier: 'io.modelcontextprotocol/triggers-events',
     maturity: 'experimental',
-    protocolEra: 'draft',
+    protocolEra: 'historical-draft',
     availability: 'reviewed',
     source: {
-      repository: 'https://github.com/modelcontextprotocol/experimental-ext-triggers-events',
-      revision: 'd5316be214be2e76e51462069c1d67e00a5a7619',
-      path: 'docs/design-sketch-proposal.md',
-      sha256: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59'
-    }
+      ...MCP_EXTENSION_SUPPORT.events.historicalDrafts.d5316be214be2e76e51462069c1d67e00a5a7619
+        .source,
+      trackHead: false
+    },
+    reason: 'The group replaced the legacy design sketch with SEP-3415.'
   },
   standardWebhooks: {
     identifier: 'standardwebhooks.com/specification',
@@ -856,9 +904,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/standard-webhooks/standard-webhooks',
-      revision: '7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b',
+      revision: 'ab6844147ce9cdb0d2dbf2e60d1ea85001fd2554',
       path: 'spec/standard-webhooks.md',
-      sha256: '47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082'
+      sha256: 'c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31'
     }
   },
   ianaIpv4SpecialRegistry: {
@@ -942,7 +990,7 @@ export function resolvePinnedVersion<T extends Record<string, unknown>>(
   versions: T
 ): keyof T & string {
   const candidate = requested === undefined || requested === 'current' ? current : requested
-  if (candidate in versions) return candidate as keyof T & string
+  if (Object.hasOwn(versions, candidate)) return candidate as keyof T & string
 
   const supported = ['current', ...Object.keys(versions)].join(', ')
   throw new TypeError(

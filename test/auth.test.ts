@@ -19,8 +19,13 @@ import {
 describe('authorization profile versions', () => {
   test('resolves current versions independently', () => {
     expect(resolveAuthVersion('core')).toBe('2026-07-28')
-    expect(resolveAuthVersion('enterprise-managed')).toBe('2026-06-17')
-    expect(resolveAuthVersion('client-credentials')).toBe('draft')
+    expect(resolveAuthVersion('enterprise-managed')).toBe('2026-07-28')
+    expect(resolveAuthVersion('enterprise-managed', '2026-06-17')).toBe('2026-06-17')
+    expect(resolveAuthVersion('client-credentials')).toBe('2026-07-28')
+    expect(resolveAuthVersion('client-credentials', '2026-07-28')).toBe('2026-07-28')
+    expect(() => resolveAuthVersion('client-credentials', 'draft')).toThrow(
+      'Set version to "current" or "2026-07-28"'
+    )
     expect(resolveAuthVersion('core', 'draft')).toBe('draft')
     expect(resolveAuthVersion('core', '2025-11-25')).toBe('2025-11-25')
     expect(() => resolveAuthVersion('core', '2026-06-17')).toThrow('Supported versions')
@@ -30,8 +35,8 @@ describe('authorization profile versions', () => {
     expect(authProfileCapabilities()).toEqual({})
     expect(
       authProfileCapabilities({
-        clientCredentials: true,
-        enterpriseManaged: true
+        clientCredentials: { version: '2026-07-28' },
+        enterpriseManaged: { version: '2026-06-17' }
       })
     ).toEqual({
       [MCP_CLIENT_CREDENTIALS_EXTENSION]: {},

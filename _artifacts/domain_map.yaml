@@ -1,0 +1,14 @@
+library:
+  name: '@mwillbanks/elysia-mcp-adapter'
+domains:
+  - name: adapter-integration
+    description: Expose Elysia application behavior through MCP.
+skills:
+  - slug: elysia-mcp-adapter
+    domain: adapter-integration
+    tasks:
+      - Select existing Elysia routes and preserve their guards and validation.
+      - Register standalone tools, resources, resource templates, and prompts.
+      - Configure MCP HTTP transport and enforce authorization.
+      - Select, upgrade, or retire MCP extension revisions.
+gaps: []

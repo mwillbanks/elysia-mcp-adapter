@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import { createHmac } from 'node:crypto'
 import Ajv2020Import from 'ajv/dist/2020.js'
 import addFormatsImport from 'ajv-formats'
@@ -21,6 +21,7 @@ import {
 } from '../src/extensions/events/validation.js'
 import {
   canonicalJson,
+  createMcpSubscriptionPublisher,
   createWebhookHeaders,
   decodeEventCursor,
   deliverWebhook,
@@ -28,6 +29,7 @@ import {
   encodeEventCursor,
   eventPrincipalKey,
   isGloballyRoutableAddress,
+  MCP_EVENTS_CAPABILITY,
   MCP_EVENTS_REVISION,
   McpWebhookNetworkError,
   McpWebhookVerificationError,
@@ -40,6 +42,7 @@ import {
 } from '../src/index.js'
 import { normalizeOptions } from '../src/options.js'
 import type { McpPluginOptions } from '../src/types.js'
+import { eventRequest, eventRpc } from './events-http.js'
 import { deferred, withControlledTime, within } from './events-test-helpers.js'
 import eventsSchema from './fixtures/events-proposal.schema.json' with { type: 'json' }
 import { rpc } from './helpers.js'
@@ -56,20 +59,30 @@ function createEventsSchemaValidator() {
 
 const signingKey = 'events-test-signing-key-contains-more-than-32-bytes'
 
-function eventApp(onPoll?: () => void, webhookPollMs = 60_000) {
+function abortableWebhookResolver(
+  _hostname: string,
+  signal?: AbortSignal
+): Promise<readonly { address: string; family: 4 }[]> {
+  return new Promise((_, reject) => {
+    const abort = () => reject(new McpWebhookNetworkError('timeout'))
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
+  })
+}
+
+function eventApp(onPoll?: () => void, webhookPollMs = 60_000, listChanged = false) {
   let sequence = 0
   return new Elysia()
     .use(
       mcp({
         allowedRoutes: [],
-        transport: {
-          protocolVersions: ['2025-11-25'],
-          enableGetSse: true,
-          enableDeleteSession: true
-        },
+        core: listChanged
+          ? { subscriptions: { provider: createMcpSubscriptionPublisher().provider } }
+          : undefined,
         extensions: {
           events: {
             version: MCP_EVENTS_REVISION,
+            listChanged,
             cursor: { signingKey, ttlMs: 60_000 },
             pagination: { signingKey, pageSize: 1 }
           }
@@ -167,12 +180,13 @@ describe('experimental events extension', () => {
       ['EventDescriptor', descriptor],
       ['EventOccurrence', occurrence],
       ['ListRequest', { cursor: 'page-2' }],
-      ['ListResult', { events: [descriptor], nextCursor: 'page-2' }],
+      ['ListResult', { resultType: 'complete', events: [descriptor], nextCursor: 'page-2' }],
       ['PollRequest', { ...subscription, maxEvents: 50 }],
       [
         'PollResult',
         {
-          events: [occurrence],
+          resultType: 'complete',
+          events: [{ ...occurrence, cursor: undefined }],
           cursor: 'cursor-1',
           truncated: false,
           hasMore: false,
@@ -180,7 +194,7 @@ describe('experimental events extension', () => {
         }
       ],
       ['StreamRequest', subscription],
-      ['StreamResult', { _meta: {} }],
+      ['StreamResult', { resultType: 'complete', _meta: meta }],
       [
         'SubscribeRequest',
         {
@@ -192,6 +206,7 @@ describe('experimental events extension', () => {
       [
         'SubscribeResult',
         {
+          resultType: 'complete',
           id: 'sub_123',
           refreshBefore: '2026-10-01T13:30:00Z',
           cursor: 'cursor-1',
@@ -213,7 +228,7 @@ describe('experimental events extension', () => {
           delivery: { url: 'https://events.example.test/hook' }
         }
       ],
-      ['UnsubscribeResult', {}],
+      ['UnsubscribeResult', { resultType: 'complete' }],
       [
         'StreamNotification',
         {
@@ -252,7 +267,7 @@ describe('experimental events extension', () => {
           jsonrpc: '2.0',
           method: 'notifications/events/terminated',
           params: {
-            error: { code: -32012, message: 'Forbidden', data: { reason: 'Access revoked' } },
+            error: { code: -32024, message: 'Forbidden', data: { reason: 'Access revoked' } },
             _meta: meta
           }
         }
@@ -264,26 +279,26 @@ describe('experimental events extension', () => {
         'WebhookBody',
         {
           type: 'terminated',
-          error: { code: -32011, message: 'NotFound', data: { kind: 'event' } }
+          error: { code: -32023, message: 'NotFound', data: { kind: 'event' } }
         }
       ],
       [
         'DefinedProtocolError',
         { code: -32602, message: 'InvalidParams', data: { reason: 'invalid' } }
       ],
-      ['DefinedProtocolError', { code: -32011, message: 'NotFound', data: { kind: 'event' } }],
-      ['DefinedProtocolError', { code: -32012, message: 'Forbidden' }],
+      ['DefinedProtocolError', { code: -32023, message: 'NotFound', data: { kind: 'event' } }],
+      ['DefinedProtocolError', { code: -32024, message: 'Forbidden' }],
       [
         'DefinedProtocolError',
-        { code: -32013, message: 'ResourceExhausted', data: { limit: 'subscriptions', max: 10 } }
+        { code: -32025, message: 'ResourceExhausted', data: { limit: 'subscriptions', max: 10 } }
       ],
       [
         'DefinedProtocolError',
-        { code: -32014, message: 'Unsupported', data: { feature: 'deliveryMode', value: 'push' } }
+        { code: -32026, message: 'Unsupported', data: { feature: 'deliveryMode', value: 'push' } }
       ],
       [
         'DefinedProtocolError',
-        { code: -32015, message: 'CallbackEndpointError', data: { reason: 'tls_error' } }
+        { code: -32027, message: 'CallbackEndpointError', data: { reason: 'tls_error' } }
       ]
     ] as const)
       expect(validates(definition, value)).toBe(true)
@@ -318,7 +333,7 @@ describe('experimental events extension', () => {
       ],
       [
         'DefinedProtocolError',
-        { code: -32015, message: 'CallbackEndpointError', data: { reason: 'raw_tls_details' } }
+        { code: -32027, message: 'CallbackEndpointError', data: { reason: 'raw_tls_details' } }
       ]
     ] as const)
       expect(validates(definition, value)).toBe(false)
@@ -409,7 +424,7 @@ describe('experimental events extension', () => {
     }
     const pluginOptions: McpPluginOptions = {
       allowedRoutes: [],
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: { events: { cursor: { signingKey } } }
     }
     const app = new Elysia().use(mcp(pluginOptions)).mcpEvent(definition, (() => ({
@@ -417,7 +432,7 @@ describe('experimental events extension', () => {
       cursor: null,
       terminated: { code: 1.5, message: 'do not expose provider output', data: [] }
     })) as never)
-    const poll = await rpc(app, 'events/poll', {
+    const poll = await eventRpc(app, 'events/poll', {
       name: definition.name,
       arguments: {},
       cursor: null
@@ -426,20 +441,7 @@ describe('experimental events extension', () => {
     expect(createEventsSchemaValidator()('EventError', poll.body.error)).toBe(true)
 
     const stream = await app.handle(
-      new Request('http://localhost/mcp', {
-        method: 'POST',
-        headers: {
-          accept: 'text/event-stream',
-          'content-type': 'application/json',
-          'mcp-protocol-version': '2025-11-25'
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 7,
-          method: 'events/stream',
-          params: { name: definition.name, arguments: {}, cursor: null }
-        })
-      })
+      eventRequest('events/stream', { name: definition.name, arguments: {}, cursor: null })
     )
     const streamError = (await stream.json()) as { error: unknown }
     expect(streamError.error).toEqual({ code: -32603, message: 'UpstreamError' })
@@ -474,12 +476,43 @@ describe('experimental events extension', () => {
         directOptions,
         {
           request: new Request('http://localhost/mcp'),
-          protocolVersion: '2025-11-25',
+          protocolVersion: '2026-07-28',
           authorization
         }
       )
     ).rejects.toMatchObject({ code: -32603, message: 'UpstreamError' })
     expect(records.size).toBe(0)
+  })
+
+  test('requires a fresh cursor before all retained events of a truncated replay', () => {
+    const definition: McpEventDefinition = {
+      name: 'com.example.gap',
+      description: 'Replay gap',
+      delivery: ['push'],
+      inputSchema: { type: 'object' },
+      payloadSchema: { type: 'object' }
+    }
+    const result = {
+      truncated: true,
+      cursor: 'batch-end',
+      events: [
+        {
+          name: definition.name,
+          eventId: 'retained',
+          timestamp: '2026-10-08T12:00:00Z',
+          data: {},
+          cursor: 'after-event'
+        }
+      ]
+    }
+    for (const replayStartCursor of [undefined, '', 'after-event', 'batch-end']) {
+      expect(() => assertEventPollResult(definition, { ...result, replayStartCursor }, 10)).toThrow(
+        'cursor before its first event'
+      )
+    }
+    expect(() =>
+      assertEventPollResult(definition, { ...result, replayStartCursor: 'retained-start' }, 10)
+    ).not.toThrow()
   })
 
   test('classifies additive and breaking event schema evolution conservatively', () => {
@@ -654,15 +687,16 @@ describe('experimental events extension', () => {
       ).toEqual({ cursor: 'upstream', expired: true })
     })
   })
-  test('is opt-in, revision-pinned, and legacy-only', () => {
-    expect(() =>
-      mcp({
-        extensions: { events: { cursor: { signingKey } } }
-      })
-    ).toThrow('legacy-only')
+  test('requires a modern protocol and valid webhook durability', () => {
     expect(() =>
       mcp({
         transport: { protocolVersions: ['2025-11-25'] },
+        extensions: { events: { cursor: { signingKey } } }
+      })
+    ).toThrow('Events require MCP 2026-07-28')
+    expect(() =>
+      mcp({
+        transport: { protocolVersions: ['2026-07-28'] },
         extensions: {
           events: {
             version: 'invalid' as typeof MCP_EVENTS_REVISION,
@@ -670,10 +704,10 @@ describe('experimental events extension', () => {
           }
         }
       })
-    ).toThrow('Unsupported events revision')
+    ).toThrow('Unsupported Events revision')
     expect(() =>
       mcp({
-        transport: { protocolVersions: ['2025-11-25'] },
+        transport: { protocolVersions: ['2026-07-28'] },
         extensions: {
           events: {
             cursor: { signingKey },
@@ -690,7 +724,7 @@ describe('experimental events extension', () => {
   test('lists descriptors and enforces fresh-start and bound cursor semantics', async () => {
     const app = eventApp()
     const validates = createEventsSchemaValidator()
-    const listed = await rpc(app, 'events/list')
+    const listed = await eventRpc(app, 'events/list')
     expect(listed.body.result.events).toEqual([
       expect.objectContaining({
         name: 'com.example.changed',
@@ -700,19 +734,19 @@ describe('experimental events extension', () => {
     expect(validates('ListRequest', {})).toBe(true)
     expect(validates('ListResult', listed.body.result)).toBe(true)
     expect(validates('EventDescriptor', listed.body.result.events[0])).toBe(true)
-    const missing = await rpc(app, 'events/poll', {
+    const missing = await eventRpc(app, 'events/poll', {
       name: 'com.example.missing',
       arguments: {}
     })
-    expect(missing.body.error).toMatchObject({ code: -32011, message: 'NotFound' })
+    expect(missing.body.error).toMatchObject({ code: -32023, message: 'NotFound' })
     expect(validates('DefinedProtocolError', missing.body.error)).toBe(true)
-    const malformed = await rpc(app, 'events/poll', {
+    const malformed = await eventRpc(app, 'events/poll', {
       name: 'com.example.changed',
       arguments: { project: 1 }
     })
     expect(malformed.body.error).toMatchObject({ code: -32602, message: 'InvalidParams' })
 
-    const fresh = await rpc(app, 'events/poll', {
+    const fresh = await eventRpc(app, 'events/poll', {
       name: 'com.example.changed',
       arguments: { project: 'adapter' },
       cursor: null
@@ -721,7 +755,7 @@ describe('experimental events extension', () => {
     expect(fresh.body.result.cursor).toBeString()
     expect(validates('PollResult', fresh.body.result)).toBe(true)
 
-    const replay = await rpc(app, 'events/poll', {
+    const replay = await eventRpc(app, 'events/poll', {
       name: 'com.example.changed',
       arguments: { project: 'adapter' },
       cursor: fresh.body.result.cursor
@@ -738,7 +772,7 @@ describe('experimental events extension', () => {
     expect(validates('PollResult', replay.body.result)).toBe(true)
     expect(validates('EventOccurrence', replay.body.result.events[0])).toBe(true)
 
-    const tampered = await rpc(app, 'events/poll', {
+    const tampered = await eventRpc(app, 'events/poll', {
       name: 'com.example.changed',
       arguments: { project: 'other' },
       cursor: fresh.body.result.cursor
@@ -750,25 +784,11 @@ describe('experimental events extension', () => {
     const app = eventApp()
     const controller = new AbortController()
     const response = await app.handle(
-      new Request('http://localhost/mcp', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'content-type': 'application/json',
-          accept: 'text/event-stream',
-          'mcp-protocol-version': '2025-11-25'
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 42,
-          method: 'events/stream',
-          params: {
-            name: 'com.example.changed',
-            arguments: { project: 'adapter' },
-            cursor: null
-          }
-        })
-      })
+      eventRequest(
+        'events/stream',
+        { name: 'com.example.changed', arguments: { project: 'adapter' }, cursor: null },
+        { id: 42, signal: controller.signal }
+      )
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/event-stream')
@@ -803,7 +823,7 @@ describe('experimental events extension', () => {
       if (polls >= 3) repeatedPoll.resolve()
     })
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: { cursor: { signingKey }, heartbeatMs: 5, pollIntervalMs: 1 }
       }
@@ -842,7 +862,7 @@ describe('experimental events extension', () => {
       options,
       {
         request: new Request('http://localhost/mcp'),
-        protocolVersion: '2025-11-25',
+        protocolVersion: '2026-07-28',
         signal
       }
     )
@@ -883,11 +903,13 @@ describe('experimental events extension', () => {
             events: [1, 2].map((value) => ({
               eventId: `event-${value}`,
               name,
-              timestamp: new Date().toISOString(),
+              timestamp: '2026-10-08T12:00:00Z',
               data: { value },
               cursor: `cursor-${value}`
             })),
             cursor: 'cursor-2',
+            truncated: true,
+            replayStartCursor: 'retained-start',
             nextPollMs: 0
           }
         pendingPoll.resolve()
@@ -896,7 +918,7 @@ describe('experimental events extension', () => {
       }
     )
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: { cursor: { signingKey }, heartbeatMs: 5, pollIntervalMs: 1 }
       }
@@ -912,77 +934,103 @@ describe('experimental events extension', () => {
       eventConfig.cursor
     )
     const abort = new AbortController()
-    const response = await streamEvents(
-      app,
-      { name: 'com.example.replay', arguments: {}, cursor: supplied },
-      8,
-      options,
-      {
-        request: new Request('http://localhost/mcp'),
-        protocolVersion: '2025-11-25',
-        signal: abort.signal
-      }
-    )
-    if (!response.body) throw new Error('Replay stream response omitted a body')
-    const reader = response.body.getReader()
-    let observed = ''
+    const pollTimer = deferred<() => void>()
+    const heartbeatTimer = deferred<() => void>()
+    const timeoutHandle = 1 as unknown as ReturnType<typeof setTimeout>
+    const intervalHandle = 2 as unknown as ReturnType<typeof setInterval>
+    const setPoll = spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
+      pollTimer.resolve(callback)
+      return timeoutHandle
+    }) as typeof setTimeout)
+    const setHeartbeat = spyOn(globalThis, 'setInterval').mockImplementation(((
+      callback: () => void
+    ) => {
+      heartbeatTimer.resolve(callback)
+      return intervalHandle
+    }) as typeof setInterval)
+    const clearPoll = spyOn(globalThis, 'clearTimeout').mockImplementation(() => {})
+    const clearHeartbeat = spyOn(globalThis, 'clearInterval').mockImplementation(() => {})
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
-      await within(pendingPoll.promise, 'pending replay poll')
-      for (
-        let attempt = 0;
-        attempt < 8 && !observed.includes('notifications/events/heartbeat');
-        attempt++
-      ) {
-        const next = await within(reader.read(), 'event replay or heartbeat')
-        observed += new TextDecoder().decode(next.value)
-      }
-      expect(observed).toContain('event-1')
-      expect(observed).toContain('event-2')
-      expect(observed.indexOf('event-1')).toBeLessThan(observed.indexOf('event-2'))
-      expect(observed).toContain('notifications/events/heartbeat')
+      const response = await streamEvents(
+        app,
+        { name: 'com.example.replay', arguments: {}, cursor: supplied },
+        8,
+        options,
+        {
+          request: new Request('http://localhost/mcp'),
+          protocolVersion: '2026-07-28',
+          signal: abort.signal
+        }
+      )
+      if (!response.body) throw new Error('Replay stream response omitted a body')
+      reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      const active = JSON.parse(decoder.decode((await reader.read()).value).slice('data: '.length))
+      expect(active.method).toBe('notifications/events/active')
+      expect(active.params.truncated).toBe(true)
+      expect(
+        decodeEventCursor(
+          active.params.cursor,
+          'com.example.replay',
+          {},
+          undefined,
+          undefined,
+          eventConfig.cursor
+        ).cursor
+      ).toBe('retained-start')
+      expect(decoder.decode((await reader.read()).value)).toContain('event-1')
+      expect(decoder.decode((await reader.read()).value)).toContain('event-2')
+      const poll = await pollTimer.promise
+      const heartbeat = await heartbeatTimer.promise
+      poll()
+      await pendingPoll.promise
+      heartbeat()
+      expect(decoder.decode((await reader.read()).value)).toContain(
+        'notifications/events/heartbeat'
+      )
     } finally {
-      releasePoll.resolve()
       abort.abort()
-      await within(reader.cancel(), 'replay stream cleanup')
+      releasePoll.resolve()
+      try {
+        await reader?.cancel()
+        expect(clearPoll).toHaveBeenCalledWith(timeoutHandle)
+        expect(clearHeartbeat).toHaveBeenCalledWith(intervalHandle)
+      } finally {
+        setPoll.mockRestore()
+        setHeartbeat.mockRestore()
+        clearPoll.mockRestore()
+        clearHeartbeat.mockRestore()
+      }
     }
   })
 
-  test('delivers list changes on the general session channel', async () => {
-    const app = eventApp()
-    const initialized = await app.handle(
-      new Request('http://localhost/mcp', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'mcp-protocol-version': '2025-11-25' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2025-11-25',
-            capabilities: {},
-            clientInfo: { name: 'test', version: '1' }
-          }
-        })
-      })
-    )
-    const sessionId = initialized.headers.get('mcp-session-id')
-    expect(sessionId).toBeString()
-    const abort = new AbortController()
-    const response = await app.handle(
-      new Request('http://localhost/mcp', {
-        method: 'GET',
-        signal: abort.signal,
-        headers: { 'mcp-session-id': sessionId as string, 'mcp-protocol-version': '2025-11-25' }
-      })
-    )
-    if (!response.body) throw new Error('General SSE response omitted a body')
-    const reader = response.body.getReader()
+  test('negotiates and delivers list changes on a modern core subscription', async () => {
+    const app = eventApp(undefined, undefined, true)
+    const discovered = await eventRpc(app, 'server/discover')
+    expect(discovered.body.result.capabilities.extensions[MCP_EVENTS_CAPABILITY]).toEqual({
+      listChanged: true
+    })
+    const params = { notifications: { eventsListChanged: true } }
+    const noOptIn = await app.handle(eventRequest('subscriptions/listen', { notifications: {} }))
+    const noOptInReader = noOptIn.body!.getReader()
     try {
-      expect(
-        new TextDecoder().decode(
-          (await within(reader.read(), 'general SSE connection readiness')).value
-        )
-      ).toContain(': connected')
+      const frame = await noOptInReader.read()
+      expect(new TextDecoder().decode(frame.value)).not.toContain('eventsListChanged')
+    } finally {
+      await noOptInReader.cancel()
+    }
+    const response = await app.handle(
+      eventRequest('subscriptions/listen', params, {
+        id: 8
+      })
+    )
+    expect(response.headers.get('mcp-session-id')).toBeNull()
+    const reader = response.body!.getReader()
+    try {
+      const first = new TextDecoder().decode((await reader.read()).value)
+      expect(first).toContain('notifications/subscriptions/acknowledged')
+      expect(first).toContain('"eventsListChanged":true')
       app.mcpEvent(
         {
           name: 'com.example.added',
@@ -993,14 +1041,11 @@ describe('experimental events extension', () => {
         },
         () => ({ events: [], cursor: null })
       )
-      const changed = new TextDecoder().decode(
-        (await within(reader.read(), 'event list change notification')).value
-      )
+      const changed = new TextDecoder().decode((await reader.read()).value)
       expect(changed).toContain('notifications/events/list_changed')
-      expect(changed).not.toContain('notifications/events/event')
+      expect(changed).toContain('"io.modelcontextprotocol/subscriptionId":8')
     } finally {
-      abort.abort()
-      await within(reader.cancel(), 'general SSE stream cleanup')
+      await reader.cancel()
     }
   })
 
@@ -1032,7 +1077,7 @@ describe('experimental events extension', () => {
           requestTimeoutMs: 10,
           maxResponseBytes: 16,
           allowPrivateAddresses: false,
-          resolveAddresses: () => new Promise(() => {})
+          resolveAddresses: abortableWebhookResolver
         },
         preAborted.signal
       )
@@ -1048,7 +1093,7 @@ describe('experimental events extension', () => {
             requestTimeoutMs: 10,
             maxResponseBytes: 16,
             allowPrivateAddresses: false,
-            resolveAddresses: () => new Promise(() => {})
+            resolveAddresses: abortableWebhookResolver
           }
         ),
         'stalled webhook DNS timeout'
@@ -1056,7 +1101,7 @@ describe('experimental events extension', () => {
     ).rejects.toBeInstanceOf(McpWebhookNetworkError)
 
     const normalizedVerification = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1064,7 +1109,7 @@ describe('experimental events extension', () => {
             provider: {} as never,
             allowlist: () => true,
             requestTimeoutMs: 10,
-            resolveAddresses: () => new Promise(() => {})
+            resolveAddresses: abortableWebhookResolver
           }
         }
       }
@@ -1088,7 +1133,7 @@ describe('experimental events extension', () => {
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           },
-          { request: new Request('http://localhost/mcp'), protocolVersion: '2025-11-25' },
+          { request: new Request('http://localhost/mcp'), protocolVersion: '2026-07-28' },
           verificationOptions
         ),
         'webhook verification DNS timeout'
@@ -1131,7 +1176,7 @@ describe('experimental events extension', () => {
     const provider = { durability: 'durable' } as never
     const allowlistCalls = new Map<string, number>()
     const configured = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1148,7 +1193,7 @@ describe('experimental events extension', () => {
       }
     })
     const alternate = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1184,7 +1229,7 @@ describe('experimental events extension', () => {
     const appB = new Elysia()
     const context = (label: string, signal?: AbortSignal) => ({
       request: new Request('http://localhost/mcp', { headers: { 'x-policy': label }, signal }),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       signal
     })
 
@@ -1207,7 +1252,7 @@ describe('experimental events extension', () => {
     expect(Object.fromEntries(allowlistCalls)).toEqual({ 'app-a': 1, 'app-b': 1, alternate: 1 })
 
     const challengeConfigured = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1242,109 +1287,32 @@ describe('experimental events extension', () => {
     ).rejects.toBeInstanceOf(McpWebhookNetworkError)
   })
 
-  test('isolates event sessions between two endpoints on one application', async () => {
-    const eventOptions = {
-      cursor: { signingKey },
-      heartbeatMs: 10,
-      pollIntervalMs: 10
-    }
+  test('does not expose Events on a legacy request or on a separate disabled endpoint', async () => {
     const app = new Elysia()
       .use(
         mcp({
-          path: '/events-a',
-          allowedRoutes: [],
-          transport: {
-            protocolVersions: ['2025-11-25'],
-            enableGetSse: true,
-            enableDeleteSession: true
-          },
-          extensions: { events: eventOptions }
+          transport: { protocolVersions: ['2025-11-25', '2026-07-28'] },
+          extensions: { events: { cursor: { signingKey } } }
         })
       )
-      .use(
-        mcp({
-          path: '/events-b',
-          allowedRoutes: [],
-          transport: {
-            protocolVersions: ['2025-11-25'],
-            enableGetSse: true,
-            enableDeleteSession: true
-          },
-          extensions: { events: eventOptions }
-        })
-      )
-    const initialize = async (path: string) => {
-      const response = await app.handle(
-        new Request(`http://localhost${path}`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'mcp-protocol-version': '2025-11-25'
-          },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'initialize',
-            params: {
-              protocolVersion: '2025-11-25',
-              clientInfo: { name: 'test', version: '1' },
-              capabilities: {}
-            }
-          })
-        })
-      )
-      return response.headers.get('mcp-session-id') as string
+      .use(mcp({ path: '/without-events' }))
+    const legacy = await rpc(app, 'initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1' }
+    })
+    expect(legacy.body.result.capabilities).not.toHaveProperty('events')
+    expect(legacy.body.result.capabilities.extensions?.[MCP_EVENTS_CAPABILITY]).toBeUndefined()
+    for (const method of ['events/list', 'events/stream']) {
+      expect((await rpc(app, method)).body.error.code).toBe(-32601)
+      const disabled = await eventRpc(app, method, {}, { path: '/without-events' })
+      expect(disabled.body.error.code).toBe(-32601)
     }
-    const sessionA = await initialize('/events-a')
-    const sessionB = await initialize('/events-b')
-    const crossDelete = await app.handle(
-      new Request('http://localhost/events-b', {
-        method: 'DELETE',
-        headers: { 'mcp-session-id': sessionA }
-      })
-    )
-    expect(crossDelete.status).toBe(400)
-    const crossAbort = new AbortController()
-    const crossStream = await app.handle(
-      new Request('http://localhost/events-b', {
-        signal: crossAbort.signal,
-        headers: { 'mcp-session-id': sessionA }
-      })
-    )
-    try {
-      await expect(
-        within(new Response(crossStream.body).text(), 'cross-endpoint stream rejection')
-      ).rejects.toThrow()
-    } finally {
-      crossAbort.abort()
-    }
-
-    const ownAbort = new AbortController()
-    const ownStream = await app.handle(
-      new Request('http://localhost/events-b', {
-        signal: ownAbort.signal,
-        headers: { 'mcp-session-id': sessionB }
-      })
-    )
-    if (!ownStream.body) throw new Error('Own-session SSE response omitted a body')
-    const reader = ownStream.body.getReader()
-    try {
-      expect(
-        new TextDecoder().decode(
-          (await within(reader.read(), 'own-session SSE connection readiness')).value
-        )
-      ).toContain(': connected')
-    } finally {
-      ownAbort.abort()
-      await within(reader.cancel(), 'own-session SSE stream cleanup')
-    }
-    const intactA = await app.handle(
-      new Request('http://localhost/events-a', {
-        method: 'DELETE',
-        headers: { 'mcp-session-id': sessionA }
-      })
-    )
-    expect(intactA.status).toBe(202)
+    expect(
+      (await eventRpc(app, 'server/discover')).body.result.capabilities.extensions[
+        MCP_EVENTS_CAPABILITY
+      ]
+    ).toEqual({})
   })
 
   test('isolates webhook workers and poll leases between configurations on one app', async () => {
@@ -1382,7 +1350,7 @@ describe('experimental events extension', () => {
     }
     const context = (label: string) => ({
       request: new Request('http://localhost/mcp', { headers: { 'x-config': label } }),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       authorization
     })
     const createProvider = () => {
@@ -1407,7 +1375,7 @@ describe('experimental events extension', () => {
     const sourceB = createProvider()
     const configured = (provider?: McpWebhookSubscriptionProvider) =>
       normalizeOptions({
-        transport: { protocolVersions: ['2025-11-25'] },
+        transport: { protocolVersions: ['2026-07-28'] },
         extensions: {
           events: {
             cursor: { signingKey },
@@ -1502,7 +1470,7 @@ describe('experimental events extension', () => {
     }
     const options = normalizeOptions({
       allowedRoutes: [],
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1540,7 +1508,7 @@ describe('experimental events extension', () => {
     }
     const context = {
       request: new Request('http://localhost/mcp'),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       authorization
     }
     const params = {
@@ -1612,40 +1580,12 @@ describe('experimental events extension', () => {
     await within(pollGate.promise, 'existing webhook worker after failed refresh')
     expect(polls).toBeGreaterThan(pollsBeforeFailedRefresh)
     resolutionFails = false
-    const stableContext = {
+    const withStaleVariant = {
       ...context,
-      meta: { 'io.modelcontextprotocol/server-variant': 'stable' }
+      meta: { 'io.modelcontextprotocol/server-variant': 'obsolete' }
     }
-    const experimentalContext = {
-      ...context,
-      meta: { 'io.modelcontextprotocol/server-variant': 'experimental' }
-    }
-    const stable = await subscribeEventsWebhook(app, params, options, stableContext)
-    const experimental = await subscribeEventsWebhook(app, params, options, experimentalContext)
-    expect(stable.id).not.toBe(experimental.id)
-    expect(stable.id).not.toBe(subscribed.id)
-    expect(records.size).toBe(3)
-    await unsubscribeEventsWebhook(
-      app,
-      { name: params.name, arguments: params.arguments, delivery: { url: params.delivery.url } },
-      options,
-      stableContext
-    )
-    expect(records.size).toBe(2)
-    await expect(
-      unsubscribeEventsWebhook(
-        app,
-        { name: params.name, arguments: params.arguments, delivery: { url: params.delivery.url } },
-        options,
-        stableContext
-      )
-    ).rejects.toMatchObject({ code: -32023, message: 'NotFound' })
-    await unsubscribeEventsWebhook(
-      app,
-      { name: params.name, arguments: params.arguments, delivery: { url: params.delivery.url } },
-      options,
-      experimentalContext
-    )
+    const refreshed = await subscribeEventsWebhook(app, params, options, withStaleVariant)
+    expect(refreshed.id).toBe(subscribed.id)
     expect(records.size).toBe(1)
     await expect(
       unsubscribeEventsWebhook(
@@ -1668,7 +1608,7 @@ describe('experimental events extension', () => {
     }
     expect(validates('UnsubscribeRequest', unsubscribeRequest)).toBe(true)
     const unsubscribed = await unsubscribeEventsWebhook(app, unsubscribeRequest, options, context)
-    expect(unsubscribed).toEqual({})
+    expect(unsubscribed).toEqual({ resultType: 'complete' })
     expect(validates('UnsubscribeResult', unsubscribed)).toBe(true)
     expect(records.size).toBe(0)
   })
@@ -1704,7 +1644,7 @@ describe('experimental events extension', () => {
       authorizeDelivery: () => authorization
     }
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey, ttlMs: 1 },
@@ -1766,7 +1706,7 @@ describe('experimental events extension', () => {
     )
     const context = {
       request: new Request('http://localhost/mcp'),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       authorization
     }
     const secret = `whsec_${Buffer.alloc(24, 15).toString('base64')}`
@@ -1925,7 +1865,7 @@ describe('experimental events extension', () => {
       authorizeDelivery: () => authorization
     }
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -1987,7 +1927,7 @@ describe('experimental events extension', () => {
     )
     const context = {
       request: new Request('http://localhost/mcp'),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       authorization
     }
     const cursor = encodeEventCursor('start', 'com.example.replay', {}, authorization, undefined, {
@@ -2031,7 +1971,7 @@ describe('experimental events extension', () => {
     )
   })
 
-  test('publishes truncated batch cursors only after earlier deliveries are handled', async () => {
+  test('delivers gap notices before events without advancing past earlier deliveries', async () => {
     const fixture = new URL('./fixtures/events-replay-runner.ts', import.meta.url)
     const ca = new URL('./fixtures/events-network/ca.pem', import.meta.url)
     const child = Bun.spawn([process.execPath, fixture.pathname], {
@@ -2048,12 +1988,12 @@ describe('experimental events extension', () => {
     ]).finally(() => clearTimeout(deadline))
     expect(exitCode, stderr).toBe(0)
     expect(JSON.parse(stdout.trim())).toEqual([
-      { type: 'event-1', cursor: 'head' },
-      { type: 'event-1', cursor: 'head' },
+      { type: 'gap', cursor: 'retained-one' },
+      { type: 'event-1', cursor: 'retained-one' },
       { type: 'event-2', cursor: 'cursor-1' },
-      { type: 'event-3', cursor: 'batch-end' },
+      { type: 'gap', cursor: 'retained-two' },
+      { type: 'event-3', cursor: 'retained-two' },
       { type: 'event-4', cursor: 'cursor-3' },
-      { type: 'gap', cursor: 'second-batch-end' },
       { type: 'refresh', cursor: 'batch-end' }
     ])
   })
@@ -2110,7 +2050,7 @@ describe('experimental events extension', () => {
       authorizeDelivery: () => authorization
     }
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -2158,7 +2098,7 @@ describe('experimental events extension', () => {
           return {
             events: [],
             cursor: null,
-            terminated: { code: -32011, message: 'NotFound', data: { kind: 'event' } }
+            terminated: { code: -32023, message: 'NotFound', data: { kind: 'event' } }
           }
         }
         return { events: [], cursor: null, nextPollMs: 5 }
@@ -2166,7 +2106,7 @@ describe('experimental events extension', () => {
     )
     const context = {
       request: new Request('http://localhost/mcp'),
-      protocolVersion: '2025-11-25' as const,
+      protocolVersion: '2026-07-28' as const,
       authorization
     }
     const url = 'https://callback.test:1/lifecycle'
@@ -2288,7 +2228,7 @@ describe('experimental events extension', () => {
       authorizeDelivery: () => authorization
     }
     const options = normalizeOptions({
-      transport: { protocolVersions: ['2025-11-25'] },
+      transport: { protocolVersions: ['2026-07-28'] },
       extensions: {
         events: {
           cursor: { signingKey },
@@ -2360,7 +2300,7 @@ describe('experimental events extension', () => {
       options,
       {
         request: new Request('http://localhost/mcp'),
-        protocolVersion: '2025-11-25',
+        protocolVersion: '2026-07-28',
         authorization
       }
     )

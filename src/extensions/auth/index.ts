@@ -1,4 +1,20 @@
-export { buildBearerChallenge, parseBearerAuthorization } from './bearer.js'
+export {
+  buildBearerChallenge,
+  buildDpopChallenge,
+  type McpDpopChallengeOptions,
+  parseBearerAuthorization
+} from './bearer.js'
+export {
+  MCP_DPOP_DRAFT_REVISION,
+  type McpDpopOptions,
+  type NormalizedMcpDpopOptions,
+  normalizeDpopOptions
+} from './dpop-options.js'
+export {
+  MCP_DPOP_SIGNING_ALGORITHMS,
+  type McpDpopReplayAcceptor,
+  type McpDpopReplayClaim
+} from './dpop.js'
 export {
   MCP_AUTH_VERSION_MANIFEST,
   MCP_CLIENT_CREDENTIALS_CURRENT_VERSION,
@@ -11,6 +27,8 @@ export {
 export {
   type AuthorizeBearerRequestOptions,
   authorizeBearerRequest,
+  type AuthorizeOAuthRequestOptions,
+  authorizeOAuthRequest,
   filterAuthorizedScopes,
   isAudienceAllowed,
   isPrincipalExpired,
@@ -23,6 +41,16 @@ export {
   protectedResourceMetadataUrl
 } from './metadata.js'
 export { authProfileCapabilities } from './profiles.js'
+export {
+  createMcpAuthorizationDenialResult,
+  type McpAuthorizationApprovalTaskContext,
+  type McpAuthorizationDenialMetadata,
+  type McpAuthorizationDetail,
+  type McpStructuredAuthorizationContext,
+  type McpStructuredAuthorizationDecision,
+  type McpStructuredAuthorizationDenialsOptions,
+  MCP_STRUCTURED_AUTHORIZATION_DENIALS_REVISION
+} from './structured-denials.js'
 export type {
   BearerAuthorizationResult,
   McpAccessTokenVerifier,

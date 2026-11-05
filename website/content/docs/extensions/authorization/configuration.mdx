@@ -43,5 +43,6 @@ The adapter does not host token endpoints, registration, login or consent pages,
 ID-JAG exchange, JWKS, token refresh/storage, or IdP provisioning.
 
 The stable and draft core authorization documents at revision `c518f7a9` define the same server
-behavior as the pinned codecs. The stable change is editorial. Client Credentials remains pinned to
-the ext-auth draft, and Enterprise-Managed Authorization remains pinned to `2026-06-17`.
+behavior as the pinned codecs. Both opt-in profiles default to their approved `2026-07-28`
+revision. Enterprise-Managed Authorization still accepts `2026-06-17`. If you selected the
+Client Credentials `draft` explicitly, set the version to `current` or `2026-07-28`.

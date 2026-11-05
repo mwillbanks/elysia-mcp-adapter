@@ -1,10 +1,11 @@
+import { MCP_SPECIFICATION_LIFECYCLE } from '../extensions/governance.js'
+import { resolveGovernedDraftRevision } from '../extensions/revision-policy.js'
 import {
   MCP_SERVER_VARIANTS_REVISION,
   type McpServerVariant,
   type McpVariantsOptions
 } from '../extensions/variants/index.js'
 import type { NormalizedMcpPluginOptions } from '../types.js'
-import { resolveExperimentalRevision } from './validation.js'
 
 function assertVariantIdentity(variant: McpServerVariant): void {
   if (
@@ -94,6 +95,10 @@ export function normalizeVariants(
   value: McpVariantsOptions | undefined
 ): NormalizedMcpPluginOptions['extensions']['variants'] {
   if (!value) return undefined
+  const version = resolveGovernedDraftRevision('Server variants', value.version, {
+    current: MCP_SERVER_VARIANTS_REVISION,
+    migration: MCP_SPECIFICATION_LIFECYCLE.serverVariants.migration
+  })
   if (!Array.isArray(value.variants)) {
     throw new TypeError('Server variants require at least one configured variant')
   }
@@ -104,11 +109,7 @@ export function normalizeVariants(
   }
   return {
     ...value,
-    version: resolveExperimentalRevision(
-      'server variants',
-      value.version,
-      MCP_SERVER_VARIANTS_REVISION
-    ),
+    version,
     discoveryLimit
   }
 }

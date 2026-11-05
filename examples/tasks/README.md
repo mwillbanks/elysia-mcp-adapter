@@ -56,7 +56,7 @@ The BullMQ tests start an isolated Redis instance on a dynamic loopback port. Th
 `redis-server` executable when available. On Linux CI runners without that executable, set
 `TASKS_TEST_REDIS_IMAGE` to an image already present in Docker. The fixture uses `--pull=never`,
 host networking, and a unique container name, then removes that exact container during cleanup.
-For example, CI uses `TASKS_TEST_REDIS_IMAGE=redis:8.10.2-alpine` after its Redis service loads the
+For example, CI uses `TASKS_TEST_REDIS_IMAGE=redis:8.10.3-alpine` after its Redis service loads the
 pinned image.
 
 Neither demo persists executable callbacks. The BullMQ provider accepts a trusted
@@ -74,4 +74,4 @@ bun run --cwd examples/tasks test
 bun run --cwd examples/tasks smoke
 ```
 
-Use Bun 1.4.4. Stable Tasks remains the default. Select draft-b3d28ac for the current draft; draft and draft-5246bc3 retain historical codecs. Terminal tasks/get responses use resultType: "complete". Redis-backed checks require a real Redis service.
+Use Bun 1.4.4. Stable Tasks remains the default. Select `draft-b3d28ac` for the current draft. Migrate older `draft` and `draft-5246bc3` selectors to the approved revision or the current draft. Terminal tasks/get responses use resultType: "complete". Redis-backed checks require a real Redis service.

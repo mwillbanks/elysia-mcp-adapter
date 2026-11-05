@@ -1,10 +1,8 @@
-import { resolveAuthVersion } from '../extensions/auth/index.js'
-import { MCP_EVENTS_LATEST_REVISION, MCP_EVENTS_REVISION } from '../extensions/events/types.js'
-import {
-  MCP_INTERCEPTORS_LATEST_REVISION,
-  MCP_INTERCEPTORS_REVISION
-} from '../extensions/interceptors/index.js'
+import { normalizeDpopOptions, resolveAuthVersion } from '../extensions/auth/index.js'
+import { normalizeStructuredAuthorizationDenials } from '../extensions/auth/structured-denials.js'
+import { resolveEventRevision } from '../extensions/events/types.js'
 import { MCP_EXTENSION_SUPPORT, resolvePinnedVersion } from '../extensions/manifest.js'
+import { resolveGovernedDraftRevision } from '../extensions/revision-policy.js'
 import { normalizeServerCardOptions } from '../extensions/server-card/index.js'
 import { MCP_SKILLS_VERSION, MCP_SKILLS_HISTORICAL_VERSION } from '../extensions/skills/index.js'
 import { resolveTasksVersion } from '../extensions/tasks/index.js'
@@ -15,7 +13,6 @@ import {
   assertSigningKey,
   assertTimerDelay,
   MAX_TIMER_DELAY_MS,
-  resolveExperimentalRevision,
   withDefault
 } from './validation.js'
 import { normalizeVariants } from './variants.js'
@@ -46,6 +43,8 @@ function normalizeAuth(auth: Extensions['auth']): NormalizedMcpPluginOptions['ex
   return {
     ...auth,
     profiles: normalizeAuthProfiles(auth),
+    dpop: normalizeDpopOptions(auth.dpop),
+    structuredDenials: normalizeStructuredAuthorizationDenials(auth.structuredDenials),
     version: resolveAuthVersion('core', auth.version) as Exclude<
       NonNullable<typeof auth.version>,
       'current'
@@ -71,7 +70,7 @@ function normalizeAuthProfiles(
               version: resolveAuthVersion(
                 'client-credentials',
                 clientCredentials.version
-              ) as 'draft'
+              ) as '2026-07-28'
             }
           : undefined,
     enterpriseManaged:
@@ -79,10 +78,8 @@ function normalizeAuthProfiles(
         ? true
         : enterpriseManaged
           ? {
-              version: resolveAuthVersion(
-                'enterprise-managed',
-                enterpriseManaged.version
-              ) as '2026-06-17'
+              version: resolveAuthVersion('enterprise-managed', enterpriseManaged.version) as
+                '2026-07-28' | '2026-06-17'
             }
           : undefined
   }
@@ -259,10 +256,7 @@ function normalizeEvents(
   validateEventPagination(events)
   return {
     ...events,
-    version:
-      events.version === MCP_EVENTS_REVISION
-        ? MCP_EVENTS_REVISION
-        : resolveExperimentalRevision('events', events.version, MCP_EVENTS_LATEST_REVISION),
+    version: resolveEventRevision(events.version),
     cursor: { ...events.cursor, ttlMs: withDefault(events.cursor.ttlMs, 24 * 60 * 60_000) },
     heartbeatMs: withDefault(events.heartbeatMs, 15_000),
     pollIntervalMs: withDefault(events.pollIntervalMs, 5_000),
@@ -291,14 +285,11 @@ export function normalizeExtensions(
     interceptors: extensions?.interceptors
       ? {
           ...extensions.interceptors,
-          version:
-            extensions.interceptors.version === MCP_INTERCEPTORS_REVISION
-              ? MCP_INTERCEPTORS_REVISION
-              : resolveExperimentalRevision(
-                  'interceptors',
-                  extensions.interceptors.version,
-                  MCP_INTERCEPTORS_LATEST_REVISION
-                )
+          version: resolveGovernedDraftRevision('Interceptors', extensions.interceptors.version, {
+            current: MCP_EXTENSION_SUPPORT.interceptors.current,
+            superseded: Object.keys(MCP_EXTENSION_SUPPORT.interceptors.historicalDrafts),
+            migration: 'Use "current" and review the Interceptors draft contract.'
+          })
         }
       : undefined,
     variants: normalizeVariants(extensions?.variants),

@@ -33,6 +33,15 @@ export { getMcpInvocationContext } from './invoke/context.js'
 export { defaultOperationNameResolver, sanitizeMcpName } from './naming.js'
 export { getMcpRegistry } from './registry.js'
 export { mcpInput, type McpInputAnswer, type McpInvocationInput } from './transport/input.js'
+export type {
+  McpLanguageDisplayContext,
+  McpLanguageDisplayField,
+  McpLanguageOptions
+} from './transport/language.js'
+export type {
+  McpSpecificationNotice,
+  McpSpecificationNoticeOptions
+} from './extensions/specification-notices.js'
 export type { McpInvocationNotify, McpLogLevel } from './transport/notifications.js'
 export {
   createMcpSubscriptionPublisher,

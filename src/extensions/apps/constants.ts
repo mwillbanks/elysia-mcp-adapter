@@ -25,7 +25,7 @@ export type McpAppsProtocolVersion = (typeof MCP_APPS_PROTOCOL_VERSIONS)[number]
 export type McpAppsProtocolVersionSelector = keyof typeof MCP_APPS_PROTOCOL_VERSION_ALIASES
 
 export function resolveMcpAppsProtocolVersion(version: string = 'current'): McpAppsProtocolVersion {
-  if (!(version in MCP_APPS_PROTOCOL_VERSION_ALIASES)) {
+  if (!Object.hasOwn(MCP_APPS_PROTOCOL_VERSION_ALIASES, version)) {
     throw new TypeError(`Unsupported MCP Apps protocol version: ${version}`)
   }
 

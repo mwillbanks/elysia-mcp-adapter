@@ -1,3 +1,4 @@
+import { normalizeLanguageOptions } from '../transport/language.js'
 import type { McpPluginOptions, NormalizedMcpPluginOptions } from '../types.js'
 import {
   assertNonNegativeInteger,
@@ -42,6 +43,7 @@ export function normalizeCore(options: McpPluginOptions): NormalizedMcpPluginOpt
   return {
     maxToolInputElements,
     logging: core?.logging === true,
+    language: normalizeLanguageOptions(core?.language),
     continuation: core?.continuation
       ? {
           ...core.continuation,

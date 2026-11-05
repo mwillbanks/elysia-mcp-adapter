@@ -86,7 +86,7 @@ const app = new Elysia().use(withMcpMethods()).mcpEvent(
   },
   ({ cursor }) => {
     if (cursor === null) return { events: [], cursor: 'head', nextPollMs: 5 }
-    if (cursor === 'head') {
+    if (cursor === 'head' || cursor === 'retained-one') {
       return {
         events: [
           {
@@ -106,10 +106,11 @@ const app = new Elysia().use(withMcpMethods()).mcpEvent(
         ],
         cursor: 'batch-end',
         truncated: true,
+        replayStartCursor: 'retained-one',
         nextPollMs: 5
       }
     }
-    if (cursor === 'batch-end' && !sentOngoingBatch) {
+    if ((cursor === 'batch-end' || cursor === 'retained-two') && !sentOngoingBatch) {
       sentOngoingBatch = true
       return {
         events: [
@@ -130,6 +131,7 @@ const app = new Elysia().use(withMcpMethods()).mcpEvent(
         ],
         cursor: 'second-batch-end',
         truncated: true,
+        replayStartCursor: 'retained-two',
         nextPollMs: 5
       }
     }
@@ -137,7 +139,7 @@ const app = new Elysia().use(withMcpMethods()).mcpEvent(
   }
 )
 const options = normalizeOptions({
-  transport: { protocolVersions: ['2025-11-25'] },
+  transport: { protocolVersions: ['2026-07-28'] },
   extensions: {
     events: {
       cursor: { signingKey },
@@ -157,7 +159,7 @@ const options = normalizeOptions({
 })
 const context = {
   request: new Request('http://localhost/mcp'),
-  protocolVersion: '2025-11-25' as const,
+  protocolVersion: '2026-07-28' as const,
   authorization
 }
 const url = `https://callback.test:${port}/hook`

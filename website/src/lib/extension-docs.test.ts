@@ -13,14 +13,22 @@ function read(path: string): string {
 
 describe("extension documentation", () => {
   test("provides a complete documentation tree for every implemented extension", () => {
-    for (const extension of ["tasks", "authorization", "apps"]) {
-      expect(JSON.parse(read(`${extension}/meta.json`)).pages).toEqual([
+    const standard = ["index", "quick-start", "configuration", "examples"];
+    const pages = {
+      tasks: standard,
+      authorization: [
         "index",
         "quick-start",
         "configuration",
+        "dpop",
+        "structured-denials",
         "examples",
-      ]);
-      for (const page of ["index", "quick-start", "configuration", "examples"]) {
+      ],
+      apps: standard,
+    };
+    for (const [extension, expected] of Object.entries(pages)) {
+      expect(JSON.parse(read(`${extension}/meta.json`)).pages).toEqual(expected);
+      for (const page of expected) {
         expect(existsSync(resolve(extensionsRoot, extension, `${page}.mdx`))).toBe(true);
       }
     }

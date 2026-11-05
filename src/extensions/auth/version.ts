@@ -13,6 +13,12 @@ export function resolveAuthVersion(
   const resolved = version === 'current' ? manifest.current : version
   const supported: readonly string[] = manifest.supported
 
+  if (profile === 'client-credentials' && resolved === 'draft') {
+    throw new RangeError(
+      'The Client Credentials draft selector was superseded. Set version to "current" or "2026-07-28".'
+    )
+  }
+
   if (!supported.includes(resolved)) {
     throw new RangeError(
       `Unsupported ${profile} authorization version "${version}". Supported versions: ${supported.join(', ')}`

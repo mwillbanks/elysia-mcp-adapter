@@ -10,12 +10,18 @@ import {
   resolveMcpAppsResourceMeta
 } from '../extensions/apps/index.js'
 import {
-  authorizeBearerRequest,
+  authorizeOAuthRequest,
   buildBearerChallenge,
+  buildDpopChallenge,
   type McpAuthorizationContext,
   missingRequiredScopes,
   protectedResourceMetadataUrl
 } from '../extensions/auth/index.js'
+import {
+  evaluateStructuredAuthorization,
+  type NormalizedStructuredAuthorizationDenials,
+  sanitizeAuthorizationTaskResult
+} from '../extensions/auth/structured-denials.js'
 import { McpExtensionDispatcher } from '../extensions/dispatcher.js'
 import {
   listEvents,
@@ -78,6 +84,12 @@ import {
 } from './discovery.js'
 import { exceedsInputElementLimit } from './input-limits.js'
 import { invocationContextBase, taskRequestContext } from './invocation-context.js'
+import {
+  applyLanguageResponseHeaders,
+  languageResponseHeader,
+  localizeLanguageProgress
+} from './language-response.js'
+import { type McpRequestLanguage, resolveHttpRequestLanguage } from './language.js'
 import { handleLegacyAuxiliaryMethod, type LegacySessionRuntime } from './legacy-sessions.js'
 import { assertMirroredToolHeaders, assertValidMirroredHeaderSchema } from './mirrored-headers.js'
 import {
@@ -101,6 +113,7 @@ import {
   type SkillRequestRuntime
 } from './skill-requests.js'
 import { handleSubscription, sseResponse } from './subscriptions.js'
+import { markTaskCreationResult } from './task-input-requests.js'
 import {
   resolveActiveVariant,
   type VariantSelectionRuntime,
@@ -191,7 +204,51 @@ async function handleAuthorizedHttpRequest(
   if (request.method !== 'POST') return methodNotAllowedResponse()
   const parsed = await readRequestPayload(request, options)
   if (parsed instanceof Response) return parsed
-  return handlePostPayload(app, parsed.payload, request, options, authorization)
+  if (!options.core.language) {
+    return handlePostPayload(app, parsed.payload, request, options, authorization)
+  }
+  return handleLanguagePost(app, parsed.payload, request, options, authorization)
+}
+
+async function handleLanguagePost(
+  app: AnyElysiaApp,
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
+): Promise<Response> {
+  const language = resolvePostLanguage(payload, request, options)
+  if (language instanceof Response) return language
+  const response = await handlePostPayload(app, payload, request, options, authorization)
+  applyLanguageResponseHeaders(response.headers, true, language)
+  return response
+}
+
+function resolvePostLanguage(
+  payload: unknown,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): McpRequestLanguage | Response | undefined {
+  if (Array.isArray(payload) && usesModernErrorEnvelope(request, options)) return undefined
+  const messages: unknown[] = Array.isArray(payload) ? payload : [payload]
+  let language: McpRequestLanguage | undefined
+  for (const message of messages) {
+    if (!isJsonRpcRequest(message)) continue
+    try {
+      const resolved = resolveHttpRequestLanguage(
+        options.core.language,
+        message.params,
+        request.headers
+      )
+      language ??= resolved
+    } catch (error) {
+      const id = errorIdForRequest(request, options, message)
+      return jsonResponse(normalizeDispatchError(id, error), errorStatus(error), {
+        vary: 'Accept-Language'
+      })
+    }
+  }
+  return language
 }
 
 async function readRequestPayload(
@@ -237,13 +294,7 @@ async function handlePostPayload(
     )
   }
   if (isRecord(payload) && payload.method === 'events/stream') {
-    return handleEventStreamRequest(
-      app,
-      payload as unknown as JsonRpcRequest,
-      request,
-      options,
-      authorization
-    )
+    return handleEventStreamRequest(app, payload, request, options, authorization)
   }
   if (isJsonRpcRequest(payload) && isRequestId(payload.id)) {
     const channels = requestNotificationChannels(payload, request, options)
@@ -252,7 +303,7 @@ async function handlePostPayload(
     }
   }
   const outcome = await handleJsonRpcMessage(app, payload, request, options, authorization)
-  return outcomeResponse(outcome, request, options)
+  return outcomeResponse(outcome, request, options, authorization)
 }
 
 async function handleBatchPayload(
@@ -273,30 +324,41 @@ async function handleBatchPayload(
     const outcome = await handleJsonRpcMessage(app, item, request, options, authorization)
     if (outcome.response) responses.push(outcome.response)
   }
-  return responses.length === 0 ? new Response(null, { status: 202 }) : jsonResponse(responses)
+  if (responses.length === 0) return new Response(null, { status: 202 })
+  return jsonResponse(
+    responses,
+    200,
+    languageResponseHeader(responses, options.core.language !== undefined)
+  )
 }
 
 async function handleEventStreamRequest(
   app: AnyElysiaApp,
-  eventRequest: JsonRpcRequest,
+  eventRequest: Record<string, unknown>,
   request: Request,
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined
 ): Promise<Response> {
-  const validation = validateEventStreamRequest(eventRequest, options)
-  if (validation) return validation
+  if (!isJsonRpcRequest(eventRequest) || !isRequestId(eventRequest.id)) {
+    return jsonResponse(
+      createErrorResponse(
+        errorIdForRequest(request, options, eventRequest),
+        -32600,
+        'Invalid Request'
+      ),
+      400
+    )
+  }
   try {
     const protocol = resolveRequestProtocol(request, eventRequest, options)
-    if (protocol.modern) {
-      throw new McpEventProtocolError(-32601, 'Events extension is legacy-only', undefined, 404)
-    }
-    const params = isRecord(eventRequest.params) ? eventRequest.params : {}
     const dispatch: DispatchContext = { protocol, authorization }
-    await selectEventStreamVariant(app, request, params, options, dispatch)
+    assertModernEvents('events/stream', options, dispatch)
+    const params = isRecord(eventRequest.params) ? eventRequest.params : {}
+    await applyRequestVariant(app, 'events/stream', params, request, options, dispatch)
     return await streamEvents(
       app,
       params,
-      eventRequest.id as string | number,
+      eventRequest.id,
       options,
       await invocationContext(request, 'events/stream', params, dispatch, options)
     )
@@ -305,64 +367,32 @@ async function handleEventStreamRequest(
   }
 }
 
-function validateEventStreamRequest(
-  eventRequest: JsonRpcRequest,
-  options: NormalizedMcpPluginOptions
-): Response | undefined {
-  if (!options.extensions.events) {
-    return jsonResponse(
-      createErrorResponse(eventRequest.id, -32601, 'Events extension is not enabled'),
-      404
-    )
-  }
-  if (!isRequestId(eventRequest.id)) {
-    return jsonResponse(createErrorResponse(undefined, -32600, 'Invalid Request'), 400)
-  }
-  return undefined
-}
-
-async function selectEventStreamVariant(
-  app: AnyElysiaApp,
-  request: Request,
-  params: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  dispatch: DispatchContext
-): Promise<void> {
-  if (!options.extensions.variants) return
-  const selected = await resolveActiveVariant(
-    app,
-    request,
-    params,
-    options,
-    dispatch.authorization,
-    VARIANT_SELECTION_RUNTIME
-  )
-  dispatch.activeVariant = selected.variant
-  dispatch.sessionId = selected.sessionId
-  const meta = isRecord(params._meta) ? { ...params._meta } : {}
-  meta[MCP_SERVER_VARIANT_META_KEY] = selected.variant.id
-  params._meta = meta
-}
-
 function outcomeResponse(
   outcome: RpcOutcome,
   request: Request,
-  options: NormalizedMcpPluginOptions
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
 ): Response {
   if (!outcome.response) return new Response(null, { status: 202 })
-  return jsonResponse(outcome.response, outcome.status, outcomeHeaders(outcome, request, options))
+  return jsonResponse(
+    outcome.response,
+    outcome.status,
+    outcomeHeaders(outcome, request, options, authorization)
+  )
 }
 
 function outcomeHeaders(
   outcome: RpcOutcome,
   request: Request,
-  options: NormalizedMcpPluginOptions
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
 ): HeadersInit {
-  const headers: Record<string, string> = {}
+  const headers = languageResponseHeader(outcome.response, options.core.language !== undefined)
   const session = initializedSessionId(request)
   if (session) headers['mcp-session-id'] = session
   if (outcome.status === 403 && options.extensions.auth) {
-    headers['www-authenticate'] = buildBearerChallenge({
+    const challenge = authorization?.scheme === 'DPoP' ? buildDpopChallenge : buildBearerChallenge
+    headers['www-authenticate'] = challenge({
       resourceMetadata: protectedResourceMetadataUrl(options.extensions.auth.resource),
       error: 'insufficient_scope',
       scope: requiredScopesFromOutcome(outcome)
@@ -513,6 +543,7 @@ async function dispatchRequest(
   context: DispatchContext
 ): Promise<unknown> {
   const method = payload.method ?? ''
+  if (method.startsWith('events/')) assertModernEvents(method, options, context)
   const params = isRecord(payload.params) ? payload.params : {}
   await applyRequestVariant(app, method, params, request, options, context)
   const extensionResult = await extensionDispatcher(options, context).dispatch(method, {
@@ -692,6 +723,14 @@ function dispatchInterceptorRequest(
     return invokeRegisteredInterceptor(app, params, request, options, context)
   }
   throw methodNotFound(method, context)
+}
+
+function assertModernEvents(
+  method: string,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): void {
+  if (!context.protocol.modern || !options.extensions.events) throw methodNotFound(method, context)
 }
 
 async function dispatchEventRequest(
@@ -891,6 +930,37 @@ async function callTool(
   options: NormalizedMcpPluginOptions,
   context: DispatchContext
 ): Promise<unknown> {
+  const tool = requireCallableTool(app, params, request, options, context)
+
+  const args = 'arguments' in params ? params.arguments : {}
+  assertToolInputElementLimit(args, options)
+  const invocation = await invocationContext(request, 'tools/call', params, context, options)
+  const policy = options.extensions.auth?.structuredDenials
+  if (policy) {
+    const denial = await toolAuthorizationPreflight(
+      policy,
+      tool,
+      args,
+      invocation,
+      params,
+      context,
+      options
+    )
+    if (denial !== undefined) return denial
+  }
+  if (!toolTaskDecision(tool, params, context, options)) {
+    return invokeToolWithinInputLimit(tool, args, invocation, options)
+  }
+  return createToolTask(tool, args, invocation, params, request, context, options)
+}
+
+function requireCallableTool(
+  app: AnyElysiaApp,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): McpToolDefinition {
   const name = params.name
   if (typeof name !== 'string') throw new JsonRpcError(-32602, 'Missing tool name')
   const tool = getMcpRegistry(app, options).tools.get(name)
@@ -902,14 +972,59 @@ async function callTool(
     assertMirroredToolHeaders(request, tool, params.arguments)
   }
   enforceAuthorization(tool.authorization, context.authorization, options)
+  return tool
+}
 
-  const args = 'arguments' in params ? params.arguments : {}
-  assertToolInputElementLimit(args, options)
-  const invocation = await invocationContext(request, 'tools/call', params, context, options)
-  if (!toolTaskDecision(tool, params, context, options)) {
-    return invokeToolWithinInputLimit(tool, args, invocation, options)
-  }
-  return createToolTask(tool, args, invocation, params, request, context, options)
+async function toolAuthorizationPreflight(
+  policy: NormalizedStructuredAuthorizationDenials,
+  tool: McpToolDefinition,
+  args: unknown,
+  invocation: McpHandlerContext,
+  params: Record<string, unknown>,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+) {
+  const principal = context.authorization?.principal
+  if (!principal)
+    throw new McpProtocolError(-32603, 'Structured authorization requires a verified principal')
+
+  const input = args ?? {}
+  const validation = validateJsonSchema(tool.inputSchema, input)
+  if (!validation.ok) return createValidationToolError(validation.issues)
+
+  const request = invocation.request
+  const task = approvalTaskAccess(request, params, context, options)
+  const denial = await evaluateStructuredAuthorization(
+    policy,
+    {
+      tool: tool.name,
+      arguments: input,
+      principal,
+      signal: invocation.signal ?? request.signal,
+      continuationState: options.core.continuation ? invocation.requestState : undefined
+    },
+    { input: invocation.input, task }
+  )
+
+  if (!denial || context.protocol.modern) return denial
+  const { resultType: _resultType, ...legacy } = denial
+  return legacy
+}
+
+function approvalTaskAccess(
+  request: Request,
+  params: Record<string, unknown>,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+) {
+  if (!options.extensions.tasks || !context.protocol.modern) return undefined
+  const meta = isRecord(params._meta) ? params._meta : undefined
+  if (!hasTasksCapability(meta)) return undefined
+  const taskOwner = taskRequestContext(request, {}, context)
+  const { principalKey } = taskOwner
+  return principalKey
+    ? { principalKey, get: (taskId: string) => taskController(options).get(taskId, taskOwner) }
+    : undefined
 }
 
 function toolTaskDecision(
@@ -990,7 +1105,7 @@ async function createToolTask(
   const controller = taskController(options)
   invocation.task = controller
   setTaskController(request, controller)
-  return controller.create(
+  const created = await controller.create(
     {
       mode: tool.taskExecution === 'required' ? 'required' : 'optional',
       ttlMs: tasks.defaultTtl,
@@ -1020,6 +1135,7 @@ async function createToolTask(
     },
     taskRequestContext(request, params, context)
   )
+  return markTaskCreationResult(created)
 }
 
 function assertToolInputElementLimit(args: unknown, options: NormalizedMcpPluginOptions): void {
@@ -1393,23 +1509,13 @@ async function authorizeRequest(
 ): Promise<McpAuthorizationContext | Response | undefined> {
   const auth = options.extensions.auth
   if (!auth) return undefined
-  if (new URL(request.url).searchParams.has('access_token')) {
-    return oauthFailure(
-      401,
-      buildBearerChallenge({
-        resourceMetadata: protectedResourceMetadataUrl(auth.resource),
-        error: 'invalid_request',
-        errorDescription: 'Query-string access tokens are not accepted'
-      }),
-      'invalid_request'
-    )
-  }
-  const result = await authorizeBearerRequest(request, {
+  const result = await authorizeOAuthRequest(request, {
     resource: auth.resource,
     verifier: auth.verifyAccessToken,
     authorizationServers: auth.authorizationServers,
     requiredScopes: auth.scopes,
-    clockSkewSeconds: auth.clockSkewSeconds
+    clockSkewSeconds: auth.clockSkewSeconds,
+    dpop: auth.dpop
   })
   return result.ok
     ? result.authorization
@@ -1479,11 +1585,15 @@ function extensionDispatcher(
   if (options.extensions.tasks) {
     dispatcher.register(['tasks/get', 'tasks/update', 'tasks/cancel'], ({ request, params }) => {
       assertModernTasks(context, options)
-      return dispatchTaskRequest(taskController(options), {
-        method: paramsMethod(request, params),
-        params,
-        context: taskRequestContext(request, params, context)
-      })
+      return dispatchTaskRequest(
+        taskController(options),
+        {
+          method: paramsMethod(request, params),
+          params,
+          context: taskRequestContext(request, params, context)
+        },
+        options.extensions.auth?.structuredDenials ? sanitizeAuthorizationTaskResult : undefined
+      )
     })
   }
   return dispatcher
@@ -1521,7 +1631,12 @@ function requestNotificationChannels(
     const { progressToken } = protocol
     const logLevel = options.core.logging ? protocol.logLevel : undefined
     if (progressToken === undefined && logLevel === undefined) return undefined
-    return { progressToken, logLevel }
+    return {
+      progressToken,
+      logLevel,
+      localizeProgress: (params) =>
+        localizeLanguageProgress(params, protocol.language, options.core.language)
+    }
   } catch {
     // Dispatch invalid envelopes through the ordinary JSON error path.
     return undefined
@@ -1561,7 +1676,7 @@ async function handleNotificationRequest(
   const rejected = await ready
   if (rejected) {
     await body.cancel()
-    return outcomeResponse(rejected, request, options)
+    return outcomeResponse(rejected, request, options, authorization)
   }
   return sseResponse(body)
 }

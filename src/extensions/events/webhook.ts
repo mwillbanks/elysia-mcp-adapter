@@ -216,14 +216,7 @@ async function resolveForVerification(
     options.requestTimeoutMs
   )
   try {
-    await Promise.race([
-      resolveWebhookEndpoint(endpoint, options),
-      new Promise<never>((_, reject) => {
-        const fail = () => reject(new McpWebhookNetworkError('timeout'))
-        if (controller.signal.aborted) fail()
-        else controller.signal.addEventListener('abort', fail, { once: true })
-      })
-    ])
+    await resolveWebhookEndpoint(endpoint, options, controller.signal)
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener('abort', relay)

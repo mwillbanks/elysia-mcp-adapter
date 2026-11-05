@@ -1,4 +1,8 @@
+import { MCP_SPECIFICATION_INVENTORY } from "../../../src/extensions/governance";
 import { MCP_EXTENSION_SUPPORT } from "../../../src/extensions/manifest";
+
+type SpecificationStage =
+  (typeof MCP_SPECIFICATION_INVENTORY)[keyof typeof MCP_SPECIFICATION_INVENTORY]["stage"];
 
 type VersionRecord = {
   status: string;
@@ -15,96 +19,70 @@ type VersionRecord = {
 export interface ExtensionSupportRow {
   extension: string;
   identifier: string;
+  maturity: SpecificationStage;
   current: string;
   draft: string;
   versions: Array<{ version: string; record: VersionRecord }>;
 }
 
+type SupportProfile = {
+  identifier: string;
+  current: string;
+  draft?: string;
+  versions: Record<string, VersionRecord>;
+};
+
+function supportRow(
+  extension: string,
+  profile: SupportProfile,
+  maturity: SpecificationStage,
+): ExtensionSupportRow {
+  return {
+    extension,
+    identifier: profile.identifier,
+    maturity,
+    current: profile.current,
+    draft: profile.draft ?? "—",
+    versions: Object.entries(profile.versions).map(([version, record]) => ({ version, record })),
+  };
+}
+
 export function getExtensionSupportRows(): ExtensionSupportRow[] {
   const support = MCP_EXTENSION_SUPPORT;
+  const inventory = MCP_SPECIFICATION_INVENTORY;
   return [
-    {
-      extension: "Core protocol",
-      identifier: "MCP",
-      current: support.protocol.current,
-      draft: "—",
-      versions: Object.entries(support.protocol.versions).map(([version, record]) => ({
-        version,
-        record,
-      })),
-    },
-    {
-      extension: "Tasks",
-      identifier: support.tasks.identifier,
-      current: support.tasks.current,
-      draft: support.tasks.draft,
-      versions: Object.entries(support.tasks.versions).map(([version, record]) => ({
-        version,
-        record,
-      })),
-    },
-    {
-      extension: "OAuth protected resource",
-      identifier: support.auth.identifier,
-      current: support.auth.current,
-      draft: "draft",
-      versions: Object.entries(support.auth.versions).map(([version, record]) => ({
-        version,
-        record,
-      })),
-    },
-    {
-      extension: "OAuth Client Credentials",
-      identifier: support.auth.clientCredentials.identifier,
-      current: support.auth.clientCredentials.current,
-      draft: support.auth.clientCredentials.draft,
-      versions: Object.entries(support.auth.clientCredentials.versions).map(
-        ([version, record]) => ({ version, record }),
-      ),
-    },
-    {
-      extension: "Enterprise-Managed Authorization",
-      identifier: support.auth.enterpriseManagedAuthorization.identifier,
-      current: support.auth.enterpriseManagedAuthorization.current,
-      draft: "—",
-      versions: Object.entries(support.auth.enterpriseManagedAuthorization.versions).map(
-        ([version, record]) => ({ version, record }),
-      ),
-    },
-    {
-      extension: "Apps",
-      identifier: support.apps.identifier,
-      current: support.apps.current,
-      draft: support.apps.draft,
-      versions: Object.entries(support.apps.versions).map(([version, record]) => ({
-        version,
-        record,
-      })),
-    },
-    ...(
-      [
-        ["Skills", support.skills],
-        ["Server Cards", support.serverCard],
-        ["Interceptors", support.interceptors],
-        ["Server Variants", support.variants],
-        ["Events", support.events],
-        ["Action metadata", support.actionMetadata],
-        ["Trust annotations", support.trustAnnotations],
-      ] as const
-    ).map(([extension, profile]) => ({
-      extension,
-      identifier: profile.identifier,
-      current: profile.current,
-      draft: "—",
-      versions: Object.entries(profile.versions).map(([version, record]) => ({ version, record })),
-    })),
+    supportRow("Core protocol", { ...support.protocol, identifier: "MCP" }, inventory.core.stage),
+    supportRow("Tasks", support.tasks, inventory.tasks.stage),
+    supportRow(
+      "OAuth protected resource",
+      { ...support.auth, draft: "draft" },
+      inventory.core.stage,
+    ),
+    supportRow(
+      "OAuth Client Credentials",
+      support.auth.clientCredentials,
+      inventory.clientCredentials.stage,
+    ),
+    supportRow(
+      "Enterprise-Managed Authorization",
+      support.auth.enterpriseManagedAuthorization,
+      inventory.enterpriseAuth.stage,
+    ),
+    supportRow("Apps", support.apps, inventory.apps.stage),
+    supportRow("Skills", support.skills, inventory.skills.stage),
+    supportRow("Server Cards", support.serverCard, inventory.serverCard.stage),
+    supportRow("Interceptors", support.interceptors, inventory.interceptors.stage),
+    supportRow("Server Variants", support.variants, inventory.serverVariants.stage),
+    supportRow("Events", support.events, inventory.events.stage),
+    supportRow("Action metadata", support.actionMetadata, inventory.actionMetadata.stage),
+    supportRow("Trust annotations", support.trustAnnotations, inventory.trustAnnotations.stage),
   ];
 }
 
 export function getExtensionSupportMarkdown(): string {
   const header = [
-    "| Extension | Identifier | Current | Draft | Implementations |",
-    "| --- | --- | --- | --- | --- |",
+    "| Extension | Identifier | Upstream maturity | Current | Draft | Implementations |",
+    "| --- | --- | --- | --- | --- | --- |",
   ];
   const rows = getExtensionSupportRows().map((row) => {
     const versions = row.versions
@@ -119,7 +97,7 @@ export function getExtensionSupportMarkdown(): string {
         return `\`${version}\` ${record.status}, included ${record.includedAt}, [${revision} ${record.source.path}](${sourceUrl}), SHA-256 ${record.source.sha256}${packageVersion}`;
       })
       .join("<br>");
-    return `| ${row.extension} | \`${row.identifier}\` | \`${row.current}\` | ${row.draft === "—" ? row.draft : `\`${row.draft}\``} | ${versions} |`;
+    return `| ${row.extension} | \`${row.identifier}\` | ${row.maturity} | \`${row.current}\` | ${row.draft === "—" ? row.draft : `\`${row.draft}\``} | ${versions} |`;
   });
   return [...header, ...rows].join("\n");
 }

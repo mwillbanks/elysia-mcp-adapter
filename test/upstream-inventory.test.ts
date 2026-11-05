@@ -1,3 +1,4 @@
+import { resolveMcpAppsProtocolVersion } from '../src/extensions/apps/constants.js'
 import { normalizeOptions } from '../src/options.js'
 import { describe, expect, test } from 'bun:test'
 import {
@@ -6,6 +7,8 @@ import {
   type McpLatestExtensionRecord,
   resolveLatestReviewedVersion
 } from '../src/extensions/manifest.js'
+import originalTasksDraft from './fixtures/tasks-draft-2c1425d.json' with { type: 'json' }
+import supersededTasksDraft from './fixtures/tasks-draft-5246bc3.json' with { type: 'json' }
 
 const expectedLatestKeys = [
   'coreTypeScriptSchema',
@@ -46,6 +49,7 @@ const expectedLatestKeys = [
   'variants',
   'variantsRepository',
   'toolAnnotations',
+  'events',
   'triggersEvents',
   'standardWebhooks',
   'ianaIpv4SpecialRegistry',
@@ -82,8 +86,8 @@ const expectedDigests: Record<string, string> = {
   coreElicitation: '74351d1081681695536e59a55588a67ed66a76db6057846c263ce2f465fab4c2',
   tasksStable: '5fc22b9b5ff248703927c69855f751a061c2d6170f4dc3923204452f859f91a5',
   tasksDraft: '5d1dd2d95c287f7defa97b20823990a3908f9ed93d49977ac8d5de559b6ff49b',
-  authEnterprise: 'df4fe01daec0eac6069e17a293d4ed7e197ab20463038d806f71e63b22fd8986',
-  authClientCredentials: '5db1ffb20f0f33ddbebd6e9747be20c1be3a395a1bd1faad3719334c35a70d3f',
+  authEnterprise: '4e603853161fa8bf0e49c07497437fc36c5078a2c40c9c87cb7ff244d09349ce',
+  authClientCredentials: '5690dfd64fe3fc8bfedb1e0aa86bbfb56a893b90b0386a3df1f4f2f6a541d277',
   appsStable: 'ee452a7d1b9b7fb900acfeb4d6932d3963375b0f3f37d196a4b93eb80312af0e',
   appsDraft: '00e97500a71cd46f27a0c661a3c9ee4df60cf64ba7b069e41227ddf8d41b4269',
   skillsStable: '6e33a33762783a02dc4c13c889dda5b8d7c525649012cf77da12d80c04ce6851',
@@ -91,12 +95,13 @@ const expectedDigests: Record<string, string> = {
   serverCard: '2c772b51edb367f154771d84ddbae87ddba00a624422c8e46f218a9ac03bf042',
   serverCardFinalSep: 'b7691eee6daa21f0b556e48f83b73f9cc8e61e9ea2da17c1aaf3aa169b348461',
   serverCardDiscovery: '633dacfe5bcdbb3ed2f177be7dd7f9943ed2484a5fdd13bd2b742f43a14c2786',
-  interceptors: 'e486a4e7a50f2a704bf94785d0de48a66ab727c24991a44a281193ba4ce5bb7e',
+  interceptors: '0f37696aaa74f269aa5cdb1e1048fa243d9d5c1cf5c400490d92606817af74c2',
   variants: 'acb459c128b2b26af772f878919c40d7a7a0c23d364c594c08cf01e733b95d15',
   variantsRepository: 'dca88077d719d5c8d55fa128234a05d013f9bff3775005bdf2478d2752f57af6',
   toolAnnotations: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb',
+  events: 'ba056d7f8afb9c61dbfff6820ec25f691cd7eefaa1f55fd73c03ba6983bf40fa',
   triggersEvents: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59',
-  standardWebhooks: '47cf696ee08a583f6cddf2d02b13e544e1bd28435b8e418870e8b557b1ed4082',
+  standardWebhooks: 'c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31',
   ianaIpv4SpecialRegistry: 'cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac',
   ianaIpv6SpecialRegistry: 'bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66',
   actionMetadata: '985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f',
@@ -140,33 +145,47 @@ describe('upstream extension inventory', () => {
       '5f5440bb26a62e2cf3440b92da5a667efa03b267'
     )
     expect(MCP_EXTENSION_SUPPORT.apps.versions['2026-01-26'].source.packageVersion).toBe('1.7.5')
-    expect(MCP_EXTENSION_SUPPORT.serverCard.maturity).toBe('stable')
     expect(
       MCP_EXTENSION_SUPPORT.serverCard.versions['526201bbc80231daa40ffcdecfc9da4e54e5dc93'].status
     ).toBe('stable')
   })
 
-  test('advances accepted current selectors and retains explicit historical revisions', () => {
-    for (const [selection, skillsVersion, interceptorVersion] of [
-      ['current', MCP_EXTENSION_SUPPORT.skills.current, MCP_EXTENSION_SUPPORT.interceptors.current],
-      [
-        'historical',
-        '167da6c0d42c247a8f8470228a10ca711e3f6c45',
-        'b60459844cc95f2170297ebe1c84b7de8b752953'
-      ]
-    ] as const) {
-      const extensions =
-        selection === 'current'
-          ? {
-              skills: { version: 'current' as const },
-              interceptors: { version: 'current' as const }
-            }
-          : { skills: { version: skillsVersion }, interceptors: { version: interceptorVersion } }
-      const normalized = normalizeOptions({ extensions })
-      expect(normalized.extensions.skills?.version).toBe(skillsVersion)
-      expect(normalized.extensions.interceptors?.version).toBe(interceptorVersion)
-    }
+  test('advances the current selector and preserves approved Skills revisions', () => {
+    const { skills, interceptors } = MCP_EXTENSION_SUPPORT
+    const normalized = normalizeOptions({
+      extensions: { skills: { version: 'current' }, interceptors: { version: 'current' } }
+    })
+    expect(normalized.extensions.skills?.version).toBe(skills.current)
+    expect(normalized.extensions.interceptors?.version).toBe(interceptors.current)
+    expect(
+      normalizeOptions({
+        extensions: { skills: { version: '167da6c0d42c247a8f8470228a10ca711e3f6c45' } }
+      }).extensions.skills?.version
+    ).toBe('167da6c0d42c247a8f8470228a10ca711e3f6c45')
     expect(MCP_EXTENSION_SUPPORT.tasks.draft).toBe('draft-b3d28ac')
+  })
+
+  test('retains obsolete Interceptors pins outside the active support map', () => {
+    const { current, versions, historicalDrafts } = MCP_EXTENSION_SUPPORT.interceptors
+    expect(Object.keys(versions)).toEqual([current])
+    for (const version of Object.keys(historicalDrafts)) {
+      expect(() =>
+        normalizeOptions({
+          extensions: { interceptors: { version: version as typeof current } }
+        })
+      ).toThrow(/was superseded.*Use "current"/u)
+    }
+  })
+
+  test('retains superseded Tasks wire pins outside the active support map', () => {
+    const { versions, historicalDrafts } = MCP_EXTENSION_SUPPORT.tasks
+    expect(Object.keys(versions)).toEqual(['2026-07-28', 'draft-b3d28ac'])
+    expect(originalTasksDraft.upstreamCommit).toBe(historicalDrafts.draft.source.revision)
+    expect(originalTasksDraft.sourceSha256).toBe(historicalDrafts.draft.source.sha256)
+    expect(supersededTasksDraft.upstreamCommit).toBe(
+      historicalDrafts['draft-5246bc3'].source.revision
+    )
+    expect(supersededTasksDraft.sourceSha256).toBe(historicalDrafts['draft-5246bc3'].source.sha256)
   })
 
   test('does not advertise undefined experiment APIs', () => {
@@ -192,6 +211,21 @@ describe('upstream extension inventory', () => {
       assertSourceIntegrity(key, record)
     }
   })
+
+  test.each(['constructor', '__proto__', 'toString'])(
+    'rejects inherited selectors %s',
+    (selector) => {
+      expect(() => resolveMcpAppsProtocolVersion(selector)).toThrow('Unsupported MCP Apps')
+      expect(() =>
+        resolveLatestReviewedVersion(
+          'extension',
+          selector,
+          'coreSchema',
+          MCP_EXTENSION_LATEST_REVIEWED
+        )
+      ).toThrow('Unsupported extension')
+    }
+  )
 
   test('resolves latest-reviewed aliases without changing support aliases', () => {
     expect(
@@ -227,7 +261,6 @@ describe('upstream extension inventory', () => {
     expect(MCP_EXTENSION_LATEST_REVIEWED.tasksStable.source.revision).toBe(
       'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84'
     )
-    expect(MCP_EXTENSION_LATEST_REVIEWED.serverCard.maturity).toBe('stable')
     expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).toMatchObject({
       maturity: 'undefined',
       availability: 'reviewed'

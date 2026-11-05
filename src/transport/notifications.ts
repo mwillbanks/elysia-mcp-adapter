@@ -33,6 +33,7 @@ export const silentNotify: McpInvocationNotify = Object.freeze({
 export interface RequestNotificationChannels {
   progressToken?: string | number
   logLevel?: McpLogLevel
+  localizeProgress?: (params: Record<string, unknown>) => Record<string, unknown>
 }
 
 function isLogLevel(value: unknown): value is McpLogLevel {
@@ -44,7 +45,12 @@ export function requestLogLevel(value: unknown): McpLogLevel | undefined {
   throw new McpProtocolError(-32602, 'Invalid MCP log level', 400)
 }
 
-function serializeNotification(method: string, params: Record<string, unknown>): string {
+function serializeNotification(
+  method: string,
+  originalParams: Record<string, unknown>,
+  localize?: RequestNotificationChannels['localizeProgress']
+): string {
+  const params = localize?.(originalParams) ?? originalParams
   return JSON.stringify({ jsonrpc: '2.0', method, params }, function (key, value: unknown) {
     if (key === 'data' && this === params && isOmittedJsonValue(value)) {
       throw new TypeError('MCP log message data must be JSON serializable')
@@ -97,11 +103,15 @@ export function notificationBody(
       requestSignal.addEventListener('abort', stop, { once: true })
 
       const inactive = () => closed || finishing || abort.signal.aborted
-      const send = (method: string, params: Record<string, unknown>) => {
+      const send = (
+        method: string,
+        params: Record<string, unknown>,
+        localize?: RequestNotificationChannels['localizeProgress']
+      ) => {
         if (inactive() || count >= MAX_NOTIFICATIONS || bytes >= MAX_NOTIFICATION_BYTES) return
         let frame: Uint8Array
         try {
-          frame = encode(serializeNotification(method, params))
+          frame = encode(serializeNotification(method, params, localize))
         } catch {
           return
         }
@@ -126,12 +136,8 @@ export function notificationBody(
             throw new TypeError('Progress total must be finite')
           }
           lastProgress = value
-          send('notifications/progress', {
-            progressToken: channels.progressToken,
-            progress: value,
-            total,
-            message
-          })
+          const params = { progressToken: channels.progressToken, progress: value, total, message }
+          send('notifications/progress', params, channels.localizeProgress)
         },
         message(data, { level = 'info', logger } = {}) {
           if (inactive() || channels.logLevel === undefined) return

@@ -22,4 +22,4 @@ Run `bun --bun run typecheck`, `bun --bun run test`, `bun --bun run build`, and 
 
 The production webhook transport keeps HTTPS certificate verification enabled. Private callback addresses require `environment: 'development'` and `allowPrivateAddresses: true`. Clients persist replay cursors; providers do not store them.
 
-Use Bun 1.4.4. The sample selects current proposal `d5316be214be2e76e51462069c1d67e00a5a7619`, including errors `-32023` through `-32027`. Explicit historical revision `6682596d65eec778fe0b8b1f43b4e89d2fe2c546` retains `-32011` through `-32015`. Both require legacy-only transport. No modern Events capability is advertised.
+Use Bun 1.4.4. The sample uses MCP `2026-07-28` and the [working group draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/b08e4f9dd684f39d846d94089487fbeb28e666f5/seps/0000-events-extension.md), including errors `-32023` through `-32027`. The client sends matching modern routing headers and request metadata. Use `server/discover` to find the Events extension.

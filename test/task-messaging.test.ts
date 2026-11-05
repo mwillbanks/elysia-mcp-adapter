@@ -165,7 +165,7 @@ test('forwards scheduler context and rejects MRTR as a completed task result', a
   ).toThrow('use the task input API')
 })
 
-test('validates submitted form content while preserving decline and draft responses', () => {
+test('validates submitted form content and preserves decline responses', () => {
   expect(() =>
     assertTaskInputResponse(approval, { action: 'accept', content: { approved: 'yes' } })
   ).toThrow()
@@ -173,7 +173,9 @@ test('validates submitted form content while preserving decline and draft respon
   assertTaskInputResponse(approval, { action: 'accept', content: { approved: false } })
   assertTaskInputResponse(approval, { action: 'decline' })
   assertTaskInputResponse(approval, { action: 'cancel' })
-  assertTaskInputResponse(approval, { resultType: 'legacy' }, undefined, 'draft')
+  expect(() =>
+    assertTaskInputResponse(approval, { resultType: 'legacy' }, undefined, 'draft-b3d28ac')
+  ).toThrow('action or content is invalid')
 
   const urlRequest = {
     method: 'elicitation/create' as const,

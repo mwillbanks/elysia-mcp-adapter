@@ -100,12 +100,7 @@ export class TaskController {
           ? task.inputRequests[key]
           : undefined
         if (request) {
-          assertTaskInputResponse(
-            request,
-            response,
-            `inputResponses.${key}`,
-            providerContext.version
-          )
+          assertTaskInputResponse(request, response, `inputResponses.${key}`)
         }
       }
     }

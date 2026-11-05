@@ -2,6 +2,7 @@ import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
 import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
 import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
+import { type McpRequestLanguage, resolveHttpRequestLanguage } from './language.js'
 import { MCP_LOG_LEVEL_META_KEY, type McpLogLevel, requestLogLevel } from './notifications.js'
 import { McpProtocolError } from './protocol-error.js'
 import { requestTargetName } from './protocol-routing.js'
@@ -22,6 +23,7 @@ export interface McpRequestProtocolContext {
   clientInfo?: McpClientInfo
   progressToken?: string | number
   logLevel?: McpLogLevel
+  language?: McpRequestLanguage
   meta?: Record<string, unknown>
 }
 
@@ -46,12 +48,18 @@ export function resolveRequestProtocol(
     })
   }
 
+  const language = resolveHttpRequestLanguage(
+    options.core.language,
+    payload.params,
+    request.headers
+  )
   const modern = requestedVersion === MODERN_PROTOCOL_VERSION
   if (!modern) {
     return {
       version: LEGACY_PROTOCOL_VERSION,
       modern: false,
       clientCapabilities: {},
+      language,
       meta
     }
   }
@@ -81,6 +89,7 @@ export function resolveRequestProtocol(
     clientInfo,
     progressToken,
     logLevel,
+    language,
     meta
   }
 }
@@ -96,9 +105,31 @@ function assertProgressToken(value: unknown): asserts value is string | number |
   throw new McpProtocolError(-32020, 'progressToken must be a string or integer', 400)
 }
 
+// Split lists and parameters only outside quoted parameter values.
+const WELL_FORMED_ACCEPT_QUOTES = /^(?:[^"]|"(?:[^"\\]|\\.)*")*$/u
+const ACCEPT_MEDIA_RANGES = /(?:[^",]+|"(?:[^"\\]|\\.)*")+/gu
+const ACCEPT_MEDIA_PARAMETERS = /(?:[^";]+|"(?:[^"\\]|\\.)*")+/gu
+const POSITIVE_QUALITY = /^(?:1(?:\.0{0,3})?|0\.(?=[0-9]{0,2}[1-9])[0-9]{1,3})$/u
+
+function acceptedMediaType(range: string): string | undefined {
+  const [mediaType, ...parameters] = range.match(ACCEPT_MEDIA_PARAMETERS) ?? []
+  const weights = parameters
+    .map((parameter) => parameter.trim().toLowerCase())
+    .filter((parameter) => /^q(?:\s*=|$)/u.test(parameter))
+  if (weights.length > 1) return undefined
+  const [weight] = weights
+  if (weight !== undefined && !POSITIVE_QUALITY.test(weight.replace(/^q\s*=\s*/u, '')))
+    return undefined
+  return mediaType?.trim().toLowerCase()
+}
+
 function assertAcceptHeader(request: Request): void {
-  const accept = request.headers.get('accept')?.toLowerCase() ?? ''
-  if (accept.includes('application/json') && accept.includes('text/event-stream')) return
+  const accept = request.headers.get('accept') ?? ''
+  if (WELL_FORMED_ACCEPT_QUOTES.test(accept)) {
+    const ranges = accept.match(ACCEPT_MEDIA_RANGES) ?? []
+    const supported = new Set(ranges.map(acceptedMediaType))
+    if (supported.has('application/json') && supported.has('text/event-stream')) return
+  }
   throw new McpProtocolError(
     -32020,
     'Modern MCP requests must accept application/json and text/event-stream',
@@ -153,7 +184,8 @@ export function serverDiscoverResult(options: NormalizedMcpPluginOptions) {
       'io.modelcontextprotocol/serverInfo': {
         name: options.server.name,
         version: options.server.version,
-        title: options.server.title
+        title: options.server.title,
+        description: options.server.description
       }
     },
     instructions: options.server.instructions

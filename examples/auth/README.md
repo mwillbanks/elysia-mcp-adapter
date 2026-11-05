@@ -39,4 +39,4 @@ bun run --cwd examples/auth smoke
 
 For manual configuration, copy `.env.example`, generate a random Better Auth secret of at least 32 characters, and provide the IdP's PEM certificate. The examples use fixed loopback ports `43101` and `43102`; they do not start production services or persist the in-memory test database.
 
-Use Bun 1.4.4. The reviewed authorization contracts remain unchanged: Client Credentials is draft; Enterprise-Managed Authorization is stable. Token verification, audience binding, and credential redaction remain required.
+Use Bun 1.4.4. Client Credentials and Enterprise-Managed Authorization default to their approved profiles. Token verification, audience binding, and credential redaction remain required.

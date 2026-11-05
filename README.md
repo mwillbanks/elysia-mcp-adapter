@@ -31,6 +31,47 @@ bun add @mwillbanks/elysia-mcp-adapter elysia
 
 Node.js `>=20.11`, Bun `>=1.1`, Elysia `>=1.4`, and TypeScript `>=5.8` are supported.
 
+## Agent guidance
+
+The npm package includes an Agent Skill for integrating the adapter. Install TanStack Intent as
+a local development dependency in the consuming project. Intent 0.5.6 requires Node.js 20.12
+or later.
+
+```bash
+bun add --dev --exact @tanstack/intent@0.5.6
+```
+
+Set an explicit allowlist in the consuming project's `package.json`:
+
+```json
+{
+  "intent": {
+    "skills": ["@mwillbanks/elysia-mcp-adapter#elysia-mcp-adapter"],
+    "exclude": []
+  }
+}
+```
+
+Use exact `package#skill` entries. Every dependency needs its own permission.
+Exclusions override permissions. To revoke a skill, remove its entry or add its
+exact reference to `intent.exclude`. Use `"skills": []` to disable all sources.
+
+Run the installed CLI from the consuming project:
+
+```bash
+./node_modules/.bin/intent list
+./node_modules/.bin/intent load '@mwillbanks/elysia-mcp-adapter#elysia-mcp-adapter'
+```
+
+Load the matching skill only when it applies to the current task. Open the reference
+for that task. Use a project-local `node_modules` install for file-only discovery.
+Intent reads installed package metadata and guidance without running dependency code.
+When Yarn Plug'n'Play has no usable `node_modules`, Intent loads Yarn's `.pnp.cjs` resolver
+to locate the files. Editor hooks are optional convenience. Keep the trust policy in
+`package.json` and review guidance when dependencies change.
+
+See the [Intent trust model](https://tanstack.com/intent/latest/docs/concepts/trust-model).
+
 ## Quick start
 
 ```ts
@@ -134,9 +175,12 @@ app.use(
 )
 ```
 
-Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks keeps `draft` pinned to revision `2c1425d` and exposes the current draft as `draft-b3d28ac`, so updating upstream does not move the legacy codec. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
+Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks provides the approved `current` revision and the explicit draft `draft-b3d28ac`. Update retired draft selectors using the migration guidance in the configuration error. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
 
 Workers can create a `McpTaskExecutionContext` with `createMcpTaskExecutionContext(options)`. Pass `McpTaskExecutionContextOptions` with the task ID, the original provider context, and the provider's persistence callbacks. Use `execution.notify.status()` for updates and `execution.input.request()` for client input. Rebuild the context from durable data after a restart. See the [Tasks worker example](./examples/tasks/) for the full flow.
+
+See the [specification inventory](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/specification-inventory/) for exact revisions and draft compatibility.
+Configure [specification notices](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/specification-notices/) to receive deprecation and pre-release notices in application logs or through your OpenTelemetry Logs provider.
 
 ### Modern core behavior
 
@@ -156,11 +200,13 @@ mcp({
 
 Tools, resource reads, and prompts can return `McpInputRequiredResult`. Invocation contexts expose `notify.progress()`, opt-in `notify.message()`, and typed `input` helpers alongside the existing `reportProgress()`, `inputResponses`, and `requestState` APIs. Route handlers read the same request-scoped values with `getMcpInvocationContext(request)`. Prompt and resource-template registrations accept completion callbacks. Pagination and subscriptions remain disabled until configured. Signing keys must contain at least 32 bytes. Single-use continuations require an application provider.
 
+Use [request language preferences](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/language-preference/) to provide localized display text from your application.
+
 See the [messaging guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/messaging/) for live and durable updates, input, subscriptions, and tool-linked prompts. Set `prompt` on a tool to add a companion prompt without duplicating its registration.
 
 `core.maxToolInputElements` optionally rejects oversized nested tool inputs before route handlers or task providers run. It counts object members and array elements and leaves input unlimited when omitted. `transport.allowedOrigins` accepts exact serialized origins and explicit non-HTTP scheme patterns such as `chrome-extension://*`. HTTP, HTTPS, and global wildcards remain forbidden.
 
-The MCP client SDK `2.3.1` interoperates with modern discovery, progress SSE, prompts, and task reads
+The MCP client SDK `2.4.0` interoperates with modern discovery, progress SSE, prompts, and task reads
 and cancellation. It rejects valid task-creation responses after creating the task because its decoder
 does not accept `resultType: 'task'`. Use the minimal Tasks clients for creation and avoid blind retries.
 
@@ -182,7 +228,7 @@ The repository includes tested, package-root examples for every extension:
 
 Server Cards are a finalized MCP extension. They publish advisory discovery metadata at `GET /mcp/server-card`. They use `application/mcp-server-card+json`, CORS, ETags, and conditional caching. Use HTTPS in production. Loopback HTTP is development-only. Cards must not contain credentials, private topology, or primitive catalogs. Clients decide whether and when to fetch them.
 
-`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. Its selected version record also reports `status: 'stable'` under Final SEP-2127.
+`MCP_EXTENSION_SUPPORT` reports Beta maturity for Tasks, Skills over MCP, and Server Cards. The approved Server Cards wire baseline still reports `status: 'stable'` under Final SEP-2127.
 
 ### Experimental extension policy
 
@@ -194,7 +240,7 @@ Legacy server variants bind discovery, selection, cursors, registries, subscript
 
 Action metadata describes destinations, sources, sensitivity, outcome, and review needs. Trust result metadata distinguishes an absent boolean from `false`. Evidence references are bounded descriptors; the adapter does not fetch them. Hosts own approval, union-strengthening, consent, evidence retrieval, and unavailable functionality. Behavioral annotations never grant authorization.
 
-Events are legacy-only and default to revision `d5316be214be2e76e51462069c1d67e00a5a7619`. The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
+Events require MCP `2026-07-28` and default to [the Triggers & Events Working Group draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/b08e4f9dd684f39d846d94089487fbeb28e666f5/seps/0000-events-extension.md). The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
 
@@ -213,6 +259,7 @@ The full guides and API reference live at **[mwillbanks.github.io/elysia-mcp-ada
 - [MCP specification inventory](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/specification-inventory/)
 - [Tasks guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/tasks/)
 - [Authorization guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/authorization/)
+- [Structured authorization denials](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/authorization/structured-denials/) explains the opt-in SEP-2643 tool policy and remediation.
 - [Apps guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/apps/)
 - [Skills guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/skills/)
 
@@ -245,14 +292,13 @@ uses `bun check`. Fallow remains the static analysis gate. No standalone lint pa
 
 Skills preserves optional JSON `_meta` on registrations and provider sources. Extension-owned keys
 use `io.modelcontextprotocol.skills/`. Resource digests still cover exact published bytes.
-Interceptors use the current `faf1583a` proposal, including timestamped invocation context,
+Interceptors use the current `07c89a24` proposal, including timestamped invocation context,
 optional span/session identifiers, and per-call configuration validation. See the separate HTTP
 service in `examples/experimental`; local chain helpers remain local utilities.
-Events uses proposal `d5316be2` and codes `-32023` through `-32027`; explicitly selecting
-`6682596d` retains historical codes. Events and Variants remain legacy transport experiments.
+Events uses draft `b08e4f9d` and codes `-32023` through `-32027`. Migrate older Events pins to `current` and discover Events on `server/discover`. Server Variants still uses legacy transport.
 
-Apps and Enterprise-Managed Authorization are stable. Client Credentials is draft.
-Server Cards follows Final SEP-2127. Tasks exposes stable and pinned draft selections.
+Apps, Client Credentials, and Enterprise-Managed Authorization have approved profiles.
+Server Cards follows Final SEP-2127. Tasks exposes approved and pinned draft selections.
 File Uploads and Filesystems have no defined wire contract: they are inventoried, not implemented.
 See the website specification inventory for immutable sources, hashes, limitations, and all selectors.
 

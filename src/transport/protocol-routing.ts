@@ -1,7 +1,14 @@
 import { isRecord } from '../internal.js'
 import type { JsonRpcRequest } from '../types.js'
 
-const NAME_METHODS = new Set(['tools/call', 'prompts/get'])
+const NAME_METHODS = new Set([
+  'tools/call',
+  'prompts/get',
+  'events/poll',
+  'events/stream',
+  'events/subscribe',
+  'events/unsubscribe'
+])
 const URI_METHODS = new Set(['resources/read', 'resources/directory/read', 'skills/get'])
 const TASK_METHODS = new Set(['tasks/get', 'tasks/update', 'tasks/cancel'])
 

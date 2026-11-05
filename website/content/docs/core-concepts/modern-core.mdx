@@ -67,12 +67,12 @@ Task-status filters can share a subscription with core filters. Task streams nev
 
 See the runnable [modern core example](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/core) for its minimal HTTP client.
 
-The MCP TypeScript client SDK v2.3 also supports this envelope. Integration tests use its modern Tasks
-operations and progress SSE parser, verify one access-token renewal after a challenge, and enforce
-the SDK's default same-origin redirect policy. Redirect and token storage decisions belong to the client;
-the adapter validates its own request origins, access-token audience, capabilities, and arguments.
+Integration tests exercise modern discovery, progress SSE, and supported Tasks operations with
+MCP TypeScript client SDK `2.4.0`. They also verify one access-token renewal after a challenge and
+same-origin redirect handling. The client controls redirects and token storage. The adapter validates
+request origins, access-token audience, capabilities, and arguments.
 
-Client SDK `2.3.1` rejects a valid modern task-creation response with `UNSUPPORTED_RESULT_TYPE`.
+Client SDK `2.4.0` rejects a valid modern task-creation response with `UNSUPPORTED_RESULT_TYPE`.
 Both `callTool()` and generic `request()` create the task before the SDK rejects `resultType: 'task'`;
 supplying a result schema does not bypass its decoder. Generic requests can read and cancel modern tasks.
 Use the [Tasks example client](/docs/extensions/tasks/examples) for task creation until the SDK supports

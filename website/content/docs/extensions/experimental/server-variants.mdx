@@ -3,7 +3,11 @@ title: Server variants
 description: Negotiate stable, principal-bound legacy server views.
 ---
 
-Server variants are legacy-only. Configure protocol `2025-11-25`, GET SSE, session deletion, and `extensions.variants`. Modern protocol options reject the extension.
+Server Variants is deprecated. The upstream proposal closed without acceptance. This release
+keeps its existing opt-in, and a later minor release will remove it. Publish distinct MCP endpoints
+when clients need different tool sets.
+
+The opt-in requires protocol `2025-11-25`, GET SSE, session deletion, and `extensions.variants`.
 
 During initialize, the adapter authenticates the request, applies `visible`, applies `rank`, limits discovery, and stores the negotiated list against `MCP-Session-Id`. The first default variant must be stable unless the client requests experimental results. `io.modelcontextprotocol/server-variant` request metadata takes precedence over `MCP-Server-Variant`.
 

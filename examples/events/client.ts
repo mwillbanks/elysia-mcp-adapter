@@ -1,39 +1,51 @@
 import type { Elysia } from 'elysia'
 
+const PROTOCOL_VERSION = '2026-07-28'
+
+function eventRequest(
+  id: number,
+  method: string,
+  params: Record<string, unknown>,
+  options: { authorization?: string; signal?: AbortSignal } = {}
+): Request {
+  return new Request('http://localhost/mcp', {
+    method: 'POST',
+    signal: options.signal,
+    headers: {
+      ...(options.authorization ? { authorization: options.authorization } : {}),
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': PROTOCOL_VERSION,
+      'mcp-method': method,
+      ...(typeof params.name === 'string' ? { 'mcp-name': params.name } : {})
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method,
+      params: {
+        ...params,
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': PROTOCOL_VERSION,
+          'io.modelcontextprotocol/clientCapabilities': {}
+        }
+      }
+    })
+  })
+}
+
 export async function rpc(
   app: Elysia,
   method: string,
   params: Record<string, unknown> = {},
   authorization?: string
 ) {
-  const response = await app.handle(
-    new Request('http://localhost/mcp', {
-      method: 'POST',
-      headers: {
-        ...(authorization ? { authorization } : {}),
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-        'mcp-protocol-version': '2025-11-25'
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
-    })
-  )
+  const response = await app.handle(eventRequest(1, method, params, { authorization }))
   return { response, body: (await response.json()) as any }
 }
 
-export async function stream(app: Elysia, params: Record<string, unknown>, signal: AbortSignal) {
-  return app.handle(
-    new Request('http://localhost/mcp', {
-      method: 'POST',
-      signal,
-      headers: {
-        'content-type': 'application/json',
-        accept: 'text/event-stream',
-        'mcp-protocol-version': '2025-11-25'
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'events/stream', params })
-    })
-  )
+export function stream(app: Elysia, params: Record<string, unknown>, signal: AbortSignal) {
+  return app.handle(eventRequest(2, 'events/stream', params, { signal }))
 }
 
 export type EventStreamMethod =

@@ -1,0 +1,42 @@
+library:
+  name: '@mwillbanks/elysia-mcp-adapter'
+generated_from:
+  domain_map: _artifacts/domain_map.yaml
+  skill_spec: _artifacts/skill_spec.md
+skills:
+  - name: elysia-mcp-adapter
+    slug: elysia-mcp-adapter
+    domain: adapter-integration
+    path: skills/elysia-mcp-adapter/SKILL.md
+    status: implemented
+    description: Use when integrating @mwillbanks/elysia-mcp-adapter into an Elysia application, exposing HTTP routes or standalone MCP primitives, configuring MCP HTTP transport or authorization, or choosing compatible MCP extension revisions.
+    sources:
+      - README.md
+      - website/content/docs/api-reference/route-backed-tools.mdx
+      - website/content/docs/api-reference/standalone-primitives.mdx
+      - website/content/docs/core-concepts/security.mdx
+      - website/content/docs/core-concepts/specification-notices.mdx
+      - website/content/docs/core-concepts/transportation.mdx
+      - website/content/docs/extensions/authorization/configuration.mdx
+      - website/content/docs/extensions/index.mdx
+      - website/content/docs/extensions/specification-inventory.mdx
+      - website/content/docs/extensions/versioning.mdx
+    requires: []
+    references:
+      - references/extensions.md
+      - references/route-exposure.md
+      - references/standalone-primitives.md
+      - references/transport-authorization.md
+review:
+  ignore:
+    - .github/**
+    - examples/**/*.ts
+    - examples/**/*.tsx
+    # This fixture exercises Skills over MCP and has no Intent source mapping.
+    - examples/skills/skill/**
+    - scripts/**
+    - src/**
+    - test/**
+    - website/bun.lock
+    - website/patches/**
+    - website/src/**

@@ -19,7 +19,7 @@ those responses; replaying the original executor can duplicate side effects.
 
 ## Subprocess provider
 
-The minimal clients preserve the published modern task result. MCP client SDK `2.3.1` currently
+The minimal clients preserve the published modern task result. MCP client SDK `2.4.0` currently
 rejects that result after the server creates work, including generic requests with a supplied schema.
 Its generic requests can read and cancel tasks. Do not retry task creation blindly after this SDK error.
 

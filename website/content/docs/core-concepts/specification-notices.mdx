@@ -1,0 +1,51 @@
+---
+title: Specification notices
+description: Receive adapter diagnostics for pre-release and deprecated MCP behavior.
+---
+
+The adapter emits a structured information notice when an enabled MCP feature uses a Beta,
+draft, or experimental contract. A deprecation emits a warning instead. Each adapter
+instance emits a notice once for each code, feature, and revision. See the
+[specification inventory](/docs/extensions/specification-inventory) for the authority,
+revision, and support status of each contract.
+
+The local sink writes structured console notices to standard error. Set `onNotice` to use your logger. Set
+`local: false` to disable the local sink, including the callback. Set
+`openTelemetry: true` to emit the same notice through the host's registered
+OpenTelemetry Logs provider. Configure that provider in your application.
+
+```ts
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const adapter = mcp({
+  diagnostics: {
+    specificationNotices: {
+      local: false,
+      openTelemetry: true,
+    },
+  },
+});
+```
+
+A notice contains `code`, `severity`, `featureId`, `revision`, and
+`sourceUrl`. Deprecation warnings also include `migration` guidance.
+The codes are `MCP_SPECIFICATION_PRE_RELEASE` and `MCP_SPECIFICATION_DEPRECATED`.
+Both sinks use adapter catalog values. A sink failure leaves request handling intact.
+The adapter emits notices outside the MCP protocol and does not create an OpenTelemetry SDK or exporter.
+
+## Deprecations
+
+Server Variants remains available for this release. A later minor can remove the opt-in.
+The adapter reports Roots and Sampling when it sends a validated input request, including in task replies and subscription updates.
+
+| Feature ID                                | Migration                                                                        |
+| ----------------------------------------- | -------------------------------------------------------------------------------- |
+| `io.modelcontextprotocol/server-variants` | Publish distinct MCP endpoints for different tool sets.                          |
+| `io.modelcontextprotocol/core-roots`      | Pass directories through tool arguments, resource URIs, or server configuration. |
+| `io.modelcontextprotocol/core-sampling`   | Call the model provider API from the application.                                |
+| `io.modelcontextprotocol/core-logging`    | Use OpenTelemetry for server observability.                                      |
+| `sampling-include-context`                | Omit includeContext or set it to none.                                           |
+
+See the [upstream deprecations](https://modelcontextprotocol.io/specification/2026-07-28/deprecated)
+for the removal schedule. The [inventory](/docs/extensions/specification-inventory) records which
+deprecations apply to the adapter.

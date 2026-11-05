@@ -54,6 +54,37 @@ describe('modern result codecs', () => {
 })
 
 describe('modern request envelope validation', () => {
+  test.each([
+    'application/jsonp, text/event-stream',
+    'application/json, text/event-streamx',
+    'application/json;q=0.000, text/event-stream',
+    'application/json, text/event-stream;q=0',
+    'application/json, text/event-stream;q=NaN',
+    'application/json, text/event-stream;q=1.001',
+    'application/json, text/event-stream;q=1;q=0',
+    'application/json;profile="example,text/event-stream", */*',
+    'application/json;profile="example,text/event-stream'
+  ])('rejects Accept without both supported media types: %s', async (accept) => {
+    const app = new Elysia().use(mcp({ allowedRoutes: [] }))
+    const response = await modernRpc(app, 'tools/list', {}, { accept })
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe(-32020)
+  })
+
+  test('accepts weighted media types and keeps legacy negotiation unchanged', async () => {
+    const app = new Elysia().use(mcp({ allowedRoutes: [] }))
+    const response = await modernRpc(
+      app,
+      'tools/list',
+      {},
+      {
+        accept: 'TEXT/EVENT-STREAM;q=0.001, Application/JSON;profile="a,b;c";q=1.000'
+      }
+    )
+    expect(response.status).toBe(200)
+    expect((await rpc(app, 'tools/list')).status).toBe(200)
+  })
+
   test('cannot downgrade modern headers through body metadata', async () => {
     let invoked = false
     const app = new Elysia().use(mcp({ allowedRoutes: [] })).mcpTool('danger', () => {

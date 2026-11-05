@@ -10,8 +10,10 @@ import type {
 import type {
   McpAuthOptions,
   McpAuthorizationContext,
-  McpAuthVersion
+  McpAuthVersion,
+  NormalizedMcpDpopOptions
 } from './extensions/auth/index.js'
+import type { NormalizedStructuredAuthorizationDenials } from './extensions/auth/structured-denials.js'
 import type {
   McpEventRegistration,
   McpEventsOptions,
@@ -23,6 +25,10 @@ import type {
 } from './extensions/interceptors/index.js'
 import type { McpProtocolVersion } from './extensions/manifest.js'
 import type { McpServerCardOptions } from './extensions/server-card/index.js'
+import type {
+  McpSpecificationNoticeOptions,
+  SpecificationNoticeReporter
+} from './extensions/specification-notices.js'
 import type {
   ExplicitSkillRegistration,
   McpSkillDefinition,
@@ -37,6 +43,7 @@ import type {
 } from './extensions/tasks/index.js'
 import type { McpVariantsOptions } from './extensions/variants/index.js'
 import type { McpInvocationInput } from './transport/input.js'
+import type { McpLanguageOptions, NormalizedMcpLanguageOptions } from './transport/language.js'
 import type { McpInvocationNotify } from './transport/notifications.js'
 
 export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
@@ -244,6 +251,7 @@ export type McpCompletionHandler = (
 ) => McpCompletionResult | Promise<McpCompletionResult>
 
 export interface McpSubscriptionFilter {
+  eventsListChanged?: boolean
   toolsListChanged?: boolean
   promptsListChanged?: boolean
   resourcesListChanged?: boolean
@@ -276,6 +284,8 @@ export interface McpSubscriptionOptions {
 }
 
 export interface McpCoreOptions {
+  /** Opt in to request-scoped SEP-2792 language negotiation. */
+  language?: McpLanguageOptions
   /** Opt in to deprecated, request-scoped notifications/message on modern MCP. */
   logging?: boolean
   /** Reject tool inputs whose nested object members and array elements exceed this limit. */
@@ -303,6 +313,7 @@ export interface McpServerInfo {
   name: string
   version: string
   title?: string
+  description?: string
   instructions?: string
 }
 
@@ -410,6 +421,7 @@ export interface McpPluginOptions {
   core?: McpCoreOptions
   diagnostics?: {
     failOnMissingSchema?: boolean
+    specificationNotices?: McpSpecificationNoticeOptions
   }
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
 }
@@ -436,7 +448,11 @@ export interface NormalizedMcpPluginOptions extends Required<
   transport: Required<NonNullable<McpPluginOptions['transport']>>
   extensions: {
     tasks?: McpTasksOptions & { version: Exclude<TasksVersionInput, 'current'> }
-    auth?: McpAuthOptions & { version: Exclude<McpAuthVersion, 'current'> }
+    auth?: Omit<McpAuthOptions, 'dpop' | 'structuredDenials'> & {
+      version: Exclude<McpAuthVersion, 'current'>
+      dpop?: NormalizedMcpDpopOptions
+      structuredDenials?: NormalizedStructuredAuthorizationDenials
+    }
     apps?: McpAppsOptions & { version: '2026-01-26' | 'draft' }
     skills?: McpSkillsOptions & {
       version: Exclude<NonNullable<McpSkillsOptions['version']>, 'current'>
@@ -456,6 +472,7 @@ export interface NormalizedMcpPluginOptions extends Required<
   }
   core: {
     logging: boolean
+    language?: NormalizedMcpLanguageOptions
     maxToolInputElements?: number
     continuation?: McpContinuationOptions & { ttlMs: number; singleUse: boolean }
     pagination?: McpPaginationOptions & { cursorTtlMs: number }
@@ -465,7 +482,10 @@ export interface NormalizedMcpPluginOptions extends Required<
     }
     subscriptions?: McpSubscriptionOptions & { heartbeatMs: number }
   }
-  diagnostics: Required<NonNullable<McpPluginOptions['diagnostics']>>
+  diagnostics: {
+    failOnMissingSchema: boolean
+    reportSpecificationNotice?: SpecificationNoticeReporter
+  }
   operationNameResolver: (operation: McpRouteOperation) => string
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
 }
@@ -500,6 +520,8 @@ export interface McpInvocationContext {
   signal?: AbortSignal
   meta?: Record<string, unknown>
   protocolVersion?: McpProtocolVersion
+  /** Selected language for this request, for use when domain arguments omit a language. */
+  contentLanguage?: string
   clientCapabilities?: Record<string, unknown>
   clientInfo?: McpClientInfo
   inputResponses?: McpInputResponses

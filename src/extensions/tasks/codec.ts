@@ -18,6 +18,7 @@ import type {
   TaskStatus,
   TasksVersion
 } from './types.js'
+import { resolveTasksVersion } from './version.js'
 
 const TASK_STATUSES: readonly TaskStatus[] = [
   'working',
@@ -90,29 +91,11 @@ export function assertTaskRecord(value: unknown, label = 'task'): asserts value 
 export function assertTaskInputResponse(
   request: TaskInputRequest,
   response: unknown,
-  label?: string,
-  version?: Exclude<TasksVersion, 'draft'>
-): asserts response is TaskDefinedInputResponse
-export function assertTaskInputResponse(
-  request: TaskInputRequest,
-  response: unknown,
-  label: string | undefined,
-  version: 'draft'
-): asserts response is import('./types.js').TaskInputResponse
-export function assertTaskInputResponse(
-  request: TaskInputRequest,
-  response: unknown,
-  label: string | undefined,
-  version: TasksVersion
-): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse
-export function assertTaskInputResponse(
-  request: TaskInputRequest,
-  response: unknown,
   label = 'task input response',
-  version: TasksVersion = '2026-07-28'
-): asserts response is TaskDefinedInputResponse | import('./types.js').TaskInputResponse {
+  version?: TasksVersion
+): asserts response is TaskDefinedInputResponse {
+  if (version !== undefined) resolveTasksVersion(version)
   if (!isRecord(response)) throw new TypeError(`${label} must be an object`)
-  if (version === 'draft') return
   if (request.method === 'elicitation/create') {
     if (!isMcpElicitationResult(response))
       throw new TypeError(`${label}.action or content is invalid`)

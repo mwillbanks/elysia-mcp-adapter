@@ -36,7 +36,7 @@ function appFetch(app: Elysia): FetchLike {
 
 function modernClient(capabilities: Record<string, unknown> = {}) {
   return new Client(
-    { name: 'sdk-2.3-client', version: '1.0.0' },
+    { name: 'sdk-interoperability-client', version: '1.0.0' },
     { capabilities, versionNegotiation: { mode: { pin: '2026-07-28' } } }
   )
 }
@@ -55,7 +55,7 @@ async function connectClient(
   return { client, transport }
 }
 
-describe('MCP client 2.3.1 interoperability', () => {
+describe('MCP client interoperability', () => {
   test('negotiates modern discovery, lists tools, parses SSE progress, and normalizes prompt arguments', async () => {
     const progress: number[] = []
     let promptArguments: Record<string, unknown> | undefined

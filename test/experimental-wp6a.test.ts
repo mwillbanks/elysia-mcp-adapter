@@ -8,7 +8,6 @@ import {
   LEGACY_PROTOCOL_VERSION,
   MCP_ACTION_METADATA_ID,
   MCP_INTERCEPTORS_LATEST_REVISION,
-  MCP_INTERCEPTORS_REVISION,
   type McpInterceptorInvocation,
   MCP_SERVER_CARD_MIME_TYPE,
   MCP_SERVER_CARD_SCHEMA,
@@ -523,8 +522,8 @@ describe('experimental server contracts', () => {
     ).rejects.toThrow('metadata is invalid')
   })
 
-  test('supports historical and latest explicit revisions and empty closed configuration', async () => {
-    for (const version of [MCP_INTERCEPTORS_REVISION, MCP_INTERCEPTORS_LATEST_REVISION] as const) {
+  test('supports current and exact revisions and empty closed configuration', async () => {
+    for (const version of ['current', MCP_INTERCEPTORS_LATEST_REVISION] as const) {
       const app = new Elysia()
         .use(mcp({ allowedRoutes: [], extensions: { interceptors: { version } } }))
         .mcpInterceptor(

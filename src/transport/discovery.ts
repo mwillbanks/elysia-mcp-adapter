@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { LEGACY_PROTOCOL_VERSION } from '../constants.js'
 import { MCP_APPS_EXTENSION_ID, MCP_APPS_RESOURCE_MIME_TYPE } from '../extensions/apps/index.js'
 import { authProfileCapabilities, type McpAuthorizationContext } from '../extensions/auth/index.js'
-import { initializeEventSession } from '../extensions/events/index.js'
+import { MCP_EVENTS_CAPABILITY } from '../extensions/events/index.js'
 import { MCP_INTERCEPTORS_ID } from '../extensions/interceptors/index.js'
 import { MCP_SKILLS_EXTENSION_ID } from '../extensions/skills/index.js'
 import {
@@ -121,18 +121,15 @@ async function initializeVariantExtension(
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined,
   runtime: DiscoveryRuntime
-): Promise<{ payload: Record<string, unknown>; selected?: string }> {
+): Promise<Record<string, unknown>> {
   const { ranked, hints } = await visibleVariants(request, params, options, authorization, runtime)
   preferStableVariant(ranked, hints, runtime)
   const available = ranked.slice(0, discoveryVariantLimit(ranked, options))
   if (available.length === 0) throw runtime.error(-32603, 'No server variants are visible')
   storeVariantSession(app, request, available, options, authorization)
   return {
-    payload: {
-      availableVariants: available.map(publicVariant),
-      moreVariantsAvailable: ranked.length > available.length
-    },
-    selected: available[0]?.id
+    availableVariants: available.map(publicVariant),
+    moreVariantsAvailable: ranked.length > available.length
   }
 }
 
@@ -143,41 +140,23 @@ async function legacyExtensions(
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined,
   runtime: DiscoveryRuntime
-): Promise<{ extensions: Record<string, unknown>; selectedVariant?: string }> {
+): Promise<Record<string, unknown>> {
   const extensions: Record<string, unknown> = {}
   if (options.extensions.apps) extensions[MCP_APPS_EXTENSION_ID] = appCapabilities()
   if (options.extensions.interceptors) {
     extensions[MCP_INTERCEPTORS_ID] = runtime.interceptorCapabilities(app)
   }
-  if (!options.extensions.variants) return { extensions }
-  const variant = await initializeVariantExtension(
-    app,
-    request,
-    params,
-    options,
-    authorization,
-    runtime
-  )
-  extensions[MCP_SERVER_VARIANTS_ID] = variant.payload
-  return { extensions, selectedVariant: variant.selected }
-}
-
-function initializeEvents(
-  app: AnyElysiaApp,
-  request: Request,
-  selectedVariant: string | undefined,
-  options: NormalizedMcpPluginOptions,
-  authorization: McpAuthorizationContext | undefined
-): void {
-  if (!options.extensions.events) return
-  const sessionId = initializeEventSession(
-    app,
-    variantPrincipal(authorization),
-    selectedVariant,
-    INITIALIZED_SESSION_IDS.get(request),
-    options
-  )
-  INITIALIZED_SESSION_IDS.set(request, sessionId)
+  if (options.extensions.variants) {
+    extensions[MCP_SERVER_VARIANTS_ID] = await initializeVariantExtension(
+      app,
+      request,
+      params,
+      options,
+      authorization,
+      runtime
+    )
+  }
+  return extensions
 }
 
 export async function initializeResult(
@@ -188,15 +167,7 @@ export async function initializeResult(
   authorization: McpAuthorizationContext | undefined,
   runtime: DiscoveryRuntime
 ): Promise<Record<string, unknown>> {
-  const { extensions, selectedVariant } = await legacyExtensions(
-    app,
-    request,
-    params,
-    options,
-    authorization,
-    runtime
-  )
-  initializeEvents(app, request, selectedVariant, options, authorization)
+  const extensions = await legacyExtensions(app, request, params, options, authorization, runtime)
   return {
     protocolVersion: options.transport.protocolVersion,
     capabilities: {
@@ -206,15 +177,13 @@ export async function initializeResult(
         listChanged: options.core.subscriptions?.resourcesListChanged ?? false
       },
       prompts: { listChanged: false },
-      ...(options.extensions.events
-        ? { events: { listChanged: options.transport.enableGetSse } }
-        : {}),
       ...(Object.keys(extensions).length > 0 ? { extensions } : {})
     },
     serverInfo: {
       name: options.server.name,
       version: options.server.version,
-      title: options.server.title
+      title: options.server.title,
+      description: options.server.description
     },
     instructions: options.server.instructions
   }
@@ -228,6 +197,8 @@ function modernExtensions(
 ): Record<string, unknown> {
   const extensions: Record<string, unknown> = {}
   if (options.extensions.tasks) extensions['io.modelcontextprotocol/tasks'] = {}
+  const events = options.extensions.events
+  if (events) extensions[MCP_EVENTS_CAPABILITY] = eventCapabilities(events.listChanged)
   if (options.extensions.apps) extensions[MCP_APPS_EXTENSION_ID] = appCapabilities()
   if (options.extensions.auth) {
     Object.assign(extensions, authProfileCapabilities(options.extensions.auth.profiles))
@@ -241,6 +212,10 @@ function modernExtensions(
     }
   }
   return extensions
+}
+
+function eventCapabilities(listChanged: boolean | undefined): Record<string, unknown> {
+  return listChanged ? { listChanged: true } : {}
 }
 
 function modernPrimitiveCapabilities(

@@ -3,9 +3,11 @@ title: Server Cards
 description: Publish finalized, cacheable advisory server metadata with strict disclosure boundaries.
 ---
 
-Server Cards are a finalized MCP extension. The adapter preserves its pinned schema and explicit opt-in.
+MCP lists Server Cards as Beta. Final SEP-2127 establishes the approved wire baseline.
+The adapter preserves the approved schema and requires explicit opt-in.
 
-`MCP_EXTENSION_SUPPORT.serverCard.maturity` reports the current stable classification. The selected version record also reports `status: 'stable'`, following Final SEP-2127. The wire schema and revision selector did not change when the extension became final.
+`MCP_EXTENSION_SUPPORT.serverCard.current` selects the approved baseline. Its version record
+reports `status: 'stable'` for compatibility with existing consumers.
 
 ```ts
 import {
@@ -30,6 +32,19 @@ mcp({
   },
 });
 ```
+
+## Draft remote extension information
+
+Set `extensions.serverCard.version` to `MCP_SERVER_CARD_DRAFT_REVISION` to publish the
+`remotes[].extensions` map from the [pinned draft](https://github.com/modelcontextprotocol/ext-server-card/pull/55).
+Each key is a prefixed extension identifier. Each value is a JSON object of public connection
+information. The pinned schema permits nested objects, arrays, strings, integers, and booleans.
+Publish only public data, such as public webhook verification keys. Private keys and embedded
+credentials are rejected. Reserve JWK private member names for key material and omit them from
+public extension information.
+
+Clients negotiate support through live `server/discover` capabilities. Treat card entries as
+advisory connection information.
 
 The endpoint returns `application/mcp-server-card+json`, `Access-Control-Allow-Origin: *`, a stable ETag, and `Cache-Control`. Matching `If-None-Match` requests return `304`.
 

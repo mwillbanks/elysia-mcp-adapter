@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { verifyPackedIntent } from './check-packed-intent'
 
 const workspace = resolve(import.meta.dir, '..')
 const temporary = mkdtempSync(join(tmpdir(), 'elysia-mcp-packed-'))
@@ -13,6 +14,7 @@ async function main(): Promise<void> {
     const archive = readdirSync(temporary).find((name) => name.endsWith('.tgz'))
     if (!archive) throw new Error('Bun pack did not create an archive')
     const packageArchive = join(temporary, archive)
+    await verifyPackedIntent(packageArchive)
     await verifyConsumer(packageArchive, '7.0.2', true)
     await verifyConsumer(packageArchive, '5.8.3', false)
   } finally {
@@ -121,7 +123,7 @@ async function run(arguments_: string[], cwd: string): Promise<void> {
 
 const consumerSource = String.raw`
 import {
-  LEGACY_PROTOCOL_VERSION,
+  MCP_EVENTS_CAPABILITY,
   MCP_SERVER_CARD_REVISION,
   MCP_SERVER_CARD_SCHEMA,
   type McpCompletionHandler,
@@ -175,9 +177,8 @@ const eventDefinition: McpEventDefinition = {
   inputSchema: { type: 'object' },
   payloadSchema: { type: 'object' }
 }
-new Elysia()
+const eventApp = new Elysia()
   .use(mcp({
-    transport: { protocolVersions: [LEGACY_PROTOCOL_VERSION] },
     allowedRoutes: [],
     extensions: { events: { cursor: { signingKey: 'packed-event-cursor-signing-key-0001' } } }
   }))
@@ -187,23 +188,40 @@ const card = await app.handle(new Request('http://localhost/mcp/server-card'))
 if (card.status !== 200 || (await card.json()).name !== 'com.example/packed-consumer') {
   throw new Error('Packaged server-card route failed')
 }
-const response = await app.handle(new Request('http://localhost/mcp', {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    accept: 'application/json, text/event-stream',
-    'mcp-protocol-version': '2026-07-28',
-    'mcp-method': 'skills/list'
-  },
-  body: JSON.stringify({
-    jsonrpc: '2.0', id: 1, method: 'skills/list',
-    params: { _meta: {
-      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-      'io.modelcontextprotocol/clientInfo': { name: 'packed-consumer', version: '1.0.0' },
-      'io.modelcontextprotocol/clientCapabilities': {}
-    } }
+function modernRequest(method: string, params: Record<string, unknown> = {}, name?: string) {
+  return new Request('http://localhost/mcp', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': '2026-07-28',
+      'mcp-method': method,
+      ...(name === undefined ? {} : { 'mcp-name': name })
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method,
+      params: { ...params, _meta: {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientInfo': { name: 'packed-consumer', version: '1.0.0' },
+        'io.modelcontextprotocol/clientCapabilities': {}
+      } }
+    })
   })
-}))
+}
+
+const discovery = await eventApp.handle(modernRequest('server/discover'))
+const discovered = await discovery.json()
+if (discovery.status !== 200 || !discovered.result?.capabilities?.extensions?.[MCP_EVENTS_CAPABILITY]) {
+  throw new Error('Packaged Events discovery failed')
+}
+const poll = await eventApp.handle(
+  modernRequest('events/poll', { name: eventDefinition.name, arguments: {} }, eventDefinition.name)
+)
+const polled = await poll.json()
+if (poll.status !== 200 || polled.result?.resultType !== 'complete' || !Array.isArray(polled.result?.events)) {
+  throw new Error('Packaged Events poll failed')
+}
+const response = await app.handle(modernRequest('skills/list'))
 const listed = await response.json() as { result?: { skills?: McpSkill[] } }
 const skill = listed.result?.skills?.[0]
 const expectedDigest = 'sha256:' + new Bun.CryptoHasher('sha256').update(skillBytes).digest('hex')

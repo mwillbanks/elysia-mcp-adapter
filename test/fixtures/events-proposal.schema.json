@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Wire fixture derived from SEP-3415 at b08e4f9dd684f39d846d94089487fbeb28e666f5.",
   "$defs": {
     "Cursor": { "type": ["string", "null"] },
     "IsoDateTime": {
@@ -45,10 +46,12 @@
     },
     "ListResult": {
       "type": "object",
-      "required": ["events"],
+      "required": ["resultType", "events"],
       "properties": {
+        "resultType": { "const": "complete" },
         "events": { "type": "array", "items": { "$ref": "#/$defs/EventDescriptor" } },
-        "nextCursor": { "type": "string" }
+        "nextCursor": { "type": "string" },
+        "_meta": { "type": "object" }
       },
       "additionalProperties": false
     },
@@ -77,21 +80,31 @@
     },
     "PollResult": {
       "type": "object",
-      "required": ["events"],
+      "required": ["resultType", "events"],
       "properties": {
-        "events": { "type": "array", "items": { "$ref": "#/$defs/EventOccurrence" } },
+        "resultType": { "const": "complete" },
+        "events": {
+          "type": "array",
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/EventOccurrence" }, { "not": { "required": ["cursor"] } }]
+          }
+        },
         "cursor": { "$ref": "#/$defs/Cursor" },
         "truncated": { "type": "boolean" },
         "hasMore": { "type": "boolean" },
-        "nextPollMs": { "type": "integer", "minimum": 0 }
+        "nextPollMs": { "type": "integer", "minimum": 0 },
+        "_meta": { "type": "object" }
       },
       "additionalProperties": false
     },
     "StreamRequest": { "$ref": "#/$defs/SubscriptionRequest" },
     "StreamResult": {
       "type": "object",
-      "required": ["_meta"],
-      "properties": { "_meta": { "type": "object" } },
+      "required": ["resultType", "_meta"],
+      "properties": {
+        "resultType": { "const": "complete" },
+        "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
+      },
       "additionalProperties": false
     },
     "WebhookDelivery": {
@@ -148,15 +161,17 @@
     },
     "SubscribeResult": {
       "type": "object",
-      "required": ["id", "refreshBefore"],
+      "required": ["resultType", "id", "refreshBefore"],
       "properties": {
+        "resultType": { "const": "complete" },
         "id": { "type": "string", "minLength": 1 },
         "refreshBefore": {
           "oneOf": [{ "$ref": "#/$defs/IsoDateTime" }, { "type": "null" }]
         },
         "cursor": { "$ref": "#/$defs/Cursor" },
         "truncated": { "type": "boolean" },
-        "deliveryStatus": { "$ref": "#/$defs/DeliveryStatus" }
+        "deliveryStatus": { "$ref": "#/$defs/DeliveryStatus" },
+        "_meta": { "type": "object" }
       },
       "additionalProperties": false
     },
@@ -175,7 +190,12 @@
       },
       "additionalProperties": false
     },
-    "UnsubscribeResult": { "type": "object", "maxProperties": 0 },
+    "UnsubscribeResult": {
+      "type": "object",
+      "required": ["resultType"],
+      "properties": { "resultType": { "const": "complete" }, "_meta": { "type": "object" } },
+      "additionalProperties": false
+    },
     "SubscriptionMeta": {
       "type": "object",
       "required": ["io.modelcontextprotocol/subscriptionId"],
@@ -334,7 +354,7 @@
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "const": -32011 },
+            "code": { "const": -32023 },
             "message": { "const": "NotFound" },
             "data": {
               "type": "object",
@@ -348,7 +368,7 @@
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "const": -32012 },
+            "code": { "const": -32024 },
             "message": { "const": "Forbidden" },
             "data": { "type": "object" }
           },
@@ -358,7 +378,7 @@
           "type": "object",
           "required": ["code", "message", "data"],
           "properties": {
-            "code": { "const": -32013 },
+            "code": { "const": -32025 },
             "message": { "const": "ResourceExhausted" },
             "data": {
               "type": "object",
@@ -376,7 +396,7 @@
           "type": "object",
           "required": ["code", "message", "data"],
           "properties": {
-            "code": { "const": -32014 },
+            "code": { "const": -32026 },
             "message": { "const": "Unsupported" },
             "data": {
               "type": "object",
@@ -395,7 +415,7 @@
           "type": "object",
           "required": ["code", "message", "data"],
           "properties": {
-            "code": { "const": -32015 },
+            "code": { "const": -32027 },
             "message": { "const": "CallbackEndpointError" },
             "data": {
               "type": "object",

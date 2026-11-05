@@ -5,11 +5,23 @@ import type {
   McpPaginationOptions
 } from '../../types.js'
 import type { McpAuthorizationContext } from '../auth/index.js'
+import { MCP_EXTENSION_SUPPORT } from '../manifest.js'
+import { resolveGovernedDraftRevision } from '../revision-policy.js'
 
-export const MCP_EVENTS_REVISION = '6682596d65eec778fe0b8b1f43b4e89d2fe2c546' as const
-export const MCP_EVENTS_LATEST_REVISION = 'd5316be214be2e76e51462069c1d67e00a5a7619' as const
-export type McpEventsRevision = typeof MCP_EVENTS_REVISION | typeof MCP_EVENTS_LATEST_REVISION
-export const MCP_EVENTS_CAPABILITY = 'events' as const
+export const MCP_EVENTS_REVISION = MCP_EXTENSION_SUPPORT.events.current
+export const MCP_EVENTS_LATEST_REVISION = MCP_EVENTS_REVISION
+export type McpEventsRevision = typeof MCP_EVENTS_REVISION
+export const MCP_EVENTS_CAPABILITY = MCP_EXTENSION_SUPPORT.events.identifier
+
+export function resolveEventRevision(version?: string): McpEventsRevision {
+  return resolveGovernedDraftRevision('Events', version, {
+    current: MCP_EVENTS_REVISION,
+    superseded: Object.keys(MCP_EXTENSION_SUPPORT.events.historicalDrafts),
+    migration:
+      'Use Events version current with MCP 2026-07-28 and migrate the client to server/discover and subscriptions/listen.'
+  })
+}
+
 export const MCP_EVENT_SUBSCRIPTION_META_KEY = 'io.modelcontextprotocol/subscriptionId' as const
 
 export type McpEventDeliveryMode = 'poll' | 'push' | 'webhook'
@@ -51,6 +63,8 @@ export interface McpEventPollResult {
   events: McpEventOccurrence[]
   cursor: string | null
   truncated?: boolean
+  /** Fresh checkpoint before the first event of a truncated, replayable batch. */
+  replayStartCursor?: string
   hasMore?: boolean
   nextPollMs?: number
   /** Ends push and webhook subscriptions. Poll requests return this as an error. */
@@ -138,6 +152,7 @@ export interface McpWebhookSubscriptionRecord {
   createdAt: string
   updatedAt: string
   deliveryStatus?: McpWebhookDeliveryStatus
+  /** Persisted marker for rows from superseded drafts. Modern Events does not recover these rows. */
   variant?: string
 }
 
@@ -177,7 +192,11 @@ export interface McpEventWebhookOptions {
   allowPrivateAddresses?: boolean
   environment?: 'production' | 'development'
   allowlist?: (url: URL, context: McpInvocationContext) => boolean | Promise<boolean>
-  resolveAddresses?: (hostname: string) => Promise<readonly McpWebhookAddress[]>
+  /** Custom DNS resolvers receive an abort signal. One-argument callbacks remain supported. */
+  resolveAddresses?: (
+    hostname: string,
+    signal?: AbortSignal
+  ) => Promise<readonly McpWebhookAddress[]>
   verificationTtlMs?: number
   challengeTtlMs?: number
   challengeRateLimitMs?: number
@@ -193,6 +212,8 @@ export interface McpEventWebhookOptions {
 
 export interface McpEventsOptions {
   version?: 'current' | McpEventsRevision
+  /** Offer event descriptor change notifications on core subscriptions/listen. */
+  listChanged?: boolean
   authorization?: McpAuthorizationOptions
   provider?: McpEventProvider
   pagination?: McpPaginationOptions

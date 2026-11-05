@@ -211,7 +211,8 @@ export function modernResultMeta(options: NormalizedMcpPluginOptions): Record<st
     'io.modelcontextprotocol/serverInfo': {
       name: options.server.name,
       version: options.server.version,
-      ...(options.server.title ? { title: options.server.title } : {})
+      ...(options.server.title ? { title: options.server.title } : {}),
+      description: options.server.description
     }
   }
 }

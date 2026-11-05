@@ -17,8 +17,10 @@ The adapter does not discover or contact external interceptor services. Keep sec
 
 ## Current invocation contract
 
-`current` selects `faf1583a9c1b3d059043b191bd21fd44d65049a7`. The historical
-`b60459844cc95f2170297ebe1c84b7de8b752953` selector remains available.
+`current` selects `07c89a24879eb2231e2afb72942643ebc8dfe485`. Replace the superseded
+`faf1583a9c1b3d059043b191bd21fd44d65049a7` and `b60459844cc95f2170297ebe1c84b7de8b752953`
+selectors with `current`. The current draft keeps the same list and invocation messages and
+leaves chain orchestration with the invoker.
 Descriptor `version` and `description` are optional. Supplied `config` is validated against
 `configSchema` on each invocation. Omit `config` to use handler defaults; an explicit empty
 object still undergoes schema validation.

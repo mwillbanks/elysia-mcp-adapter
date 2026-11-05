@@ -52,6 +52,7 @@ export function assertEventPollResult(
   assertPollResultPage(result, limit)
   if (result.terminated !== undefined) assertTerminationError(result.terminated)
   for (const occurrence of result.events) assertEventOccurrence(definition, occurrence)
+  assertReplayStartCursor(result)
 }
 
 function assertPollResultPage(result: McpEventPollResult, limit: number): void {
@@ -64,6 +65,19 @@ function assertPollResultPage(result: McpEventPollResult, limit: number): void {
     (!Number.isSafeInteger(result.nextPollMs) || result.nextPollMs < 0)
   )
     throw new TypeError('Event provider returned an invalid nextPollMs')
+}
+
+function assertReplayStartCursor(result: McpEventPollResult): void {
+  if (!result.truncated || result.cursor === null || result.events.length === 0) return
+  const start = result.replayStartCursor
+  if (
+    typeof start !== 'string' ||
+    start.length === 0 ||
+    start === result.cursor ||
+    result.events.some((event) => event.cursor === start)
+  ) {
+    throw new TypeError('A truncated replay batch requires a cursor before its first event')
+  }
 }
 
 function assertPollResultFlags(result: McpEventPollResult): void {

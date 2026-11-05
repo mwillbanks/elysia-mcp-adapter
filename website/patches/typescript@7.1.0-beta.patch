@@ -1,29 +1,30 @@
 diff --git a/dist/api/syncChannel.js b/dist/api/syncChannel.js
-index 7b9cf99d6b052ca506d3b6c11f97911416c7949f..3e3c3309ccec7af906196d21ad856ab7478e04d4 100644
 --- a/dist/api/syncChannel.js
 +++ b/dist/api/syncChannel.js
-@@ -9,8 +9,10 @@
+@@ -9,9 +9,11 @@
   * directly on the pipe file descriptors obtained from the spawned
   * ChildProcess.
   */
 -import { spawn, } from "node:child_process";
--import { closeSync, openSync, readSync, writeSync, } from "node:fs";
 +import { spawn, spawnSync, } from "node:child_process";
+ import { randomBytes } from "node:crypto";
+-import { closeSync, openSync, readSync, writeSync, } from "node:fs";
 +import { closeSync, constants, mkdtempSync, openSync, readSync, rmSync, writeSync, } from "node:fs";
 +import { tmpdir } from "node:os";
 +import { join } from "node:path";
  import { binHeaderSize, MSGPACK_BIN16, MSGPACK_BIN32, MSGPACK_BIN8, MSGPACK_FIXARRAY3, MSGPACK_UINT8, writeBinHeader, } from "./node/msgpack.js";
  // ── MessageType constants ────────────────────────────────────────────
  // Sent by channel (parent → child)
-@@ -64,6 +66,7 @@ export class SyncRpcChannel {
+@@ -68,7 +70,8 @@ export class SyncRpcChannel {
      readFd;
      writeFd;
      pipeFd;
 +    ownedFds;
      callbacks = new Map();
+     callbackFailure;
      methodBufCache = new Map();
      // When true, the payload byte lengths of each request/response are recorded
-@@ -121,6 +124,51 @@ export class SyncRpcChannel {
+@@ -126,6 +129,51 @@ export class SyncRpcChannel {
              this.writeFd = fd;
              this.pipeFd = fd;
          }
@@ -75,7 +76,7 @@ index 7b9cf99d6b052ca506d3b6c11f97911416c7949f..3e3c3309ccec7af906196d21ad856ab7
          else {
              // POSIX: use stdio pipe file descriptors directly.
              this.child = spawn(exe, args, {
-@@ -180,6 +228,10 @@ export class SyncRpcChannel {
+@@ -188,6 +236,10 @@ export class SyncRpcChannel {
      close() {
          try {
              liveChildren.delete(this.child);

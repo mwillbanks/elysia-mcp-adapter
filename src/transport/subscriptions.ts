@@ -1,5 +1,6 @@
 import type { McpAuthorizationContext } from '../extensions/auth/index.js'
 import { missingRequiredScopes } from '../extensions/auth/index.js'
+import { reportInputRequestNotices } from '../extensions/specification-notices.js'
 import {
   type DetailedTask,
   TaskController,
@@ -18,13 +19,16 @@ import type {
 } from '../types.js'
 import { modernResultMeta } from './core.js'
 import { invocationContextBase, taskRequestContext } from './invocation-context.js'
+import { localizeTaskInputNotification } from './language-response.js'
 import {
   McpProtocolError,
   type McpRequestProtocolContext,
   resolveRequestProtocol
 } from './protocol.js'
 import { isRequestId } from './request-id.js'
+import { createSseCapacity } from './sse-capacity.js'
 import { isSameOrDescendantUri } from './subscription-publisher.js'
+import { pendingTaskInputRequests } from './task-input-requests.js'
 
 const JSON_RPC_VERSION = '2.0' as const
 export async function handleSubscription(
@@ -37,12 +41,7 @@ export async function handleSubscription(
   const params = isRecord(payload.params) ? payload.params : {}
   const notifications = isRecord(params.notifications) ? params.notifications : undefined
   const hasTaskFilter = Array.isArray(notifications?.taskIds)
-  const hasCoreFilter = Boolean(
-    notifications?.toolsListChanged ||
-    notifications?.promptsListChanged ||
-    notifications?.resourcesListChanged ||
-    Array.isArray(notifications?.resourceSubscriptions)
-  )
+  const hasCoreFilter = hasCoreSubscriptionFilter(notifications)
   if (hasTaskFilter && hasCoreFilter) {
     return handleMixedSubscription(app, payload, request, options, authorization)
   }
@@ -65,85 +64,105 @@ export async function handleSubscription(
     if (!options.core.subscriptions || !notifications) {
       throw new SubscriptionError(-32601, 'Core subscriptions are not configured', undefined, 404)
     }
-    const { accepted, abort, configured, iterator, unlinkIncomingAbort } =
-      await openCoreSubscription(
-        app,
-        request,
-        params,
-        notifications,
-        options,
-        protocol,
-        authorization
-      )
-    const subscriptionId = payload.id
-    const encoder = new TextEncoder()
-    let closed = false
-    const capacity = coreStreamCapacity()
-    let heartbeat: ReturnType<typeof setInterval> | undefined
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const send = (message: unknown) => {
-          if (!closed) controller.enqueue(encodeSseEvent(encoder, message))
-        }
-        send({
-          jsonrpc: JSON_RPC_VERSION,
-          method: 'notifications/subscriptions/acknowledged',
-          params: {
-            notifications: accepted,
-            _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-          }
-        })
-        heartbeat = setInterval(() => {
-          if (!closed && (controller.desiredSize ?? 0) > 0) {
-            controller.enqueue(encoder.encode(': heartbeat\n\n'))
-          }
-        }, configured.heartbeatMs)
-        const finish = (reason: string) => {
-          if (closed) return
-          send(subscriptionCancelled(subscriptionId, reason))
-          send(subscriptionComplete(subscriptionId, options))
-          closed = true
-          unlinkIncomingAbort()
-          if (heartbeat) clearInterval(heartbeat)
-          controller.close()
-        }
-        const consume = async () => {
-          for (;;) {
-            const next = await iterator.next()
-            if (next.done || closed) break
-            await capacity.wait(controller, abort.signal)
-            if (closed || abort.signal.aborted) break
-            if (!shouldDeliverCoreNotification(next.value, accepted, app, options, authorization)) {
-              continue
-            }
-            send(coreNotification(next.value, subscriptionId))
-          }
-        }
-        void consume()
-          .then(() => finish('Subscription ended by server'))
-          .catch(() => {
-            if (closed) return
-            finish('Subscription provider failed')
-            abort.abort('Subscription provider failed')
-            void safelyReturnIterator(iterator)
-          })
-      },
-      pull: capacity.wake,
-      cancel() {
-        closed = true
-        abort.abort('MCP subscription stream closed')
-        unlinkIncomingAbort()
-        if (heartbeat) clearInterval(heartbeat)
-        void safelyReturnIterator(iterator)
-      }
-    })
-    return sseResponse(body)
+    const subscription = await openCoreSubscription(
+      app,
+      request,
+      params,
+      notifications,
+      options,
+      protocol,
+      authorization
+    )
+    return coreSubscriptionResponse(app, payload.id, options, subscription, authorization)
   } catch (error) {
     return jsonResponse(
       normalizeDispatchError(errorIdForRequest(request, options, payload), error),
       errorStatus(error)
     )
   }
+}
+
+function hasCoreSubscriptionFilter(notifications: Record<string, unknown> | undefined): boolean {
+  if (!notifications) return false
+  return (
+    ['toolsListChanged', 'promptsListChanged', 'resourcesListChanged'].some((key) =>
+      Boolean(notifications[key])
+    ) ||
+    notifications.eventsListChanged === true ||
+    Array.isArray(notifications.resourceSubscriptions)
+  )
+}
+
+function coreSubscriptionResponse(
+  app: AnyElysiaApp,
+  subscriptionId: string | number,
+  options: NormalizedMcpPluginOptions,
+  subscription: Awaited<ReturnType<typeof openCoreSubscription>>,
+  authorization?: McpAuthorizationContext
+): Response {
+  const { accepted, abort, configured, iterator, unlinkIncomingAbort } = subscription
+  const encoder = new TextEncoder()
+  let closed = false
+  const capacity = createSseCapacity()
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (message: unknown) => {
+        if (!closed) controller.enqueue(encodeSseEvent(encoder, message))
+      }
+      send({
+        jsonrpc: JSON_RPC_VERSION,
+        method: 'notifications/subscriptions/acknowledged',
+        params: {
+          notifications: accepted,
+          _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
+        }
+      })
+      heartbeat = setInterval(() => {
+        if (!closed && (controller.desiredSize ?? 0) > 0) {
+          controller.enqueue(encoder.encode(': heartbeat\n\n'))
+        }
+      }, configured.heartbeatMs)
+      const finish = (reason: string) => {
+        if (closed) return
+        send(subscriptionCancelled(subscriptionId, reason))
+        send(subscriptionComplete(subscriptionId, options))
+        closed = true
+        unlinkIncomingAbort()
+        if (heartbeat) clearInterval(heartbeat)
+        controller.close()
+      }
+      const consume = async () => {
+        for (;;) {
+          const next = await iterator.next()
+          if (next.done || closed) break
+          await capacity.wait(controller, abort.signal)
+          if (closed || abort.signal.aborted) break
+          if (!shouldDeliverCoreNotification(next.value, accepted, app, options, authorization)) {
+            continue
+          }
+          send(coreNotification(next.value, subscriptionId))
+        }
+      }
+      void consume()
+        .then(() => finish('Subscription ended by server'))
+        .catch(() => {
+          if (closed) return
+          finish('Subscription provider failed')
+          abort.abort('Subscription provider failed')
+          void safelyReturnIterator(iterator)
+        })
+    },
+    pull: capacity.wake,
+    cancel() {
+      closed = true
+      abort.abort('MCP subscription stream closed')
+      unlinkIncomingAbort()
+      if (heartbeat) clearInterval(heartbeat)
+      void safelyReturnIterator(iterator)
+    }
+  })
+  return sseResponse(body)
 }
 
 function shouldDeliverCoreNotification(
@@ -156,7 +175,8 @@ function shouldDeliverCoreNotification(
   const flags: Record<string, boolean> = {
     'notifications/tools/list_changed': accepted.toolsListChanged === true,
     'notifications/prompts/list_changed': accepted.promptsListChanged === true,
-    'notifications/resources/list_changed': accepted.resourcesListChanged === true
+    'notifications/resources/list_changed': accepted.resourcesListChanged === true,
+    'notifications/events/list_changed': accepted.eventsListChanged === true
   }
   if (flags[notification.method] === true) return true
 
@@ -232,12 +252,29 @@ function acceptedCoreSubscriptionFilter(
       notifications.resourcesListChanged,
       configured.resourcesListChanged
     ),
+    eventsListChanged: acceptedChangeNotification(
+      notifications.eventsListChanged,
+      canSubscribeToEventChanges(options, authorization)
+    ),
     resourceSubscriptions: acceptedResources
   })
 }
 
+function canSubscribeToEventChanges(
+  options: NormalizedMcpPluginOptions,
+  authorization: McpAuthorizationContext | undefined
+): boolean {
+  const events = options.extensions.events
+  return Boolean(events?.listChanged && isAuthorized(events.authorization, authorization))
+}
+
 function validateCoreNotificationFilter(notifications: Record<string, unknown>): void {
-  for (const key of ['toolsListChanged', 'promptsListChanged', 'resourcesListChanged']) {
+  for (const key of [
+    'toolsListChanged',
+    'promptsListChanged',
+    'resourcesListChanged',
+    'eventsListChanged'
+  ]) {
     const value = notifications[key]
     if (value !== undefined && typeof value !== 'boolean') {
       throw new SubscriptionError(-32602, `${key} must be boolean`)
@@ -477,7 +514,7 @@ class MixedSubscriptionSession {
   readonly unlinkIncomingAbort: () => void
   private readonly encoder = new TextEncoder()
   private readonly queuedTasks: DetailedTask[] = []
-  private readonly coreCapacity = coreStreamCapacity()
+  private readonly coreCapacity = createSseCapacity()
   private acceptedTasks: Set<string> | undefined
   private controller: ReadableStreamDefaultController<Uint8Array> | undefined
   private tasks: TaskSubscription | undefined
@@ -556,12 +593,10 @@ class MixedSubscriptionSession {
       this.cancel()
       return
     }
-    deliverTask(
-      task,
-      this.controller,
-      this.queuedTasks,
-      (message) => this.event(message),
-      this.subscriptionId
+    deliverTask(task, this.controller, this.queuedTasks, (snapshot) =>
+      this.event(
+        taskNotification(snapshot, this.subscriptionId, this.context.protocol, this.options)
+      )
     )
   }
 
@@ -667,37 +702,21 @@ class MixedSubscriptionSession {
   }
 }
 
-function coreStreamCapacity() {
-  let resume: (() => void) | undefined
-  return {
-    async wait(
-      controller: ReadableStreamDefaultController<Uint8Array> | undefined,
-      signal: AbortSignal
-    ): Promise<void> {
-      while (controller && !signal.aborted && (controller.desiredSize ?? 0) <= 0) {
-        await new Promise<void>((resolve) => {
-          const wake = () => {
-            resume = undefined
-            signal.removeEventListener('abort', wake)
-            resolve()
-          }
-          resume = wake
-          signal.addEventListener('abort', wake, { once: true })
-        })
-      }
-    },
-    wake: () => resume?.()
-  }
-}
-
 function taskNotification(
   task: DetailedTask,
-  subscriptionId: string | number
+  subscriptionId: string | number,
+  protocol: McpRequestProtocolContext,
+  options: NormalizedMcpPluginOptions
 ): Record<string, unknown> {
+  const inputRequests = pendingTaskInputRequests(task)
+  reportInputRequestNotices(options.diagnostics.reportSpecificationNotice, inputRequests)
+  const params = { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId } }
   return {
     jsonrpc: JSON_RPC_VERSION,
     method: 'notifications/tasks',
-    params: { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId } }
+    params: inputRequests
+      ? localizeTaskInputNotification(params, protocol.language, options.core.language)
+      : params
   }
 }
 
@@ -990,12 +1009,15 @@ class TaskSubscriptionSession {
       void this.close()
       return
     }
-    deliverTask(
-      task,
-      this.controller,
-      this.queued,
-      (message) => this.event(message),
-      this.subscriptionId
+    deliverTask(task, this.controller, this.queued, (snapshot) =>
+      this.event(
+        taskNotification(
+          snapshot,
+          this.subscriptionId,
+          this.prepared.context.protocol,
+          this.options
+        )
+      )
     )
   }
 
@@ -1092,14 +1114,13 @@ function deliverTask(
   task: DetailedTask,
   controller: ReadableStreamDefaultController<Uint8Array> | undefined,
   queue: DetailedTask[],
-  event: (message: unknown) => Uint8Array,
-  subscriptionId: string | number
+  frame: (task: DetailedTask) => Uint8Array
 ): void {
   if (!controller) {
     queue.push(task)
     return
   }
-  controller.enqueue(event(taskNotification(task, subscriptionId)))
+  controller.enqueue(frame(task))
 }
 
 function rejectUnacceptedTask(

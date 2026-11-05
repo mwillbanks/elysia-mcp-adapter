@@ -11,6 +11,7 @@ export function ExtensionSupportTable() {
         <thead className="bg-fd-muted">
           <tr>
             <th className="p-3">Extension</th>
+            <th className="p-3">Upstream maturity</th>
             <th className="p-3">Current / draft</th>
             <th className="p-3">Pinned implementations</th>
           </tr>
@@ -23,6 +24,7 @@ export function ExtensionSupportTable() {
                 <br />
                 <code>{row.identifier}</code>
               </td>
+              <td className="p-3">{row.maturity}</td>
               <td className="p-3">
                 <code>{row.current}</code>
                 <br />

@@ -1,7 +1,14 @@
 import { isRecord } from '../../internal.js'
 import { validateJsonSchema } from '../../schema/validate.js'
+import { assertRemoteExtensions } from './remote-extensions.js'
 import serverCardSchema from './schema.json' with { type: 'json' }
-import { MCP_SERVER_CARD_REVISION, type McpServerCard, type McpServerCardOptions } from './types.js'
+import {
+  MCP_SERVER_CARD_DRAFT_REVISION,
+  MCP_SERVER_CARD_REVISION,
+  type McpServerCard,
+  type McpServerCardOptions,
+  type McpServerCardRevision
+} from './types.js'
 
 const RANGE = /^(?:\^|~|>=?|<=?|=)|(?:^|\.)[xX*](?:\.|$)|\s+-\s+/u
 const SERVER_CARD_SCHEMA = Object.freeze({ ...serverCardSchema, $ref: '#/$defs/ServerCard' })
@@ -9,34 +16,43 @@ const SERVER_CARD_SCHEMA = Object.freeze({ ...serverCardSchema, $ref: '#/$defs/S
 export function normalizeServerCardOptions(
   options: McpServerCardOptions
 ): Required<McpServerCardOptions> {
-  if (
-    options.version !== undefined &&
-    options.version !== 'current' &&
-    options.version !== MCP_SERVER_CARD_REVISION
-  ) {
-    throw new TypeError(`Unsupported server-card revision: ${options.version}`)
-  }
-  assertServerCard(options.card, options.environment ?? 'production')
+  const version = resolveServerCardRevision(options.version)
+  const card = structuredClone(options.card)
+  assertServerCard(card, options.environment ?? 'production', version)
   const maxAgeSeconds = options.maxAgeSeconds ?? 3600
   if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
     throw new TypeError('Server-card maxAgeSeconds must be a non-negative integer')
   }
   return {
-    version: MCP_SERVER_CARD_REVISION,
-    card: structuredClone(options.card),
+    version,
+    card,
     maxAgeSeconds,
     environment: options.environment ?? 'production'
   }
 }
 
+function resolveServerCardRevision(
+  selector: McpServerCardOptions['version']
+): McpServerCardRevision {
+  if (selector === undefined || selector === 'current') return MCP_SERVER_CARD_REVISION
+  if (selector === MCP_SERVER_CARD_REVISION || selector === MCP_SERVER_CARD_DRAFT_REVISION) {
+    return selector
+  }
+  throw new TypeError(
+    'Unsupported server-card revision. Select "current" for the approved contract.'
+  )
+}
+
 export function assertServerCard(
   card: unknown,
-  environment: 'production' | 'development'
+  environment: 'production' | 'development',
+  revision: McpServerCardRevision = MCP_SERVER_CARD_REVISION
 ): asserts card is McpServerCard {
   if (!isRecord(card)) throw new TypeError('Server card must be an object')
   assertServerCardSchema(card)
   const validated = card as unknown as McpServerCard
   assertAllowedServerCardFields(card)
+  assertRemoteExtensions(validated.remotes, revision)
   assertString(validated.version, 'version', 0, 255)
   if (RANGE.test(validated.version))
     throw new TypeError('Server card version must be an exact string, not a range')

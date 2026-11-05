@@ -58,7 +58,7 @@ describe('extension numeric options', () => {
     const provider = { durability: 'durable' } as never
     const normalizeEvents = (events: Record<string, unknown>) =>
       normalizeOptions({
-        transport: { protocolVersions: ['2025-11-25'] },
+        transport: { protocolVersions: ['2026-07-28'] },
         extensions: { events: { cursor, ...events } }
       })
 

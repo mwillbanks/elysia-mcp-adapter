@@ -1,6 +1,35 @@
-import type { McpProtectedResourceMetadata, McpProtectedResourceMetadataOptions } from './types.js'
+import type { NormalizedMcpDpopOptions } from './dpop-options.js'
+import { MCP_DPOP_SIGNING_ALGORITHMS } from './dpop.js'
+import type {
+  McpAuthOptions,
+  McpProtectedResourceMetadata,
+  McpProtectedResourceMetadataOptions
+} from './types.js'
 
 const WELL_KNOWN_PROTECTED_RESOURCE = '/.well-known/oauth-protected-resource'
+
+/** Build discovery metadata from the same policy that guards the MCP endpoint. */
+export function buildAdapterProtectedResourceMetadata(
+  auth: Omit<McpAuthOptions, 'dpop'> & { dpop?: NormalizedMcpDpopOptions }
+): McpProtectedResourceMetadata {
+  const { resource, authorizationServers, metadata, scopes, dpop } = auth
+  if (dpop && new URL(resource).protocol !== 'https:') {
+    throw new TypeError('DPoP protected resource identifiers must use HTTPS')
+  }
+  const additionalMetadata = { ...metadata?.additionalMetadata }
+  delete additionalMetadata.dpop_signing_alg_values_supported
+  delete additionalMetadata.dpop_bound_access_tokens_required
+  return buildProtectedResourceMetadata({
+    ...metadata,
+    resource,
+    authorizationServers,
+    additionalMetadata,
+    scopesSupported: metadata?.scopesSupported ?? scopes,
+    bearerMethodsSupported: dpop?.required ? [] : (metadata?.bearerMethodsSupported ?? ['header']),
+    dpopSigningAlgValuesSupported: dpop ? MCP_DPOP_SIGNING_ALGORITHMS : undefined,
+    dpopBoundAccessTokensRequired: dpop?.required
+  })
+}
 
 function resourceUrl(resource: string | URL): URL {
   const url = new URL(resource)
