@@ -34,15 +34,64 @@ describe('subprocess Tasks server', () => {
       result: { structuredContent: { value: 'from-mcp' } }
     })
   })
+
+  test('persists approval across worker and provider reconstruction', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'elysia-subprocess-approval-'))
+    const databasePath = join(directory, 'tasks.sqlite')
+    try {
+      let taskId: string
+      {
+        await using provider = new SqliteSubprocessTaskProvider(databasePath)
+        const app = createSubprocessTaskApp(provider)
+        const created = await modernRpc(app, 'tools/call', {
+          name: 'tasks.run',
+          arguments: { body: { value: 'approved', delayMs: 0, requireApproval: true } }
+        })
+        taskId = created.result.taskId as string
+        await provider.children.get(taskId)?.exited
+        const paused = await modernRpc(app, 'tasks/get', { taskId })
+        expect(paused.result).toMatchObject({
+          status: 'input_required',
+          statusMessage: 'Waiting for approval',
+          inputRequests: { approval: { method: 'elicitation/create' } }
+        })
+      }
+      {
+        await using provider = new SqliteSubprocessTaskProvider(databasePath)
+        const app = createSubprocessTaskApp(provider)
+        const updated = await modernRpc(app, 'tasks/update', {
+          taskId,
+          inputResponses: { approval: { action: 'accept', content: { approved: true } } }
+        })
+        expect(updated.result.resultType).toBe('complete')
+        await provider.children.get(taskId)?.exited
+        const finished = await modernRpc(app, 'tasks/get', { taskId })
+        expect(finished.result).toMatchObject({
+          status: 'completed',
+          statusMessage: 'Approval answered',
+          result: { structuredContent: { value: 'approved' } }
+        })
+        const answers = provider.database.query(
+          'SELECT response FROM task_input_requests WHERE task_id = ?'
+        )
+        expect(answers.all(taskId)).toHaveLength(1)
+        provider.database.query('DELETE FROM tasks WHERE task_id = ?').run(taskId)
+        expect(answers.all(taskId)).toHaveLength(0)
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
 })
 
 const tasksCapability = {
-  extensions: { 'io.modelcontextprotocol/tasks': {} }
+  extensions: { 'io.modelcontextprotocol/tasks': {} },
+  elicitation: { form: {} }
 }
 
 async function modernRpc(
   app: ReturnType<typeof createSubprocessTaskApp>,
-  method: 'tools/call' | 'tasks/get',
+  method: 'tools/call' | 'tasks/get' | 'tasks/update',
   params: Record<string, unknown>
 ) {
   const name = method === 'tools/call' ? params.name : params.taskId

@@ -1,0 +1,138 @@
+---
+title: Messaging and Input
+description: Choose the right channel for progress, client input, durable work, and MCP Apps.
+---
+
+| Use case                         | API                                                      | Where the update goes                                                                     |
+| -------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Show progress during a call      | `context.notify.progress(value, { total, message })`     | The original HTTP response stream, when the client sends a progress token                 |
+| Send a compatibility log message | `context.notify.message(data, { level, logger })`        | The original response stream, if both peers opt in                                        |
+| Ask the client for input         | `return context.input.require(requests)`                 | The final result of the current request; the client retries                               |
+| Report durable task status       | `await execution.notify.status(message)`                 | The task snapshot, available to polling clients and task subscribers                      |
+| Ask for input during a task      | `await execution.input.request(key, request)`            | The task snapshot; the client answers through `tasks/update`                              |
+| Tell listeners about changes     | `publisher.resourceUpdated(uri)` or a list-change method | An authorized `subscriptions/listen` stream                                               |
+| Deliver domain events            | Events provider                                          | The selected experimental Events profile: replay polling, event SSE, or verified webhooks |
+| Send a message from an App view  | Apps SDK host bridge                                     | The host conversation, if the host supports it                                            |
+
+## Live calls
+
+Native tools, resource readers, and prompts receive `notify`. Route-backed handlers can get
+the same context with `getMcpInvocationContext(request)`. Ordinary HTTP calls have no MCP context.
+
+```ts
+app.get(
+  "/index",
+  ({ request }) => {
+    const notify = getMcpInvocationContext(request)?.notify;
+    notify?.progress(1, { total: 2, message: "Scanning" });
+    notify?.message("Index scan complete", { logger: "indexer" });
+    notify?.progress(2, { total: 2, message: "Done" });
+    return "indexed";
+  },
+  { mcp: { name: "index" } },
+);
+```
+
+Send finite, strictly increasing progress values. Use the progress message for concise,
+user-facing status. A client that does not request a channel still receives the final result.
+If a client disconnects, stop work through `context.signal`. The adapter stops sending and
+bounds queued notifications to 128 frames and 64 KiB per response. The final response does not
+count toward that budget.
+
+`notifications/message` is deprecated. Set `core.logging: true` for compatible modern clients
+that send `io.modelcontextprotocol/logLevel` in request metadata. The default message level is
+`info`; the adapter sends only messages at or above the requested level. Never include secrets
+or sensitive data. Use application logging or telemetry for operational diagnostics.
+
+## Request input and resume
+
+Build requests with `mcpInput.form()`, `mcpInput.url()`, `mcpInput.sampling()`, or
+`mcpInput.roots()`. Use `context.input.supports(request)` to select a fallback for clients
+without the necessary capability.
+
+```ts
+const approval = mcpInput.form({
+  message: "Run the index?",
+  requestedSchema: {
+    type: "object",
+    properties: { approved: { type: "boolean" } },
+    required: ["approved"],
+  },
+});
+
+app.mcpTool("run-index", (_, { input }) => {
+  if (!input.supports(approval)) return "Approval is unavailable.";
+  const answer = input.response("approval", approval);
+  if (!answer) return input.require({ approval });
+  if (answer.action !== "accept" || answer.content?.approved !== true) {
+    return "Indexing was skipped.";
+  }
+  return runIndex();
+});
+```
+
+Request only the missing answers on a retry. The adapter validates known answers against the
+request kind and any form schema. Treat answers as untrusted data, including roots and sampling
+results. Sampling and roots are deprecated. With URL elicitation, verify the out-of-band
+operation on your server before proceeding; host acceptance alone does not prove completion.
+Keep secrets out of form inputs and state.
+
+If a round needs state, pass `{ state: opaqueReference }` to `input.require` and configure
+`core.continuation.signingKey`. The client echoes the protected state unchanged on a new
+request; the handler reads `context.requestState`. Signing protects integrity and does not
+hide the contents. Use opaque references for sensitive data and a shared, single-use provider
+for state that authorizes a one-time action.
+
+## Durable tasks and subscriptions
+
+Use an explicit tool's `beforeTask` hook to request input before enqueueing. The hook runs only
+when the call will create a task, after authorization and tool argument validation. For a
+synchronous fallback, handle input in the tool itself.
+
+Use `createMcpTaskExecutionContext` inside a worker with the task ID, its original provider
+context, and provider callbacks. Persist `notify.status` through the provider's
+`setStatusMessage` callback and record `input.request` through its `requestInput` callback.
+The helper checks each request against the capabilities retained with the originating task.
+Recreate that context from the provider's durable owner context after a worker restart. Resume
+only when the provider has accepted the necessary answers. The client continues polling or
+watching task snapshots. The worker does not need the original HTTP stream. Direct calls to the
+raw task controller have no originating client; they retain the legacy request contract, while
+modern wire calls enforce the client's declared capabilities.
+
+```ts
+const publisher = createMcpSubscriptionPublisher();
+const plugin = mcp({
+  core: {
+    subscriptions: { provider: publisher.provider, resources: true, promptsListChanged: true },
+  },
+});
+
+// Publish after the resource update commits.
+publisher.resourceUpdated("docs:///release-notes");
+```
+
+The local publisher coalesces pending updates and disconnects slow listeners on overflow.
+Clients resubscribe and refetch. For several replicas, use a shared provider to deliver changes
+across processes. The adapter still checks the subscription filter and resource authorization.
+
+## Apps and companion prompts
+
+Use the Apps SDK host bridge to call tools, send chat messages, or update model context from the
+view. Host capabilities govern delivery. Tool progress and task snapshots do not automatically
+appear in the iframe.
+
+```ts
+app.mcpTool("open-board", openBoard, {
+  app: { resourceUri: "ui://board/index.html" },
+  prompt: {
+    name: "board",
+    title: "Open my board",
+    render: (_, { toolName }) => `Open my board by calling the ${toolName} tool.`,
+  },
+});
+```
+
+A companion prompt appears in `prompts/list` for callers who can see the tool. The host may
+show it as a slash command. Fetching the prompt renders messages; the tool runs only through
+a normal tool call. Use `.mcpPrompt()` for independent prompts. App-only tools cannot register
+companion prompts. Register route tools at startup.

@@ -1,4 +1,5 @@
 import type { McpElicitationResult, McpRootsResult, McpSamplingResult } from '../../types.js'
+import type { McpTaskExecutionContext } from './execution-context.js'
 
 export const TASKS_EXTENSION_ID = 'io.modelcontextprotocol/tasks' as const
 
@@ -161,7 +162,8 @@ export interface TaskRequestContext {
 }
 
 export type TaskInvoke<TResult extends Record<string, unknown> = Record<string, unknown>> = (
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  taskExecution?: McpTaskExecutionContext
 ) => Promise<TResult>
 
 export interface TaskExecutionScheduler<
@@ -255,6 +257,15 @@ export interface TaskProvider {
     taskId: string,
     key: string,
     request: TaskInputRequest,
+    context: TaskProviderContext
+  ): Promise<boolean | undefined>
+  /**
+   * Atomically update an owned, nonterminal task's status message. Polling and
+   * subscriptions must observe the resulting snapshot.
+   */
+  setStatusMessage?(
+    taskId: string,
+    message: string,
     context: TaskProviderContext
   ): Promise<boolean | undefined>
   cancel(taskId: string, context: TaskProviderContext): Promise<boolean | undefined>

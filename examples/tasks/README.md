@@ -4,15 +4,11 @@ This independent Bun package demonstrates two production-shaped implementations 
 `TaskProvider` contract. Both store only the serial-safe execution descriptor and keep the injected
 execution scheduler ephemeral.
 
-Both providers persist MRTR request keys and partial responses, expose pending requests through
-`input_required`, and reject lifetime key reuse. Unknown, answered, and superseded response keys
-are acknowledged without changing stored responses. Recognized responses are validated against
-their elicitation, sampling, or roots request. They intentionally stop there: the adapter's
-`TaskExecutionScheduler` accepts only an abort signal, so safely resuming application work requires
-an application-defined checkpoint/continuation format that consumes the persisted responses. These
-examples never replay an executor after input, because replay can duplicate side effects. A zero TTL
-still permits the required initial durable read, then expires the record and removes any queued or
-process-local scheduling state.
+Both providers persist task input keys and partial responses, expose pending requests through
+`input_required`, and reject lifetime key reuse. Unknown, answered, and superseded keys leave
+stored responses unchanged. The provider validates recognized answers against each request.
+Resume work from an application-defined checkpoint to avoid repeating side effects. A zero TTL
+permits the initial durable read, then expires the task and removes its scheduling state.
 
 ## Subprocess + SQLite
 
@@ -29,6 +25,17 @@ overwritten or gain late input records.
 Tasks extension and registers `tasks.run` as a required task tool. Its end-to-end test creates the
 task with a modern `tools/call` request and polls `tasks/get` with request-scoped Tasks capability
 metadata until the child-produced MCP result is complete.
+
+To pause for approval, set `arguments.body.requireApproval` to `true` in `tools/call` and declare
+form elicitation. The worker binds `createMcpTaskExecutionContext` to the stored task and owner.
+It records `notify.status('Waiting for approval')` and `input.request('approval', request)`, then
+exits. Read the request and status with `tasks/get` or subscribe to task snapshots. Send the answer
+under `tasks/update.params.inputResponses.approval`, for example
+`{ "action": "accept", "content": { "approved": true } }`.
+
+Once the final answer is stored, the provider starts another worker. That worker reads the stored
+answer before calling the tool through Elysia. A provider reopened while the task waits can perform
+the same resume. The integration test waits for each child to exit and exercises both processes.
 
 ## BullMQ + Redis
 

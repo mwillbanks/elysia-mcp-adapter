@@ -1196,7 +1196,7 @@ describe('modern core utilities', () => {
     expect(text).toContain('"resultType":"complete"')
   })
 
-  test('rejects neighboring, cross-authority, and unauthorized resource updates', async () => {
+  test('rejects out-of-filter updates and silently skips protected descendants', async () => {
     for (const updatedUri of ['file:///ab', 'file://other/a/child', 'file:///a/private']) {
       async function* notifications(): AsyncGenerator<McpServerNotification> {
         yield { method: 'notifications/resources/updated', params: { uri: updatedUri } }
@@ -1223,7 +1223,11 @@ describe('modern core utilities', () => {
       const text = await response.text()
       expect(text).not.toContain(`"uri":"${updatedUri}"`)
       expect(text).toContain('notifications/cancelled')
-      expect(text).toContain('Subscription provider failed')
+      expect(text).toContain(
+        updatedUri === 'file:///a/private'
+          ? 'Subscription ended by server'
+          : 'Subscription provider failed'
+      )
     }
   })
 

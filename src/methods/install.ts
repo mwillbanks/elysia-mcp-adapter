@@ -16,13 +16,22 @@ import {
   type McpSkillRegistrationOptions,
   snapshotSkillRegistration
 } from '../extensions/skills/index.js'
-import { ensureMcpState, invalidateRegistry } from '../state.js'
+import { getMcpRegistry } from '../registry.js'
+import {
+  ensureMcpState,
+  hasRegistryChangeListeners,
+  invalidateRegistry,
+  notifyRegistryChange
+} from '../state.js'
 import type {
   AnyElysiaApp,
+  McpAuthorizationOptions,
+  McpPromptDefinition,
   McpPromptHandler,
   McpPromptOptions,
   McpResourceHandler,
   McpResourceOptions,
+  McpRegistry,
   McpToolHandler,
   McpToolOptions
 } from '../types.js'
@@ -39,11 +48,12 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
         this: AnyElysiaApp,
         name: string,
         handler: McpToolHandler<any>,
-        options: McpToolOptions = {}
+        options: McpToolOptions<any> = {}
       ) {
-        const state = ensureMcpState(this)
-        state.explicitTools.set(name, { name, handler, options })
+        const before = hasRegistryChangeListeners(this) ? readRegistrySnapshot(this) : undefined
+        ensureMcpState(this).explicitTools.set(name, { name, handler, options })
         invalidateRegistry(this, 'tools')
+        if (before) notifyCompanionChanges(this, before)
         return this
       }
     })
@@ -155,6 +165,51 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
   }
 
   return app
+}
+
+function readRegistrySnapshot(app: AnyElysiaApp): McpRegistry | undefined {
+  try {
+    return getMcpRegistry(app)
+  } catch {
+    // Keep registry validation on discovery when a registration is invalid.
+    return undefined
+  }
+}
+
+function notifyCompanionChanges(app: AnyElysiaApp, before: McpRegistry): void {
+  const after = readRegistrySnapshot(app)
+  if (!after) return
+  const scopes = changedCompanionScopes(before, after)
+  if (scopes.length > 0) notifyRegistryChange(app, 'prompts', [...new Set(scopes)])
+}
+
+function changedCompanionScopes(
+  previous: McpRegistry,
+  current: McpRegistry
+): (McpAuthorizationOptions | undefined)[] {
+  const changed: (McpAuthorizationOptions | undefined)[] = []
+  for (const [registry, other] of [
+    [previous, current],
+    [current, previous]
+  ] as const) {
+    for (const [name, prompt] of registry.prompts) {
+      const link = prompt.linkedToolName
+      if (link && companionChanged(prompt, other.prompts.get(name))) {
+        changed.push(prompt.authorization)
+      } else if (link && other.tools.get(link)?.prompt !== registry.tools.get(link)?.prompt) {
+        changed.push(prompt.authorization)
+      }
+    }
+  }
+  return changed
+}
+
+function companionChanged(current: McpPromptDefinition, previous?: McpPromptDefinition): boolean {
+  return (
+    previous?.linkedToolName !== current.linkedToolName ||
+    previous?.authorization !== current.authorization ||
+    previous?.source !== current.source
+  )
 }
 
 interface McpMethodRuntime {

@@ -47,12 +47,15 @@ import {
 import { MCP_SERVER_VARIANT_META_KEY, type McpServerVariant } from '../extensions/variants/index.js'
 import { isRecord } from '../internal.js'
 import { findResourceReader, getMcpRegistry } from '../registry.js'
+import { createValidationToolError } from '../invoke/marshal-response.js'
+import { validateJsonSchema } from '../schema/validate.js'
 import { ensureMcpState } from '../state.js'
 import type {
   AnyElysiaApp,
   JsonRpcRequest,
   JsonRpcResponse,
   McpAuthorizationOptions,
+  McpHandlerContext,
   McpInvocationContext,
   McpPromptDefinition,
   McpResourceDefinition,
@@ -74,9 +77,14 @@ import {
   modernDiscoverResult
 } from './discovery.js'
 import { exceedsInputElementLimit } from './input-limits.js'
-import { invocationContextBase } from './invocation-context.js'
+import { invocationContextBase, taskRequestContext } from './invocation-context.js'
 import { handleLegacyAuxiliaryMethod, type LegacySessionRuntime } from './legacy-sessions.js'
 import { assertMirroredToolHeaders, assertValidMirroredHeaderSchema } from './mirrored-headers.js'
+import {
+  notificationBody,
+  type RequestNotificationChannels,
+  silentNotify
+} from './notifications.js'
 import { isOriginAllowed } from './origin-policy.js'
 import {
   McpProtocolError,
@@ -92,7 +100,7 @@ import {
   readSkillResource,
   type SkillRequestRuntime
 } from './skill-requests.js'
-import { handleSubscription, linkAbortSignal, sseResponse } from './subscriptions.js'
+import { handleSubscription, sseResponse } from './subscriptions.js'
 import {
   resolveActiveVariant,
   type VariantSelectionRuntime,
@@ -111,6 +119,7 @@ interface DispatchContext {
   protocol: McpRequestProtocolContext
   authorization?: McpAuthorizationContext
   signal?: AbortSignal
+  notify?: McpInvocationContext['notify']
   reportProgress?: McpInvocationContext['reportProgress']
   activeVariant?: McpServerVariant
   sessionId?: string
@@ -236,14 +245,11 @@ async function handlePostPayload(
       authorization
     )
   }
-  if (isProgressRequest(payload)) {
-    return handleProgressRequest(
-      app,
-      payload as unknown as JsonRpcRequest,
-      request,
-      options,
-      authorization
-    )
+  if (isJsonRpcRequest(payload) && isRequestId(payload.id)) {
+    const channels = requestNotificationChannels(payload, request, options)
+    if (channels) {
+      return handleNotificationRequest(app, payload, request, options, channels, authorization)
+    }
   }
   const outcome = await handleJsonRpcMessage(app, payload, request, options, authorization)
   return outcomeResponse(outcome, request, options)
@@ -418,7 +424,7 @@ async function handleJsonRpcMessage(
   request: Request,
   options: NormalizedMcpPluginOptions,
   authorization?: McpAuthorizationContext,
-  overrides: Pick<DispatchContext, 'signal' | 'reportProgress'> = {}
+  overrides: Pick<DispatchContext, 'signal' | 'notify' | 'reportProgress'> = {}
 ): Promise<RpcOutcome> {
   const validation = validateJsonRpcMessage(payload, request, options)
   if ('outcome' in validation) return validation.outcome
@@ -463,7 +469,7 @@ async function executeJsonRpcMessage(
   request: Request,
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined,
-  overrides: Pick<DispatchContext, 'signal' | 'reportProgress'>
+  overrides: Pick<DispatchContext, 'signal' | 'notify' | 'reportProgress'>
 ): Promise<RpcOutcome> {
   const id = payload.id ?? null
   const errorId = errorIdForRequest(request, options, payload)
@@ -900,8 +906,9 @@ async function callTool(
   const args = 'arguments' in params ? params.arguments : {}
   assertToolInputElementLimit(args, options)
   const invocation = await invocationContext(request, 'tools/call', params, context, options)
-  const taskDecision = toolTaskDecision(tool, params, context, options)
-  if (!taskDecision) return invokeToolWithinInputLimit(tool, args, invocation, options)
+  if (!toolTaskDecision(tool, params, context, options)) {
+    return invokeToolWithinInputLimit(tool, args, invocation, options)
+  }
   return createToolTask(tool, args, invocation, params, request, context, options)
 }
 
@@ -936,8 +943,7 @@ function taskExecutionRequest(
   request: Request,
   signal: AbortSignal | undefined
 ): { request: Request; signal: AbortSignal } {
-  const executionSignal = signal ?? request.signal
-  if (executionSignal === request.signal) return { request, signal: executionSignal }
+  const executionSignal = signal ?? new AbortController().signal
   return {
     request: new Request(request.url, {
       method: request.method,
@@ -948,10 +954,30 @@ function taskExecutionRequest(
   }
 }
 
+async function checkTaskPreflight(
+  tool: McpToolDefinition,
+  args: unknown,
+  invocation: McpHandlerContext
+) {
+  const validation = validateJsonSchema(tool.inputSchema, args ?? {})
+  if (!validation.ok) return createValidationToolError(validation.issues)
+  const preflight = await tool.beforeTask?.(args ?? {}, invocation)
+  if (preflight !== undefined) {
+    if (!isInputRequiredResult(preflight)) {
+      throw new McpProtocolError(
+        -32603,
+        'beforeTask must return an input-required result or nothing'
+      )
+    }
+    return preflight
+  }
+  invocation.signal?.throwIfAborted()
+}
+
 async function createToolTask(
   tool: McpToolDefinition,
   args: unknown,
-  invocation: McpInvocationContext,
+  invocation: McpHandlerContext,
   params: Record<string, unknown>,
   request: Request,
   context: DispatchContext,
@@ -959,6 +985,8 @@ async function createToolTask(
 ): Promise<unknown> {
   const tasks = options.extensions.tasks
   if (!tasks) throw new JsonRpcError(-32601, 'Tasks extension is not enabled', undefined, 404)
+  const preflight = await checkTaskPreflight(tool, args, invocation)
+  if (preflight !== undefined) return preflight
   const controller = taskController(options)
   invocation.task = controller
   setTaskController(request, controller)
@@ -970,8 +998,8 @@ async function createToolTask(
       execution: {
         method: 'tools/call',
         params,
-        invoke: async (signal) => {
-          const execution = taskExecutionRequest(request, signal)
+        invoke: async (signal, taskExecution) => {
+          const execution = taskExecutionRequest(request, signal ?? taskExecution?.signal)
           setTaskController(execution.request, controller)
           return (await invokeToolWithinInputLimit(
             tool,
@@ -980,7 +1008,10 @@ async function createToolTask(
               ...invocation,
               request: execution.request,
               signal: execution.signal,
-              task: controller
+              notify: silentNotify,
+              reportProgress: undefined,
+              task: controller,
+              taskExecution
             },
             options
           )) as unknown as Record<string, unknown>
@@ -1004,7 +1035,7 @@ function assertToolInputElementLimit(args: unknown, options: NormalizedMcpPlugin
 function invokeToolWithinInputLimit(
   tool: McpToolDefinition,
   args: unknown,
-  invocation: McpInvocationContext,
+  invocation: McpHandlerContext,
   options: NormalizedMcpPluginOptions
 ): Promise<unknown> {
   assertToolInputElementLimit(args, options)
@@ -1117,7 +1148,7 @@ function listPrompts(
   context: DispatchContext
 ): Record<string, unknown> {
   const prompts = Array.from(getMcpRegistry(app, options).prompts.values())
-    .filter((prompt) => variantAllows(context.activeVariant, 'prompts', prompt.name))
+    .filter((prompt) => variantAllowsPrompt(prompt, context.activeVariant))
     .filter((prompt) => isAuthorized(prompt.authorization, context.authorization))
     .map(serializePrompt)
   return paginate('prompts/list', 'prompts', prompts, params, request, context, options)
@@ -1133,7 +1164,7 @@ async function getPrompt(
   const name = params.name
   if (typeof name !== 'string') throw new JsonRpcError(-32602, 'Missing prompt name')
   const prompt = getMcpRegistry(app, options).prompts.get(name)
-  if (!prompt || !variantAllows(context.activeVariant, 'prompts', name)) {
+  if (!prompt || !variantAllowsPrompt(prompt, context.activeVariant)) {
     throw variantUnknown(`Invalid prompt name: ${name}`, context)
   }
   enforceAuthorization(prompt.authorization, context.authorization, options)
@@ -1154,7 +1185,7 @@ async function completeArgument(
   const { ref, argument } = completionInput(params)
   const target = completionTarget(app, ref, options)
   if (!target?.complete) throw new JsonRpcError(-32602, 'Completion target is unavailable')
-  assertCompletionVariant(ref, context)
+  assertCompletionVariant(ref, target, context)
   enforceAuthorization(target.authorization, context.authorization, options)
   const completion = await target.complete(
     {
@@ -1199,9 +1230,25 @@ function completionTarget(
   return undefined
 }
 
-function assertCompletionVariant(ref: Record<string, unknown>, context: DispatchContext): void {
+function variantAllowsPrompt(
+  prompt: McpPromptDefinition,
+  variant: McpServerVariant | undefined
+): boolean {
+  return (
+    variantAllows(variant, 'prompts', prompt.name) &&
+    (prompt.linkedToolName === undefined || variantAllows(variant, 'tools', prompt.linkedToolName))
+  )
+}
+
+function assertCompletionVariant(
+  ref: Record<string, unknown>,
+  target: McpPromptDefinition | McpResourceTemplateDefinition,
+  context: DispatchContext
+): void {
   const promptDenied =
-    ref.type === 'ref/prompt' && !variantAllows(context.activeVariant, 'prompts', String(ref.name))
+    ref.type === 'ref/prompt' &&
+    !('uriTemplate' in target) &&
+    !variantAllowsPrompt(target, context.activeVariant)
   const resourceDenied =
     ref.type === 'ref/resource' &&
     !variantAllows(context.activeVariant, 'resources', String(ref.uri))
@@ -1402,14 +1449,9 @@ async function invocationContext(
   params: Record<string, unknown>,
   context: DispatchContext,
   options: NormalizedMcpPluginOptions
-): Promise<McpInvocationContext> {
-  return {
-    request,
-    signal: context.signal ?? request.signal,
-    meta: isRecord(params._meta) ? params._meta : undefined,
-    protocolVersion: context.protocol.version,
-    clientCapabilities: context.protocol.clientCapabilities,
-    clientInfo: context.protocol.clientInfo,
+): Promise<McpHandlerContext> {
+  return invocationContextBase(request, params, {
+    ...context,
     inputResponses: parseInputResponses(params),
     requestState: await resolveRequestState(
       request,
@@ -1419,9 +1461,8 @@ async function invocationContext(
       context.authorization,
       options
     ),
-    reportProgress: context.reportProgress,
-    authorization: context.authorization
-  }
+    signedState: options.core.continuation !== undefined
+  })
 }
 
 function taskController(options: NormalizedMcpPluginOptions): TaskController {
@@ -1458,26 +1499,6 @@ function paramsMethod(
   throw new JsonRpcError(-32601, `Method not found: ${method}`, undefined, 404)
 }
 
-function taskRequestContext(
-  request: Request,
-  params: Record<string, unknown>,
-  context: DispatchContext
-) {
-  const principal = context.authorization?.principal
-  return {
-    request,
-    signal: context.signal ?? request.signal,
-    meta: isRecord(params._meta) ? params._meta : undefined,
-    principalKey: principal
-      ? JSON.stringify([
-          principal.issuer ?? null,
-          principal.subject ?? null,
-          principal.clientId ?? null
-        ])
-      : undefined
-  }
-}
-
 function assertModernTasks(context: DispatchContext, options: NormalizedMcpPluginOptions): void {
   if (!context.protocol.modern) {
     throw new JsonRpcError(-32601, 'Tasks require MCP 2026-07-28', undefined, 404)
@@ -1487,86 +1508,61 @@ function assertModernTasks(context: DispatchContext, options: NormalizedMcpPlugi
   }
 }
 
-function isProgressRequest(payload: unknown): boolean {
-  if (!isRecord(payload) || !isRecord(payload.params) || !isRecord(payload.params._meta))
-    return false
-  if (
-    payload.params._meta['io.modelcontextprotocol/protocolVersion'] !==
-    MCP_EXTENSION_SUPPORT.protocol.current
-  ) {
-    return false
+function requestNotificationChannels(
+  payload: JsonRpcRequest,
+  request: Request,
+  options: NormalizedMcpPluginOptions
+): RequestNotificationChannels | undefined {
+  if (request.headers.get('mcp-protocol-version') !== MCP_EXTENSION_SUPPORT.protocol.current) {
+    return undefined
   }
-  const token = payload.params._meta.progressToken
-  return typeof token === 'string' || (typeof token === 'number' && Number.isSafeInteger(token))
+  try {
+    const protocol = resolveRequestProtocol(request, payload, options)
+    const { progressToken } = protocol
+    const logLevel = options.core.logging ? protocol.logLevel : undefined
+    if (progressToken === undefined && logLevel === undefined) return undefined
+    return { progressToken, logLevel }
+  } catch {
+    // Dispatch invalid envelopes through the ordinary JSON error path.
+    return undefined
+  }
 }
 
-function handleProgressRequest(
+async function handleNotificationRequest(
   app: AnyElysiaApp,
   payload: JsonRpcRequest,
   request: Request,
   options: NormalizedMcpPluginOptions,
+  channels: RequestNotificationChannels,
   authorization?: McpAuthorizationContext
-): Response {
-  const meta = isRecord(payload.params?._meta) ? payload.params?._meta : {}
-  const progressToken = meta.progressToken as string | number
-  const encoder = new TextEncoder()
-  const abort = new AbortController()
-  const unlinkIncomingAbort = linkAbortSignal(request.signal, abort)
-  let closed = false
-  let lastProgress = Number.NEGATIVE_INFINITY
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const send = (message: unknown) => {
-        if (!closed)
-          controller.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`))
-      }
-      const reportProgress: NonNullable<McpInvocationContext['reportProgress']> = (
-        progress,
-        detail = {}
-      ) => {
-        if (!Number.isFinite(progress) || progress <= lastProgress) {
-          throw new TypeError('Progress values must be finite and strictly increasing')
-        }
-        if (detail.total !== undefined && !Number.isFinite(detail.total)) {
-          throw new TypeError('Progress total must be finite')
-        }
-        lastProgress = progress
-        send({
-          jsonrpc: JSON_RPC_VERSION,
-          method: 'notifications/progress',
-          params: pruneUndefined({
-            progressToken,
-            progress,
-            total: detail.total,
-            message: detail.message
-          })
-        })
-      }
-      void handleJsonRpcMessage(app, payload, request, options, authorization, {
-        signal: abort.signal,
-        reportProgress
+): Promise<Response> {
+  // Let authorization errors preserve the HTTP challenge when no SSE frame has been sent.
+  let settle: (outcome?: RpcOutcome) => void = () => {}
+  const ready = options.extensions.auth
+    ? new Promise<RpcOutcome | undefined>((resolve) => {
+        settle = resolve
       })
-        .then((outcome) => {
-          if (closed) return
-          if (outcome.response) send(outcome.response)
-          closed = true
-          unlinkIncomingAbort()
-          controller.close()
-        })
-        .catch((error) => {
-          if (closed) return
-          send(normalizeDispatchError(errorIdForRequest(request, options, payload), error))
-          closed = true
-          unlinkIncomingAbort()
-          controller.close()
-        })
+    : undefined
+  const body = notificationBody(
+    request.signal,
+    channels,
+    async (signal, notify) => {
+      const outcome = await handleJsonRpcMessage(app, payload, request, options, authorization, {
+        signal,
+        notify,
+        reportProgress: channels.progressToken === undefined ? undefined : notify.progress
+      })
+      settle(outcome.status === 403 ? outcome : undefined)
+      return outcome.response
     },
-    cancel() {
-      closed = true
-      abort.abort('MCP response stream closed')
-      unlinkIncomingAbort()
-    }
-  })
+    (error) => normalizeDispatchError(errorIdForRequest(request, options, payload), error),
+    () => settle()
+  )
+  const rejected = await ready
+  if (rejected) {
+    await body.cancel()
+    return outcomeResponse(rejected, request, options)
+  }
   return sseResponse(body)
 }
 

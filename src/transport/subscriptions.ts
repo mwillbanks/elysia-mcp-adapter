@@ -17,13 +17,14 @@ import type {
   NormalizedMcpPluginOptions
 } from '../types.js'
 import { modernResultMeta } from './core.js'
-import { invocationContextBase } from './invocation-context.js'
+import { invocationContextBase, taskRequestContext } from './invocation-context.js'
 import {
   McpProtocolError,
   type McpRequestProtocolContext,
   resolveRequestProtocol
 } from './protocol.js'
 import { isRequestId } from './request-id.js'
+import { isSameOrDescendantUri } from './subscription-publisher.js'
 
 const JSON_RPC_VERSION = '2.0' as const
 export async function handleSubscription(
@@ -77,6 +78,7 @@ export async function handleSubscription(
     const subscriptionId = payload.id
     const encoder = new TextEncoder()
     let closed = false
+    const capacity = coreStreamCapacity()
     let heartbeat: ReturnType<typeof setInterval> | undefined
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -92,46 +94,41 @@ export async function handleSubscription(
           }
         })
         heartbeat = setInterval(() => {
-          if (!closed) controller.enqueue(encoder.encode(': heartbeat\n\n'))
+          if (!closed && (controller.desiredSize ?? 0) > 0) {
+            controller.enqueue(encoder.encode(': heartbeat\n\n'))
+          }
         }, configured.heartbeatMs)
-        void (async () => {
+        const finish = (reason: string) => {
+          if (closed) return
+          send(subscriptionCancelled(subscriptionId, reason))
+          send(subscriptionComplete(subscriptionId, options))
+          closed = true
+          unlinkIncomingAbort()
+          if (heartbeat) clearInterval(heartbeat)
+          controller.close()
+        }
+        const consume = async () => {
           for (;;) {
             const next = await iterator.next()
             if (next.done || closed) break
-            if (!isAllowedNotification(next.value, accepted, app, options, authorization)) {
-              throw new Error(
-                `Subscription provider emitted unrequested notification: ${next.value.method}`
-              )
+            await capacity.wait(controller, abort.signal)
+            if (closed || abort.signal.aborted) break
+            if (!shouldDeliverCoreNotification(next.value, accepted, app, options, authorization)) {
+              continue
             }
-            send({
-              jsonrpc: JSON_RPC_VERSION,
-              method: next.value.method,
-              params: {
-                ...(next.value.params ?? {}),
-                _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId }
-              }
-            })
+            send(coreNotification(next.value, subscriptionId))
           }
-          if (closed) return
-          send(subscriptionCancelled(subscriptionId, 'Subscription ended by server'))
-          send(subscriptionComplete(subscriptionId, options))
-          closed = true
-          unlinkIncomingAbort()
-          if (heartbeat) clearInterval(heartbeat)
-          controller.close()
-        })().catch((error) => {
-          if (closed) return
-          send(subscriptionCancelled(subscriptionId, 'Subscription provider failed'))
-          send(subscriptionComplete(subscriptionId, options))
-          closed = true
-          unlinkIncomingAbort()
-          if (heartbeat) clearInterval(heartbeat)
-          abort.abort('Subscription provider failed')
-          void safelyReturnIterator(iterator)
-          controller.close()
-          void error
-        })
+        }
+        void consume()
+          .then(() => finish('Subscription ended by server'))
+          .catch(() => {
+            if (closed) return
+            finish('Subscription provider failed')
+            abort.abort('Subscription provider failed')
+            void safelyReturnIterator(iterator)
+          })
       },
+      pull: capacity.wake,
       cancel() {
         closed = true
         abort.abort('MCP subscription stream closed')
@@ -149,33 +146,41 @@ export async function handleSubscription(
   }
 }
 
-function isAllowedNotification(
+function shouldDeliverCoreNotification(
   notification: { method: string; params?: Record<string, unknown> },
   accepted: Record<string, unknown>,
   app: AnyElysiaApp,
   options: NormalizedMcpPluginOptions,
   authorization?: McpAuthorizationContext
 ): boolean {
-  if (notification.method === 'notifications/tools/list_changed')
-    return accepted.toolsListChanged === true
-  if (notification.method === 'notifications/prompts/list_changed')
-    return accepted.promptsListChanged === true
-  if (notification.method === 'notifications/resources/list_changed')
-    return accepted.resourcesListChanged === true
-  if (notification.method === 'notifications/resources/updated') {
-    return (
-      typeof notification.params?.uri === 'string' &&
-      Array.isArray(accepted.resourceSubscriptions) &&
-      isAuthorizedSubscribedResourceUpdate(
+  const flags: Record<string, boolean> = {
+    'notifications/tools/list_changed': accepted.toolsListChanged === true,
+    'notifications/prompts/list_changed': accepted.promptsListChanged === true,
+    'notifications/resources/list_changed': accepted.resourcesListChanged === true
+  }
+  if (flags[notification.method] === true) return true
+
+  if (
+    notification.method === 'notifications/resources/updated' &&
+    typeof notification.params?.uri === 'string' &&
+    Array.isArray(accepted.resourceSubscriptions)
+  ) {
+    const uri = notification.params.uri
+    if (
+      accepted.resourceSubscriptions.some(
+        (subscribed) => typeof subscribed === 'string' && isSameOrDescendantUri(subscribed, uri)
+      )
+    ) {
+      return isAuthorizedSubscribedResourceUpdate(
         app,
         options,
         accepted.resourceSubscriptions,
-        notification.params.uri,
+        uri,
         authorization
       )
-    )
+    }
   }
-  return false
+  throw new Error('Subscription provider emitted unrequested notification: ' + notification.method)
 }
 
 function isAuthorizedSubscribedResourceUpdate(
@@ -186,42 +191,14 @@ function isAuthorizedSubscribedResourceUpdate(
   authorization?: McpAuthorizationContext
 ): boolean {
   const registry = getMcpRegistry(app, options)
-  const matchingSubscription = subscribedUris.find(
-    (uri): uri is string => typeof uri === 'string' && isSameOrDescendantUri(uri, updatedUri)
-  )
-  if (!matchingSubscription) return false
-  const subscribedReader = findResourceReader(registry, matchingSubscription)
-  if (
-    !subscribedReader ||
-    !isAuthorized(subscribedReader.definition.authorization, authorization)
-  ) {
-    return false
-  }
+  const hasAuthorizedSubscription = subscribedUris.some((uri) => {
+    if (typeof uri !== 'string' || !isSameOrDescendantUri(uri, updatedUri)) return false
+    const reader = findResourceReader(registry, uri)
+    return reader && isAuthorized(reader.definition.authorization, authorization)
+  })
+  if (!hasAuthorizedSubscription) return false
   const updatedReader = findResourceReader(registry, updatedUri)
   return !updatedReader || isAuthorized(updatedReader.definition.authorization, authorization)
-}
-
-function isSameOrDescendantUri(subscribedUri: string, updatedUri: string): boolean {
-  if (subscribedUri === updatedUri) return true
-  const subscribed = parseUrl(subscribedUri)
-  const updated = parseUrl(updatedUri)
-  if (!subscribed || !updated || urlAuthority(subscribed) !== urlAuthority(updated)) return false
-  const basePath = subscribed.pathname.endsWith('/')
-    ? subscribed.pathname
-    : `${subscribed.pathname}/`
-  return updated.pathname.startsWith(basePath)
-}
-
-function parseUrl(value: string): URL | undefined {
-  try {
-    return new URL(value)
-  } catch {
-    return undefined
-  }
-}
-
-function urlAuthority(url: URL): string {
-  return JSON.stringify([url.protocol, url.username, url.password, url.host, url.search, url.hash])
 }
 
 function acceptedCoreSubscriptionFilter(
@@ -323,7 +300,12 @@ async function openCoreSubscription(
     signal: abort.signal
   })
   try {
-    const iterable = await configured.provider.subscribe(accepted, invocation)
+    const resources = Array.isArray(accepted.resourceSubscriptions)
+      ? accepted.resourceSubscriptions
+      : []
+    const iterable = await configured.provider.subscribe(accepted, invocation, (uri) =>
+      isAuthorizedSubscribedResourceUpdate(app, options, resources, uri, authorization)
+    )
     return {
       accepted,
       abort,
@@ -332,7 +314,8 @@ async function openCoreSubscription(
         app,
         iterable[Symbol.asyncIterator](),
         accepted,
-        abort.signal
+        abort.signal,
+        authorization
       ),
       unlinkIncomingAbort
     }
@@ -342,30 +325,55 @@ async function openCoreSubscription(
   }
 }
 
+type ProviderNotificationOutcome =
+  { result: IteratorResult<McpServerNotification> } | { error: unknown }
+
 function mergeRegistryNotifications(
   app: AnyElysiaApp,
   provider: AsyncIterator<McpServerNotification>,
   accepted: Record<string, unknown>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  authorization?: McpAuthorizationContext
 ): AsyncIterableIterator<McpServerNotification> {
   const queued: McpServerNotification[] = []
   let wake: (() => void) | undefined
-  let providerNext: Promise<IteratorResult<McpServerNotification>> | undefined
+  let providerPending = false
+  let providerOutcome: ProviderNotificationOutcome | undefined
   let closed = false
   const enabled = (kind: McpRegistryChangeKind): boolean => accepted[`${kind}ListChanged`] === true
-  const removeListener = onRegistryChange(app, (kind) => {
-    if (!closed && enabled(kind)) {
-      queued.push({ method: `notifications/${kind}/list_changed` } as McpServerNotification)
+  const removeListener = onRegistryChange(app, (kind, authorizationAlternatives) => {
+    if (closed || !enabled(kind)) return
+    if (
+      authorizationAlternatives &&
+      !authorizationAlternatives.some((requirement) => isAuthorized(requirement, authorization))
+    ) {
+      return
+    }
+    const method = `notifications/${kind}/list_changed` as McpServerNotification['method']
+    if (!queued.some((notification) => notification.method === method)) {
+      queued.push({ method } as McpServerNotification)
       wake?.()
     }
   })
+  let providerReturn: Promise<IteratorResult<McpServerNotification> | undefined> | undefined
+  const returnProvider = (value?: unknown) => {
+    providerReturn ??= Promise.resolve().then(() => provider.return?.(value))
+    return providerReturn
+  }
   const close = () => {
     if (closed) return
     closed = true
     removeListener()
+    signal.removeEventListener('abort', onAbort)
+    queued.length = 0
     wake?.()
   }
-  signal.addEventListener('abort', close, { once: true })
+  const onAbort = () => {
+    close()
+    void returnProvider().catch(() => {})
+  }
+  if (signal.aborted) onAbort()
+  else signal.addEventListener('abort', onAbort, { once: true })
   return {
     [Symbol.asyncIterator]() {
       return this
@@ -375,26 +383,38 @@ function mergeRegistryNotifications(
         const local = queued.shift()
         if (local) return { done: false, value: local }
         if (closed) return { done: true, value: undefined }
-        providerNext ??= provider.next()
-        let localWake: (() => void) | undefined
-        const localReady = new Promise<'local'>((resolve) => {
-          localWake = () => resolve('local')
-          wake = localWake
+        if (providerOutcome) {
+          const outcome = providerOutcome
+          providerOutcome = undefined
+          providerPending = false
+          if ('error' in outcome) throw outcome.error
+          if (outcome.result.done) close()
+          return outcome.result
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve
+          if (providerPending) return
+          providerPending = true
+          const settle = (outcome: ProviderNotificationOutcome) => {
+            if (closed) return
+            providerOutcome = outcome
+            wake?.()
+          }
+          void Promise.resolve()
+            .then(() => (closed ? undefined : provider.next()))
+            .then(
+              (result) => {
+                if (result) settle({ result })
+              },
+              (error: unknown) => settle({ error })
+            )
         })
-        const result = await Promise.race([
-          providerNext.then((value) => ({ source: 'provider' as const, value })),
-          localReady.then(() => ({ source: 'local' as const }))
-        ])
-        if (wake === localWake) wake = undefined
-        if (result.source === 'local') continue
-        providerNext = undefined
-        if (result.value.done) close()
-        return result.value
+        wake = undefined
       }
     },
     async return(value?: unknown) {
       close()
-      const result = await provider.return?.(value)
+      const result = await returnProvider(value)
       return result ?? { done: true, value: undefined }
     },
     async throw(error?: unknown) {
@@ -457,6 +477,7 @@ class MixedSubscriptionSession {
   readonly unlinkIncomingAbort: () => void
   private readonly encoder = new TextEncoder()
   private readonly queuedTasks: DetailedTask[] = []
+  private readonly coreCapacity = coreStreamCapacity()
   private acceptedTasks: Set<string> | undefined
   private controller: ReadableStreamDefaultController<Uint8Array> | undefined
   private tasks: TaskSubscription | undefined
@@ -492,7 +513,12 @@ class MixedSubscriptionSession {
         signal: this.abort.signal
       })
     )
-    this.closeTasksOnAbort = () => void this.closeTasks()
+    if (this.abort.signal.aborted) {
+      this.cancel()
+      await this.closeTasks()
+      return
+    }
+    this.closeTasksOnAbort = () => this.handleAbort()
     this.abort.signal.addEventListener('abort', this.closeTasksOnAbort, { once: true })
     this.acceptedTasks = new Set(acceptedSubscriptionTaskIds(this.tasks, this.taskIds))
   }
@@ -500,6 +526,7 @@ class MixedSubscriptionSession {
   stream(): ReadableStream<Uint8Array> {
     return new ReadableStream<Uint8Array>({
       start: (controller) => this.start(controller),
+      pull: this.coreCapacity.wake,
       cancel: () => this.cancel()
     })
   }
@@ -526,7 +553,7 @@ class MixedSubscriptionSession {
         this.options
       )
     ) {
-      this.fail('Task subscription provider failed')
+      this.cancel()
       return
     }
     deliverTask(
@@ -540,17 +567,16 @@ class MixedSubscriptionSession {
 
   private start(controller: ReadableStreamDefaultController<Uint8Array>): void {
     this.controller = controller
-    const acceptedTaskIds = [...(this.acceptedTasks ?? [])]
-    controller.enqueue(
-      this.event(
-        subscriptionAcknowledged(this.subscriptionId, {
-          ...this.acceptedCore,
-          taskIds: acceptedTaskIds
-        })
-      )
-    )
-    for (const task of this.queuedTasks) this.emitTask(task)
-    this.queuedTasks.length = 0
+    startTaskSnapshotStream(controller, {
+      closed: this.closed,
+      acknowledge: () =>
+        this.event(
+          taskSubscriptionAcknowledged(this.subscriptionId, this.acceptedTasks, this.acceptedCore)
+        ),
+      pending: this.queuedTasks,
+      emit: (task) => this.emitTask(task)
+    })
+    if (this.closed) return
     this.heartbeat = setInterval(() => this.sendHeartbeat(), this.configured.heartbeatMs)
     const coreDone = this.consumeCore()
     this.observeCompletion(coreDone)
@@ -560,8 +586,10 @@ class MixedSubscriptionSession {
     for (;;) {
       const next = await this.iterator.next()
       if (next.done || this.closed) return
+      await this.coreCapacity.wait(this.controller, this.abort.signal)
+      if (this.closed || this.abort.signal.aborted) return
       if (
-        !isAllowedNotification(
+        !shouldDeliverCoreNotification(
           next.value,
           this.acceptedCore,
           this.app,
@@ -569,9 +597,7 @@ class MixedSubscriptionSession {
           this.authorization
         )
       ) {
-        throw new Error(
-          `Subscription provider emitted unrequested notification: ${next.value.method}`
-        )
+        continue
       }
       this.controller?.enqueue(this.event(coreNotification(next.value, this.subscriptionId)))
     }
@@ -591,9 +617,9 @@ class MixedSubscriptionSession {
   private fail(reason: string): void {
     if (this.closed) return
     this.sendTerminal(reason)
+    this.closeStream()
     this.abort.abort(reason)
     void safelyReturnIterator(this.iterator)
-    this.closeStream()
   }
 
   private sendTerminal(reason: string): void {
@@ -610,7 +636,9 @@ class MixedSubscriptionSession {
   }
 
   private sendHeartbeat(): void {
-    if (!this.closed) this.controller?.enqueue(this.encoder.encode(': heartbeat\n\n'))
+    if (!this.closed && (this.controller?.desiredSize ?? 0) > 0) {
+      this.controller?.enqueue(this.encoder.encode(': heartbeat\n\n'))
+    }
   }
 
   private cancel(): void {
@@ -623,6 +651,12 @@ class MixedSubscriptionSession {
     void this.closeTasks()
   }
 
+  private handleAbort(): void {
+    if (this.closed) return
+    this.cancel()
+    this.controller?.close()
+  }
+
   private closeTasks(): Promise<void> {
     if (this.closeTasksOnAbort) {
       this.abort.signal.removeEventListener('abort', this.closeTasksOnAbort)
@@ -630,6 +664,29 @@ class MixedSubscriptionSession {
     }
     this.closeTasksPromise ??= safelyCloseTaskSubscription(this.tasks)
     return this.closeTasksPromise
+  }
+}
+
+function coreStreamCapacity() {
+  let resume: (() => void) | undefined
+  return {
+    async wait(
+      controller: ReadableStreamDefaultController<Uint8Array> | undefined,
+      signal: AbortSignal
+    ): Promise<void> {
+      while (controller && !signal.aborted && (controller.desiredSize ?? 0) <= 0) {
+        await new Promise<void>((resolve) => {
+          const wake = () => {
+            resume = undefined
+            signal.removeEventListener('abort', wake)
+            resolve()
+          }
+          resume = wake
+          signal.addEventListener('abort', wake, { once: true })
+        })
+      }
+    },
+    wake: () => resume?.()
   }
 }
 
@@ -745,6 +802,37 @@ export function linkAbortSignal(source: AbortSignal, target: AbortController): (
 
 function encodeSseEvent(encoder: TextEncoder, message: unknown): Uint8Array {
   return encoder.encode(`event: message\ndata: ${JSON.stringify(message)}\n\n`)
+}
+
+function startTaskSnapshotStream(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  {
+    closed,
+    acknowledge,
+    pending,
+    emit
+  }: {
+    closed: boolean
+    acknowledge: () => Uint8Array
+    pending: DetailedTask[]
+    emit: (task: DetailedTask) => void
+  }
+): void {
+  if (closed) {
+    controller.close()
+    return
+  }
+  controller.enqueue(acknowledge())
+  for (const task of pending) emit(task)
+  pending.length = 0
+}
+
+function taskSubscriptionAcknowledged(
+  subscriptionId: string | number,
+  accepted: ReadonlySet<string> | undefined,
+  core?: Record<string, unknown>
+) {
+  return subscriptionAcknowledged(subscriptionId, { ...core, taskIds: [...(accepted ?? [])] })
 }
 
 function subscriptionCancelled(
@@ -872,6 +960,20 @@ class TaskSubscriptionSession {
     return encodeSseEvent(this.encoder, message)
   }
 
+  private start(controller: ReadableStreamDefaultController<Uint8Array>): void {
+    this.controller = controller
+    startTaskSnapshotStream(controller, {
+      closed: this.closed,
+      acknowledge: () =>
+        this.event(taskSubscriptionAcknowledged(this.subscriptionId, this.accepted)),
+      pending: this.queued,
+      emit: (task) => this.enqueueTask(task)
+    })
+    if (this.closed) return
+    if (!this.subscription) void this.terminate('Subscription ended by server')
+    else if (this.subscription.done) void this.observeDone()
+  }
+
   private enqueueTask(task: DetailedTask): void {
     if (this.closed) return
     if (
@@ -895,25 +997,6 @@ class TaskSubscriptionSession {
       (message) => this.event(message),
       this.subscriptionId
     )
-  }
-
-  private start(controller: ReadableStreamDefaultController<Uint8Array>): void {
-    this.controller = controller
-    if (this.closed) {
-      controller.close()
-      return
-    }
-    controller.enqueue(
-      this.event(
-        subscriptionAcknowledged(this.subscriptionId, {
-          taskIds: [...(this.accepted ?? [])]
-        })
-      )
-    )
-    for (const task of this.queued) this.enqueueTask(task)
-    this.queued.length = 0
-    if (!this.subscription) void this.terminate('Subscription ended by server')
-    else if (this.subscription.done) void this.observeDone()
   }
 
   private async observeDone(): Promise<void> {
@@ -1083,26 +1166,6 @@ function assertModernTasks(
 ): void {
   if (!context.protocol.modern || !options.extensions.tasks) {
     throw new SubscriptionError(-32601, 'Tasks extension is not enabled', undefined, 404)
-  }
-}
-
-function taskRequestContext(
-  request: Request,
-  params: Record<string, unknown>,
-  context: {
-    protocol: McpRequestProtocolContext
-    authorization?: McpAuthorizationContext
-    signal?: AbortSignal
-  }
-) {
-  return {
-    request,
-    signal: context.signal ?? request.signal,
-    meta: isRecord(params._meta) ? params._meta : undefined,
-    authorization: context.authorization,
-    protocolVersion: context.protocol.version,
-    clientCapabilities: context.protocol.clientCapabilities,
-    clientInfo: context.protocol.clientInfo
   }
 }
 

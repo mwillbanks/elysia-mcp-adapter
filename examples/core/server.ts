@@ -1,4 +1,9 @@
-import { type McpServerNotification, mcp } from '@mwillbanks/elysia-mcp-adapter'
+import {
+  type McpServerNotification,
+  getMcpInvocationContext,
+  mcp,
+  mcpInput
+} from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia } from 'elysia'
 
 async function* changes(): AsyncGenerator<McpServerNotification> {
@@ -14,10 +19,11 @@ export const cancellationDone = new Promise<void>((resolve) => {
 export const app = new Elysia()
   .use(
     mcp({
-      allowedRoutes: [],
+      allowedRoutes: ['/index'],
       server: { name: 'modern-core-example', version: '1.0.0' },
       core: {
         maxToolInputElements: 1_000,
+        logging: true,
         continuation: {
           // Load a secret of at least 32 bytes from secure application configuration in production.
           signingKey: '0123456789abcdef0123456789abcdef'
@@ -37,26 +43,19 @@ export const app = new Elysia()
   .mcpTool(
     'weather',
     ({ city }: { city: string }, context) => {
-      const location = context.inputResponses?.location
-      if (!location) {
-        return {
-          resultType: 'input_required' as const,
-          inputRequests: {
-            location: {
-              method: 'elicitation/create' as const,
-              params: {
-                mode: 'form' as const,
-                message: `Confirm the location for ${city}`,
-                requestedSchema: {
-                  type: 'object',
-                  properties: { confirmed: { type: 'boolean' } },
-                  required: ['confirmed']
-                }
-              }
-            }
-          },
-          requestState: city
+      const form = mcpInput.form({
+        message: `Confirm the location for ${city}`,
+        requestedSchema: {
+          type: 'object',
+          properties: { confirmed: { type: 'boolean' } },
+          required: ['confirmed']
         }
+      })
+      if (!context.input.supports(form)) return { city, forecast: 'sunny' }
+      const location = context.input.response('location', form)
+      if (!location) return context.input.require({ location: form }, { state: city })
+      if (location.action !== 'accept' || location.content?.confirmed !== true) {
+        return { city, confirmed: false }
       }
       return { city: context.requestState, forecast: 'sunny', location }
     },
@@ -69,14 +68,19 @@ export const app = new Elysia()
       }
     }
   )
-  .mcpTool('index', async (_input, context) => {
-    context.reportProgress?.(1, { total: 2, message: 'Scanning' })
-    await Promise.resolve()
-    context.reportProgress?.(2, { total: 2, message: 'Complete' })
-    return 'indexed'
-  })
+  .get(
+    '/index',
+    ({ request }) => {
+      const notify = getMcpInvocationContext(request)?.notify
+      notify?.progress(1, { total: 2, message: 'Scanning' })
+      notify?.message('Index scan complete', { logger: 'indexer' })
+      notify?.progress(2, { total: 2, message: 'Complete' })
+      return new Response('indexed', { headers: { 'content-type': 'text/plain' } })
+    },
+    { mcp: { name: 'index' } }
+  )
   .mcpTool('wait-for-cancel', async (_input, context) => {
-    context.reportProgress?.(1, { message: 'Waiting for cancellation' })
+    context.notify.progress(1, { message: 'Waiting for cancellation' })
     await new Promise<void>((resolve) => {
       context.signal?.addEventListener(
         'abort',

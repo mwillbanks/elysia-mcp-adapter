@@ -11,7 +11,7 @@ export function createSubprocessTaskApp(provider: SqliteSubprocessTaskProvider) 
         extensions: { tasks: { provider } }
       })
     )
-    .mcpTool<{ body: { value: string; delayMs: number } }>(
+    .mcpTool<{ body: { value: string; delayMs: number; requireApproval?: boolean } }>(
       'tasks.run',
       () => {
         throw new Error('Subprocess tasks must execute in the fixed worker entrypoint')
@@ -25,7 +25,8 @@ export function createSubprocessTaskApp(provider: SqliteSubprocessTaskProvider) 
               type: 'object',
               properties: {
                 value: { type: 'string' },
-                delayMs: { type: 'number', minimum: 0 }
+                delayMs: { type: 'number', minimum: 0 },
+                requireApproval: { type: 'boolean' }
               },
               required: ['value', 'delayMs'],
               additionalProperties: false

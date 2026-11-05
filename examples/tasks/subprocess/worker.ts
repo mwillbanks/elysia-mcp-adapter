@@ -1,9 +1,13 @@
 import { Database } from 'bun:sqlite'
-import { mcp } from '@mwillbanks/elysia-mcp-adapter'
+import type { TaskExecutionDescriptor, TaskProviderContext } from '@mwillbanks/elysia-mcp-adapter'
+import { createMcpTaskExecutionContext, mcp } from '@mwillbanks/elysia-mcp-adapter'
 import { Elysia, t } from 'elysia'
+import { approvalKey, approvalRequest, requiresApproval } from './approval.js'
+import { getInputResponse, recordTaskInput, setStatusMessage } from './input-store.js'
 
 interface StoredTask {
   descriptor: string
+  principal_key: string
   status: string
 }
 
@@ -14,6 +18,7 @@ const resolvedTaskId = taskId
 
 const database = new Database(resolvedDatabasePath, { readwrite: true, create: false })
 database.exec('PRAGMA busy_timeout = 5000')
+database.exec('PRAGMA foreign_keys = ON')
 
 function update(status: string, value: Record<string, unknown>): void {
   database
@@ -24,27 +29,71 @@ function update(status: string, value: Record<string, unknown>): void {
     .run(status, JSON.stringify(value), process.pid, new Date().toISOString(), resolvedTaskId)
 }
 
-try {
-  const stored = database
-    .query<StoredTask, [string]>('SELECT descriptor, status FROM tasks WHERE task_id = ?')
-    .get(resolvedTaskId)
-  if (stored?.status !== 'working') process.exit(0)
-
-  const descriptor = JSON.parse(stored.descriptor) as {
-    method: string
-    params: { name?: unknown; arguments?: unknown; _meta?: unknown }
+async function resolveApproval(
+  descriptor: TaskExecutionDescriptor,
+  principalKey: string
+): Promise<boolean | undefined> {
+  if (!requiresApproval(descriptor.params)) return true
+  const metadata = descriptor.params._meta
+  const context: TaskProviderContext = {
+    version: '2026-07-28',
+    principalKey,
+    meta:
+      typeof metadata === 'object' && metadata !== null
+        ? (metadata as Record<string, unknown>)
+        : undefined
   }
+  const execution = createMcpTaskExecutionContext({
+    taskId: resolvedTaskId,
+    context,
+    provider: {
+      requestInput: (...args) => recordTaskInput(database, ...args),
+      setStatusMessage: (...args) => setStatusMessage(database, ...args)
+    }
+  })
+  const response = getInputResponse(database, resolvedTaskId, approvalKey, context)
+  if (response) {
+    await execution.notify.status('Approval answered')
+    const answer = response.content
+    return (
+      response.action === 'accept' &&
+      typeof answer === 'object' &&
+      answer !== null &&
+      'approved' in answer &&
+      answer.approved === true
+    )
+  }
+
+  await execution.notify.status('Waiting for approval')
+  await execution.input.request(approvalKey, approvalRequest)
+  return undefined
+}
+
+async function run(): Promise<void> {
+  const stored = database
+    .query<StoredTask, [string]>(
+      'SELECT descriptor, principal_key, status FROM tasks WHERE task_id = ?'
+    )
+    .get(resolvedTaskId)
+  if (stored?.status !== 'working') return
+
+  const descriptor = JSON.parse(stored.descriptor) as TaskExecutionDescriptor
   if (descriptor.method !== 'tools/call' || descriptor.params.name !== 'tasks.run') {
     throw new Error('Unsupported durable execution descriptor')
   }
-  const descriptorMeta =
-    typeof descriptor.params._meta === 'object' && descriptor.params._meta !== null
-      ? descriptor.params._meta
-      : {}
+  const approved = await resolveApproval(descriptor, stored.principal_key)
+  if (approved === undefined) return
+  update('completed', await invokeWorkerTool(descriptor, approved))
+}
+
+async function invokeWorkerTool(
+  descriptor: TaskExecutionDescriptor,
+  approved: boolean
+): Promise<Record<string, unknown>> {
   const workerParams = {
-    ...descriptor.params,
+    name: descriptor.params.name,
+    arguments: descriptor.params.arguments,
     _meta: {
-      ...descriptorMeta,
       'io.modelcontextprotocol/protocolVersion': '2026-07-28',
       'io.modelcontextprotocol/clientInfo': { name: 'subprocess-worker', version: '1.0.0' },
       'io.modelcontextprotocol/clientCapabilities': {}
@@ -60,6 +109,10 @@ try {
     .post(
       '/tasks/run',
       async ({ body, set }) => {
+        if (!approved) {
+          set.status = 422
+          return { message: 'Task approval declined' }
+        }
         await Bun.sleep(body.delayMs)
         if (body.value === 'tool-error') {
           set.status = 422
@@ -68,7 +121,11 @@ try {
         return { childPid: process.pid, value: body.value }
       },
       {
-        body: t.Object({ value: t.String(), delayMs: t.Number({ minimum: 0 }) }),
+        body: t.Object({
+          value: t.String(),
+          delayMs: t.Number({ minimum: 0 }),
+          requireApproval: t.Optional(t.Boolean())
+        }),
         detail: { operationId: 'tasks.run' }
       }
     )
@@ -91,21 +148,32 @@ try {
       })
     })
   )
+  return readWorkerResult(response)
+}
+
+async function readWorkerResult(response: Response): Promise<Record<string, unknown>> {
   const payload = (await response.json()) as {
     result?: Record<string, unknown>
     error?: { code?: number; message?: string; data?: unknown }
   }
   if (!response.ok || payload.error || !payload.result) {
-    const failure = new Error(
-      payload.error?.message ?? `Worker MCP call failed with ${response.status}`
-    )
-    Object.assign(failure, {
-      code: Number.isInteger(payload.error?.code) ? payload.error?.code : -32603,
-      data: payload.error?.data
-    })
-    throw failure
+    throw workerFailure(response.status, payload.error)
   }
-  update('completed', payload.result)
+  return payload.result
+}
+
+function workerFailure(
+  status: number,
+  error?: { code?: number; message?: string; data?: unknown }
+) {
+  return Object.assign(new Error(error?.message ?? `Worker MCP call failed with ${status}`), {
+    code: Number.isInteger(error?.code) ? error?.code : -32603,
+    data: error?.data
+  })
+}
+
+try {
+  await run()
 } catch (error) {
   database
     .query(

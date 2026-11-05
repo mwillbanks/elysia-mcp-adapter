@@ -61,11 +61,15 @@ describe('MCP client 2.3.1 interoperability', () => {
     let promptArguments: Record<string, unknown> | undefined
     const app = new Elysia()
       .use(mcp({ server, allowedRoutes: [] }))
-      .mcpTool('work', (_input, context) => {
-        context.reportProgress?.(1, { total: 2 })
-        context.reportProgress?.(2, { total: 2 })
-        return { complete: true }
-      })
+      .mcpTool(
+        'work',
+        (_input, context) => {
+          context.reportProgress?.(1, { total: 2 })
+          context.notify.progress(2, { total: 2 })
+          return { complete: true }
+        },
+        { prompt: { render: (_args, { toolName }) => `Call the ${toolName} tool.` } }
+      )
       .mcpPrompt('empty', (args) => {
         promptArguments = args
         return 'empty arguments accepted'
@@ -81,10 +85,12 @@ describe('MCP client 2.3.1 interoperability', () => {
         { onprogress: (notification) => progress.push(notification.progress) }
       )
       const prompt = await client.getPrompt({ name: 'empty' })
+      const companion = await client.getPrompt({ name: 'work' })
 
       expect(result.structuredContent).toEqual({ complete: true })
       expect(progress).toEqual([1, 2])
       expect(prompt.messages[0]?.content).toMatchObject({ text: 'empty arguments accepted' })
+      expect(companion.messages[0]?.content).toMatchObject({ text: 'Call the work tool.' })
       expect(promptArguments).toEqual({})
     } finally {
       await client.close()

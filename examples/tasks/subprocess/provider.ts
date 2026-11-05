@@ -12,6 +12,8 @@ import type {
   TaskSubscriptionContext
 } from '@mwillbanks/elysia-mcp-adapter'
 import { assertTaskInputResponse } from '@mwillbanks/elysia-mcp-adapter'
+import { requiresApproval } from './approval.js'
+import { principal, recordTaskInput, setStatusMessage, terminalStatuses } from './input-store.js'
 
 interface TaskRow {
   task_id: string
@@ -24,14 +26,14 @@ interface TaskRow {
   result: string | null
   error: string | null
   expiry_armed: number
+  status_message: string | null
+  descriptor: string
 }
 
 interface InputRequestRow {
   request_key: string
   request: string
 }
-
-const terminalStatuses = new Set<DetailedTask['status']>(['completed', 'failed', 'cancelled'])
 
 export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposable {
   readonly database: Database
@@ -42,6 +44,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   constructor(readonly databasePath: string) {
     this.database = new Database(databasePath, { create: true })
     this.database.exec('PRAGMA busy_timeout = 5000')
+    this.database.exec('PRAGMA foreign_keys = ON')
     this.database.exec('PRAGMA journal_mode = WAL')
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS tasks (
@@ -56,6 +59,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
         result TEXT,
         error TEXT,
         child_pid INTEGER,
+        status_message TEXT,
         expiry_armed INTEGER NOT NULL DEFAULT 0
       )
     `)
@@ -65,6 +69,9 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
       .map(({ name }) => name)
     if (!taskColumns.includes('expiry_armed')) {
       this.database.exec('ALTER TABLE tasks ADD COLUMN expiry_armed INTEGER NOT NULL DEFAULT 0')
+    }
+    if (!taskColumns.includes('status_message')) {
+      this.database.exec('ALTER TABLE tasks ADD COLUMN status_message TEXT')
     }
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS task_input_requests (
@@ -153,14 +160,14 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
              AND status IN ('working', 'input_required')
          )`
     )
-    const transaction = this.database.transaction((): boolean => {
+    const transaction = this.database.transaction((): 'missing' | 'accepted' | 'resume' => {
       const row = this.database
         .query<TaskRow, [string, string]>(
           'SELECT * FROM tasks WHERE task_id = ? AND principal_key = ?'
         )
         .get(taskId, principal(context))
-      if (!row) return false
-      if (terminalStatuses.has(row.status)) return true
+      if (!row) return 'missing'
+      if (terminalStatuses.has(row.status)) return 'accepted'
       const outstandingRequests = new Map(
         this.pendingInputRequests(taskId).map((entry) => [entry.request_key, entry] as const)
       )
@@ -175,6 +182,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
         )
         return [[key, response] as const]
       })
+      if (accepted.length === 0) return 'accepted'
       for (const [key, response] of accepted) {
         updateResponse.run(JSON.stringify(response), taskId, key, taskId, principal(context))
       }
@@ -191,9 +199,27 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
           taskId,
           principal(context)
         )
-      return transitioned.changes === 1
+      if (transitioned.changes !== 1) return 'missing'
+      if (pending.length === 0 && requiresApproval(JSON.parse(row.descriptor).params)) {
+        return 'resume'
+      }
+      return 'accepted'
     })
-    return transaction.immediate()
+    const outcome = transaction.immediate()
+    if (outcome === 'resume') {
+      const child = this.children.get(taskId)
+      if (child) await child.exited
+      this.startWorker(taskId)
+    }
+    return outcome !== 'missing'
+  }
+
+  async setStatusMessage(
+    taskId: string,
+    message: string,
+    context: TaskProviderContext
+  ): Promise<boolean> {
+    return setStatusMessage(this.database, taskId, message, context)
   }
 
   async requestInput(
@@ -202,30 +228,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
     request: TaskInputRequest,
     context: TaskProviderContext
   ): Promise<boolean> {
-    const transaction = this.database.transaction((): boolean => {
-      const task = this.database
-        .query<Pick<TaskRow, 'status'>, [string, string]>(
-          'SELECT status FROM tasks WHERE task_id = ? AND principal_key = ?'
-        )
-        .get(taskId, principal(context))
-      if (!task || terminalStatuses.has(task.status)) return false
-      const inserted = this.database
-        .query(
-          `INSERT OR IGNORE INTO task_input_requests (task_id, request_key, request)
-           VALUES (?, ?, ?)`
-        )
-        .run(taskId, key, JSON.stringify(request))
-      if (inserted.changes !== 1) return false
-      const transitioned = this.database
-        .query(
-          `UPDATE tasks SET status = 'input_required', updated_at = ?
-           WHERE task_id = ? AND principal_key = ?
-             AND status IN ('working', 'input_required')`
-        )
-        .run(new Date().toISOString(), taskId, principal(context))
-      return transitioned.changes === 1
-    })
-    if (!transaction.immediate()) return false
+    if (!(await recordTaskInput(this.database, taskId, key, request, context))) return false
     const child = this.children.get(taskId)
     if (child) {
       child.kill('SIGTERM')
@@ -297,7 +300,7 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
       if (stopped()) return
       const task = await this.get(taskId, context)
       if (stopped() || !task) return
-      const fingerprint = `${task.status}:${task.lastUpdatedAt}`
+      const fingerprint = `${task.status}:${task.lastUpdatedAt}:${task.statusMessage ?? ''}`
       if (seen.get(taskId) === fingerprint) return
       seen.set(taskId, fingerprint)
       await listener(task)
@@ -337,12 +340,11 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   private expire(taskId: string): void {
     this.children.get(taskId)?.kill()
     this.children.delete(taskId)
-    this.database.query('DELETE FROM task_input_requests WHERE task_id = ?').run(taskId)
     this.database.query('DELETE FROM tasks WHERE task_id = ?').run(taskId)
   }
 
   private startWorker(taskId: string): void {
-    if (this.children.has(taskId)) return
+    if (this.disposed || this.children.has(taskId)) return
     const child = Bun.spawn([process.execPath, this.workerPath, this.databasePath, taskId], {
       stdout: 'ignore',
       stderr: 'inherit'
@@ -386,15 +388,12 @@ export class SqliteSubprocessTaskProvider implements TaskProvider, AsyncDisposab
   }
 }
 
-function principal(context: TaskProviderContext): string {
-  return context.principalKey ?? ''
-}
-
 function toTask(row: TaskRow, inputRequests: Record<string, TaskInputRequest>): DetailedTask {
   const base = {
     taskId: row.task_id,
     createdAt: row.created_at,
     lastUpdatedAt: row.updated_at,
+    ...(row.status_message === null ? {} : { statusMessage: row.status_message }),
     ttlMs: row.ttl_ms,
     pollIntervalMs: row.poll_interval_ms ?? undefined
   }

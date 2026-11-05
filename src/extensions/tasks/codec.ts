@@ -4,6 +4,8 @@ import {
   isMcpRootsResult,
   isMcpSamplingResult
 } from '../../schema/content.js'
+import { isValidUri } from '../../schema/validate.js'
+import { validateInputAnswer } from '../../transport/input.js'
 import type {
   DetailedTask,
   TaskCreateRequest,
@@ -70,7 +72,11 @@ export function buildTaskExecutionScheduler<TResult extends Record<string, unkno
   invoke: TaskExecutionScheduler<TResult>['invoke']
 ): TaskExecutionScheduler<TResult> {
   return {
-    invoke: (signal?: AbortSignal) => invoke(signal)
+    async invoke(signal, taskExecution) {
+      const result = await invoke(signal ?? taskExecution?.signal, taskExecution)
+      assertCompletedResult(result, 'Task execution result')
+      return result
+    }
   }
 }
 
@@ -110,6 +116,7 @@ export function assertTaskInputResponse(
   if (request.method === 'elicitation/create') {
     if (!isMcpElicitationResult(response))
       throw new TypeError(`${label}.action or content is invalid`)
+    assertElicitationContent(request, response, label)
     return
   }
   if (request.method === 'roots/list') {
@@ -119,6 +126,43 @@ export function assertTaskInputResponse(
   if (!isMcpSamplingResult(response)) {
     throw new TypeError(`${label}.content must contain valid MCP sampling content`)
   }
+}
+
+function assertElicitationContent(
+  request: Extract<TaskInputRequest, { method: 'elicitation/create' }>,
+  response: unknown,
+  label: string
+): void {
+  const params = request.params
+  if (!params) return
+  const message = typeof params.message === 'string' ? params.message : ''
+  if (params.mode === 'url') {
+    if (!isValidUri(params.url)) throw new TypeError(`${label} requires an elicitation URL`)
+    validateInputAnswer(
+      label,
+      { method: request.method, params: { mode: 'url', message, url: params.url } },
+      response
+    )
+    return
+  }
+  const requestedSchema = taskFormSchema(params, label)
+  if (requestedSchema) {
+    validateInputAnswer(
+      label,
+      { method: request.method, params: { message, requestedSchema } },
+      response
+    )
+  }
+}
+
+function taskFormSchema({ mode, requestedSchema }: Record<string, unknown>, label: string) {
+  if (mode !== undefined && mode !== 'form') {
+    throw new TypeError(`${label} has an invalid elicitation mode`)
+  }
+  // Mode-free legacy requests may omit the schema. An explicitly declared form cannot.
+  if (mode === undefined && requestedSchema === undefined) return undefined
+  if (!isRecord(requestedSchema)) throw new TypeError(`${label} requires an elicitation schema`)
+  return requestedSchema
 }
 
 function assertTaskBase(value: Record<string, unknown>, label: string): void {
@@ -176,7 +220,14 @@ function assertInputRequiredPayload(value: Record<string, unknown>, label: strin
 
 function assertCompletedPayload(value: Record<string, unknown>, label: string): void {
   if (!isRecord(value.result)) throw new TypeError(`${label}.result must be an object`)
+  assertCompletedResult(value.result, `${label}.result`)
   assertNoStatusPayload(value, ['error', 'inputRequests'])
+}
+
+function assertCompletedResult(result: Record<string, unknown>, label: string): void {
+  if (result.resultType === 'input_required') {
+    throw new TypeError(`${label} cannot contain MRTR input; use the task input API`)
+  }
 }
 
 function assertFailedPayload(value: Record<string, unknown>, label: string): void {

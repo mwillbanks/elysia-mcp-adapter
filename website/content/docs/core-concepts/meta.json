@@ -4,6 +4,7 @@
   "pages": [
     "transportation",
     "modern-core",
+    "messaging",
     "route-backed-tools",
     "standalone-primitives",
     "resources-and-prompts",

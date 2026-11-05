@@ -4,7 +4,11 @@ import { app } from './server.js'
 
 async function modernRpc(method: string, params: Record<string, unknown> = {}) {
   const name =
-    method === 'tools/call' ? params.name : method === 'resources/read' ? params.uri : null
+    method === 'tools/call' || method === 'prompts/get'
+      ? params.name
+      : method === 'resources/read'
+        ? params.uri
+        : null
   const response = await app.handle(
     new Request('http://localhost/mcp', {
       method: 'POST',
@@ -52,6 +56,13 @@ describe('React MCP App server', () => {
     expect(tools.body.result.tools.map((tool: { name: string }) => tool.name)).not.toContain(
       'tasks.toggle'
     )
+
+    const prompts = await modernRpc('prompts/list')
+    expect(prompts.body.result.prompts).toContainEqual(
+      expect.objectContaining({ name: 'task-board', title: 'Open the task board' })
+    )
+    const prompt = await modernRpc('prompts/get', { name: 'task-board', arguments: {} })
+    expect(prompt.body.result.messages[0].content.text).toContain('calling the tasks.open tool')
 
     const initial = await modernRpc('tools/call', { name: 'tasks.open', arguments: {} })
     expect(initial.body.result.content[0].text).toContain('tasks remain')

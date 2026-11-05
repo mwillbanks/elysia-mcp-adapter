@@ -545,11 +545,12 @@ describe('tasks extension', () => {
     ).toThrow('subscription contract')
   })
 
-  it('records MRTR requests with provider-enforced lifetime-unique keys', async () => {
+  it('records legacy raw MRTR requests with provider-enforced lifetime-unique keys', async () => {
     const provider = new TestTaskProvider()
     const task = workingTask()
     provider.tasks.set(task.taskId, task)
     const controller = createTaskController({ provider })
+    // Direct controller calls have no originating MCP peer for capability negotiation.
     const context = {
       request: new Request('http://localhost/mcp'),
       principalKey: 'tenant:user'
@@ -563,7 +564,10 @@ describe('tasks extension', () => {
       new Set(['task-1:name', 'task-1:summary', 'task-1:roots'])
     )
     await expect(
-      controller.requestElicitation(task.taskId, 'name', { message: 'Again?' }, context)
+      controller.requestElicitation(task.taskId, 'name', { message: 'Your name?' }, context)
+    ).rejects.toMatchObject({ code: -32602 })
+    await expect(
+      controller.requestElicitation(task.taskId, '', { message: 'Missing key' }, context)
     ).rejects.toMatchObject({ code: -32602 })
   })
 })

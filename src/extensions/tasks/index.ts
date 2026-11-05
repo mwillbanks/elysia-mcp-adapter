@@ -3,6 +3,11 @@ export * from './controller.js'
 export { TaskController as McpTaskController } from './controller.js'
 export * from './dispatch.js'
 export * from './errors.js'
+export {
+  createMcpTaskExecutionContext,
+  type McpTaskExecutionContext,
+  type McpTaskExecutionContextOptions
+} from './execution-context.js'
 export type {
   CancelTaskResult as McpCancelTaskResult,
   CreateTaskResult as McpCreateTaskResult,

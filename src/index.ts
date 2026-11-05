@@ -1,5 +1,6 @@
 import type { DefinitionBase, EphemeralType, MetadataBase, RouteBase, SingletonBase } from 'elysia'
 import { mcp, withMcpMethods } from './plugin.js'
+import type { McpToolOptions } from './types.js'
 
 export {
   DEFAULT_PROTOCOL_VERSION,
@@ -31,6 +32,13 @@ export * from './extensions/variants/index.js'
 export { getMcpInvocationContext } from './invoke/context.js'
 export { defaultOperationNameResolver, sanitizeMcpName } from './naming.js'
 export { getMcpRegistry } from './registry.js'
+export { mcpInput, type McpInputAnswer, type McpInvocationInput } from './transport/input.js'
+export type { McpInvocationNotify, McpLogLevel } from './transport/notifications.js'
+export {
+  createMcpSubscriptionPublisher,
+  type McpSubscriptionPublisher,
+  type McpSubscriptionPublisherOptions
+} from './transport/subscription-publisher.js'
 export type {
   JsonSchema,
   McpAdapterState,
@@ -41,9 +49,12 @@ export type {
   McpAppsOptions,
   McpAppToolOptions,
   McpAuthorizationOptions,
+  McpBeforeTaskHandler,
   McpCacheOptions,
   McpCachePolicy,
   McpClientInfo,
+  McpCompanionPromptInvocationContext,
+  McpCompanionPromptOptions,
   McpCompletionHandler,
   McpCompletionReference,
   McpCompletionRequest,
@@ -55,6 +66,7 @@ export type {
   McpElicitationFormRequest,
   McpElicitationResult,
   McpElicitationUrlRequest,
+  McpHandlerContext,
   McpExtensionOptions,
   McpIcon,
   McpInputMode,
@@ -68,14 +80,18 @@ export type {
   McpPluginOptions,
   McpPromptArgument,
   McpPromptHandler,
+  McpPromptHandlerContext,
   McpPromptHandlerResult,
+  McpPromptInvocationContext,
   McpPromptMessage,
   McpPromptOptions,
   McpPromptResult,
   McpRegistry,
   McpResourceContent,
   McpResourceHandler,
+  McpResourceHandlerContext,
   McpResourceHandlerResult,
+  McpResourceInvocationContext,
   McpResourceOptions,
   McpResourceReadResult,
   McpResponseMarshalOptions,
@@ -102,6 +118,7 @@ export type {
   McpToolHandlerResult,
   McpToolOptions,
   McpToolResult,
+  NormalizedMcpPluginOptions,
   RouteInvocationInput
 } from './types.js'
 export { mcp, withMcpMethods }
@@ -146,7 +163,7 @@ declare module 'elysia' {
     mcpTool<Input = unknown>(
       name: string,
       handler: import('./types.js').McpToolHandler<Input>,
-      options?: import('./types.js').McpToolOptions
+      options?: McpToolOptions<NoInfer<Input>>
     ): this
 
     mcpResource(

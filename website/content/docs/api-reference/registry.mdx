@@ -4,12 +4,12 @@ description: Inspect the resolved MCP tools, resources, templates, and prompts f
 icon: LibraryBig
 ---
 
-`getMcpRegistry()` resolves route-backed and standalone primitives into the registry used by MCP discovery and invocation.
+`getMcpRegistry(app)` resolves route-backed and standalone primitives into the registry used by MCP discovery and invocation. It uses the options applied to that app's `mcp()` plugin, or the adapter defaults when no plugin options are available. Pass a `NormalizedMcpPluginOptions` value as the second argument to resolve the registry with an explicit override.
 
 ## `getMcpRegistry`
 
 ```ts
-function getMcpRegistry(app: Elysia): McpRegistry;
+function getMcpRegistry(app: Elysia, overrideOptions?: NormalizedMcpPluginOptions): McpRegistry;
 ```
 
 ```ts
@@ -34,4 +34,4 @@ Use the registry for application diagnostics, tests, or controlled introspection
 expect(getMcpRegistry(app).tools.has("users.get")).toBe(true);
 ```
 
-The registry is cached against the route and explicit-registration state. Treat it as a resolved runtime view, not as a mutable configuration API.
+The registry is cached against the route and explicit-registration state. Treat it as a resolved runtime view, not as a mutable configuration API. Programmatic access is trusted introspection; it does not apply wire-request authorization or visibility filters. MCP clients still use the protocol methods, where the adapter enforces the configured access rules.
