@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { verifyPackedIntent } from './check-packed-intent'
 
 const workspace = resolve(import.meta.dir, '..')
 const temporary = mkdtempSync(join(tmpdir(), 'elysia-mcp-packed-'))
@@ -13,6 +14,7 @@ async function main(): Promise<void> {
     const archive = readdirSync(temporary).find((name) => name.endsWith('.tgz'))
     if (!archive) throw new Error('Bun pack did not create an archive')
     const packageArchive = join(temporary, archive)
+    await verifyPackedIntent(packageArchive)
     await verifyConsumer(packageArchive, '7.0.2', true)
     await verifyConsumer(packageArchive, '5.8.3', false)
   } finally {

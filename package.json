@@ -30,7 +30,8 @@
     "mcp",
     "model-context-protocol",
     "typebox",
-    "openapi"
+    "openapi",
+    "tanstack-intent"
   ],
   "sideEffects": false,
   "exports": {
@@ -46,7 +47,8 @@
     "README.md",
     "logo.svg",
     "AGENTS.md",
-    "LICENSE"
+    "LICENSE",
+    "skills/elysia-mcp-adapter"
   ],
   "scripts": {
     "build": "bun scripts/clean-dist.ts && bun --bun tsc -p tsconfig.build.json",
@@ -62,6 +64,7 @@
     "examples:test": "bun --bun run examples:build && bun --bun run --cwd examples/tasks test && bun --bun run --cwd examples/auth test && bun --bun run --cwd examples/apps-vanilla test && bun --bun run --cwd examples/apps-react test && bun --bun run --cwd examples/core test && bun --bun run --cwd examples/skills test && bun --bun run --cwd examples/experimental test && bun --bun run --cwd examples/events test",
     "examples:smoke": "bun --bun run --cwd examples/tasks smoke && bun --bun run --cwd examples/auth smoke && bun --bun run --cwd examples/apps-vanilla smoke && bun --bun run --cwd examples/apps-react smoke && bun --bun run --cwd examples/core smoke && bun --bun run --cwd examples/skills smoke && bun --bun run --cwd examples/experimental smoke && bun --bun run --cwd examples/events smoke",
     "extensions:check-drift": "bun scripts/check-extension-drift.ts",
+    "intent:check": "intent maintainer check",
     "prepack": "bun --bun run build",
     "prepare": "bun -e \"import { existsSync } from 'node:fs'; if(existsSync('.git'))process.exit(Bun.spawnSync([process.execPath,'node_modules/husky/bin.js'],{stdout:'inherit',stderr:'inherit'}).exitCode)\"",
     "pack:check": "bun scripts/check-packed-consumer.ts"
@@ -89,6 +92,7 @@
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@sinclair/typebox": "^0.34.52",
+    "@tanstack/intent": "0.5.6",
     "@types/bun": "^1.4.4",
     "elysia": "^1.4.31",
     "fallow": "^3.40.0",

@@ -31,6 +31,47 @@ bun add @mwillbanks/elysia-mcp-adapter elysia
 
 Node.js `>=20.11`, Bun `>=1.1`, Elysia `>=1.4`, and TypeScript `>=5.8` are supported.
 
+## Agent guidance
+
+The npm package includes an Agent Skill for integrating the adapter. Install TanStack Intent as
+a local development dependency in the consuming project. Intent 0.5.6 requires Node.js 20.12
+or later.
+
+```bash
+bun add --dev --exact @tanstack/intent@0.5.6
+```
+
+Set an explicit allowlist in the consuming project's `package.json`:
+
+```json
+{
+  "intent": {
+    "skills": ["@mwillbanks/elysia-mcp-adapter#elysia-mcp-adapter"],
+    "exclude": []
+  }
+}
+```
+
+Use exact `package#skill` entries. Every dependency needs its own permission.
+Exclusions override permissions. To revoke a skill, remove its entry or add its
+exact reference to `intent.exclude`. Use `"skills": []` to disable all sources.
+
+Run the installed CLI from the consuming project:
+
+```bash
+./node_modules/.bin/intent list
+./node_modules/.bin/intent load '@mwillbanks/elysia-mcp-adapter#elysia-mcp-adapter'
+```
+
+Load the matching skill only when it applies to the current task. Open the reference
+for that task. Use a project-local `node_modules` install for file-only discovery.
+Intent reads installed package metadata and guidance without running dependency code.
+When Yarn Plug'n'Play has no usable `node_modules`, Intent loads Yarn's `.pnp.cjs` resolver
+to locate the files. Editor hooks are optional convenience. Keep the trust policy in
+`package.json` and review guidance when dependencies change.
+
+See the [Intent trust model](https://tanstack.com/intent/latest/docs/concepts/trust-model).
+
 ## Quick start
 
 ```ts

@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 1,
+  "baseline": "32721f89f69c642946a6ec0e37f57f95dd8e8351",
+  "items": {
+    "skill:skills/elysia-mcp-adapter/SKILL.md": {
+      "fingerprint": "b05ad0cf11be986c1310820969b6d7a88b6c5a77ecd70c282c53edcf09539513",
+      "snapshot": {
+        "README.md": "40dd8211ced998a6c4387f4f6d37095524c90c4e7c79e0e2a5b0c43a88fd3b81",
+        "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
+        "skills/elysia-mcp-adapter/references/extensions.md": "58c3c6894c4703f796550b227602fd24ba8b51649cacb374559416a1d34cdc3b",
+        "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
+        "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
+        "skills/elysia-mcp-adapter/references/transport-authorization.md": "163cbf02da401c801ae8fe887cd154d39c082a5eb997781f2e7e44d9222072c0",
+        "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
+        "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
+        "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
+        "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
+        "website/content/docs/core-concepts/transportation.mdx": "9970dc2a4dc0cf28887f0af965b03ed4a03bd684684409d909b01b23924a4d5b",
+        "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
+        "website/content/docs/extensions/index.mdx": "2732b5abd3ea4b47b126b7412bca8302ca8557552eb760a2460083f67a9bb92e",
+        "website/content/docs/extensions/specification-inventory.mdx": "880852d1ca40de9a78c875a1c45db2aca0d18038db4855dd771db9b715710ec3",
+        "website/content/docs/extensions/versioning.mdx": "804d009d2da9449b80b44a943b30b6c48e059cb3b1b8d58c73cac9d0dc8dec3f"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "skill:skills/elysia-mcp-adapter/SKILL.md",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    },
+    "planning:_artifacts": {
+      "fingerprint": "539639f8dd7a183af961f3a2f01e2595db9d2151f40b1d31c383f53238a41cb8",
+      "snapshot": {
+        "README.md": "40dd8211ced998a6c4387f4f6d37095524c90c4e7c79e0e2a5b0c43a88fd3b81",
+        "_artifacts/domain_map.yaml": "45c2fa7634565fad530e15249b232ca2ad862fc4e88d2c4de900d8902de6e6da",
+        "_artifacts/skill_spec.md": "8c00fc5c68344afed276f4167cbd21824abbe75e28650bbffa44476651fa6363",
+        "_artifacts/skill_tree.yaml": "f6e9ff6482e80b4151dc887efff4db4eb3a27b45368e046c6d75b49806cc7bba",
+        "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
+        "skills/elysia-mcp-adapter/references/extensions.md": "58c3c6894c4703f796550b227602fd24ba8b51649cacb374559416a1d34cdc3b",
+        "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
+        "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
+        "skills/elysia-mcp-adapter/references/transport-authorization.md": "163cbf02da401c801ae8fe887cd154d39c082a5eb997781f2e7e44d9222072c0",
+        "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
+        "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
+        "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
+        "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
+        "website/content/docs/core-concepts/transportation.mdx": "9970dc2a4dc0cf28887f0af965b03ed4a03bd684684409d909b01b23924a4d5b",
+        "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
+        "website/content/docs/extensions/index.mdx": "2732b5abd3ea4b47b126b7412bca8302ca8557552eb760a2460083f67a9bb92e",
+        "website/content/docs/extensions/specification-inventory.mdx": "880852d1ca40de9a78c875a1c45db2aca0d18038db4855dd771db9b715710ec3",
+        "website/content/docs/extensions/versioning.mdx": "804d009d2da9449b80b44a943b30b6c48e059cb3b1b8d58c73cac9d0dc8dec3f"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "planning:_artifacts",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    },
+    "source:examples/events/README.md": {
+      "fingerprint": "6d66b4dd0d1e3fb5f4d8ee0f5166410341b38493a122b58134a1104549f7bc49",
+      "snapshot": {
+        "examples/events/README.md": "61a4407c2c4b2a7eb1ee43062cb84e9fa534fd248a3856d6a4572f5eb746f4fa"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The example adds replay and webhook operations. The extension reference covers selection and points to protocol-specific guidance.",
+      "evidence": [
+        "Checked that the example uses explicit experimental Events and that the current revision selection remains governed by the version manifest."
+      ]
+    },
+    "source:examples/tasks/README.md": {
+      "fingerprint": "4e367f755b719c0ded7eb94e6fb2d319f33d685ecc0d46ff9b68a589997f1988",
+      "snapshot": {
+        "examples/tasks/README.md": "1b8deef15441b275c6b3a7c11433c7d46584603fbaf804b0507aec004bffabb8"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The example documents provider state details. The extension reference already tells consumers to choose a durable provider.",
+      "evidence": [
+        "Checked the SQLite and durable execution examples against the provider selection step."
+      ]
+    },
+    "source:website/content/docs/core-concepts/language-preference.mdx": {
+      "fingerprint": "4c04755548f97882b9b213a25c9581ecc04d6661398d7acd0acff088002f0cd0",
+      "snapshot": {
+        "website/content/docs/core-concepts/language-preference.mdx": "992efd0bdec03d1e611597a3044b6d720865f0044b8482ebedb552a678407473"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "source:website/content/docs/core-concepts/language-preference.mdx",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    },
+    "source:website/content/docs/core-concepts/meta.json": {
+      "fingerprint": "436a7890253923805939641b903008db648b5b3a0c8e3f0ee98fb2a260f5b9b6",
+      "snapshot": {
+        "website/content/docs/core-concepts/meta.json": "adc66294d50bb4cd768b8b96a14ae60bdd86d5b67fd10f5411e9ed3ed44455a4"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "out-of-scope",
+      "reason": "Website navigation does not change the skill's relative references or mapped documentation paths.",
+      "evidence": [
+        "Checked the navigation entries for specification notices and language preferences."
+      ]
+    },
+    "source:website/content/docs/extensions/apps/examples.mdx": {
+      "fingerprint": "46cad16e8b9aedb70d40c585209cdf18308c23600dc0af6934d8374361ba9e86",
+      "snapshot": {
+        "website/content/docs/extensions/apps/examples.mdx": "212a8cc2c34fd3f2ed86ae8dfcfca07e02ed4002ced1bf8bb67a0d5f8e6926f4"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The updated browser examples concern Apps View SDK integration. The skill's server guidance covers selecting the applicable contract.",
+      "evidence": [
+        "Checked the versioned SDK examples and origin-bound host handshake descriptions."
+      ]
+    },
+    "source:website/content/docs/extensions/authorization/dpop.mdx": {
+      "fingerprint": "c1961a2ae3488124fa3dc98313f6a6a25ea9b88f0e3a4df3141b6d87d2a59226",
+      "snapshot": {
+        "website/content/docs/extensions/authorization/dpop.mdx": "bfca0d9c3f7608caa1568aa52d0e3741951f989ca9f1ab97418fb6e547c099ec"
+      },
+      "head": "3cd0b9552ab452dded70047e4bf490ef487de4c7",
+      "outcome": "no-change",
+      "reason": "The replay policy revision is documented in its dedicated guide. The package skill still points to the general authorization contract.",
+      "evidence": [
+        "Reviewed the explicit stateless and atomic replay modes and their endpoint regression against the DPoP guide.",
+        "Confirmed the transport reference covers shared host authorization without assuming a DPoP replay default."
+      ]
+    },
+    "source:website/content/docs/extensions/authorization/meta.json": {
+      "fingerprint": "a69540058d2dc58f166207741bac2aa5c286d51788cee75124d03dfac076bd43",
+      "snapshot": {
+        "website/content/docs/extensions/authorization/meta.json": "7bfc60e9bb0b86a6fb166af98f9b62347dc0c529babefca2ee18d4795d82e40e"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "out-of-scope",
+      "reason": "Navigation entries for draft authorization profiles leave the mapped configuration path unchanged.",
+      "evidence": ["Checked the DPoP and structured-denial navigation entries."]
+    },
+    "source:website/content/docs/extensions/authorization/structured-denials.mdx": {
+      "fingerprint": "29c79bf4e67feb710f190408abfbd2157e737d88b0f65794d7c2b9a1cd8a73ae",
+      "snapshot": {
+        "website/content/docs/extensions/authorization/structured-denials.mdx": "a4a791e041ee5349454ff7f8794371b5d4c7bb46c701cd40999d375f43314373"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "out-of-scope",
+      "reason": "Structured preexecution denials are a separate authorization policy. The transport reference covers endpoint and operation access boundaries.",
+      "evidence": ["Checked the pinned profile and its verifier, scopes, and policy ordering."]
+    },
+    "source:website/content/docs/extensions/experimental/events.mdx": {
+      "fingerprint": "6f30e81ed2c51b6f88174c16e84d37e7687d24204ca4bf6f2e2797a69a605568",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events.mdx": "2c7c3cfdace50be0b59d106c4a3ee2286a3944e19eee94e99eded92d9fe54c4f"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "source:website/content/docs/extensions/experimental/events.mdx",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    },
+    "source:website/content/docs/extensions/experimental/index.mdx": {
+      "fingerprint": "2bc970f1b81eb82ee1c23461e86f6890e5840092d701500ca96db4927e6e38c2",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/index.mdx": "848e00ccdaf723ff1440ddecd2cf6a85e9311f78aa7c9f9e56c1a37c4fa10e55"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The experimental catalog adds selectors and implementation links within the selection procedure already described by the skill.",
+      "evidence": [
+        "Compared the opt-in inventory and modern Events entry with the extension selection reference."
+      ]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors.mdx": {
+      "fingerprint": "74a77bb3b5d3921d7896d8409e1cc2e9311e96a539b2cc8f23ff707179f97fce",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors.mdx": "7ab1508e334f559018936dc9a03be427e146e7955876621fb7dc6d829f653725"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "Interceptor registration and chain semantics remain in their feature guide. The skill covers explicit selector choice and capability verification.",
+      "evidence": ["Checked the opt-in, singular wire method, and local chain guidance."]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants.mdx": {
+      "fingerprint": "ac6320484b77f51e973f1d5dbce315b6bf51d3b0b97732af4dd1c7c5fb0ecd53",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants.mdx": "90c3ab6940530ddbcd303afacc28d22c4247aa47ab39e706ef33224ef022ee8b"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The migration belongs in the feature and inventory pages linked by the extension reference. The reference already tells consumers to retire deprecated selectors.",
+      "evidence": ["Checked the legacy opt-in and migration to separate MCP endpoints."]
+    },
+    "source:website/content/docs/extensions/server-card.mdx": {
+      "fingerprint": "3d2470bfd752028cddf598dde1ebce1bdd1a0c5bd59d04e05638e1b644b2335f",
+      "snapshot": {
+        "website/content/docs/extensions/server-card.mdx": "abd772f09cbabea78632e97b30f9d627d03bf5cb05da34f55c5198770695b2ad"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "The Server Cards page confirms the skill's distinction between Beta maturity and an approved wire baseline.",
+      "evidence": ["Checked the accepted baseline and distinct opt-in selectors."]
+    },
+    "source:website/content/docs/extensions/tasks/configuration.mdx": {
+      "fingerprint": "c3aca5f37cfba0226867d2751ea9c9df5a095cee643dc0d6820d869c34e82891",
+      "snapshot": {
+        "website/content/docs/extensions/tasks/configuration.mdx": "6283b0376bc848c9b3f2840d68c323e2b0dc9dcba112a4a72fa81b6f6144ee9e"
+      },
+      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
+      "outcome": "no-change",
+      "reason": "Provider internals belong in the Tasks configuration guide. The extension reference already identifies the provider requirement and review of the installed selector.",
+      "evidence": [
+        "Checked the current baseline and opt-in draft version options and the durable provider requirement."
+      ]
+    },
+    "source:examples/auth/README.md": {
+      "fingerprint": "eb0036e207166fc722db0389fe479982799a94bd0e3632c56be731f6e23207ac",
+      "snapshot": {
+        "examples/auth/README.md": "1884b70b0aacdaf1d45ac6b84224f9f2925b757402d70a608019533d8e166f21"
+      },
+      "head": "f7e5a3828c011e41cad5e9535e9d7e027769b8eb",
+      "outcome": "no-change",
+      "reason": "The guide now matches the approved authorization profiles or approved Beta baseline. Existing package guidance applies.",
+      "evidence": [
+        "Compared the changed guide with the public extension support catalog and canonical extension index."
+      ]
+    },
+    "source:website/content/docs/extensions/experimental/server-card.mdx": {
+      "fingerprint": "de3b73e2bb910262b404e7384d79832ffc8d6ba9f58d3cca2324a30a8583a222",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-card.mdx": "6b8cdca8c6e79d35a1f348610acc36bba5f6917d51d4743026ea48a969756086"
+      },
+      "head": "f7e5a3828c011e41cad5e9535e9d7e027769b8eb",
+      "outcome": "no-change",
+      "reason": "The guide now matches the approved authorization profiles or approved Beta baseline. Existing package guidance applies.",
+      "evidence": [
+        "Compared the changed guide with the public extension support catalog and canonical extension index."
+      ]
+    },
+    "source:examples/core/README.md": {
+      "fingerprint": "d8579991c4c0c3938f44aebe33c1412b3a38524d7c8d36ccc70971cd0cae0796",
+      "snapshot": {
+        "examples/core/README.md": "36a7980d8755f2f443ea16566f9fac486b676609178b6971c241115df74b83ce"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "source:examples/core/README.md",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    },
+    "source:website/content/docs/core-concepts/modern-core.mdx": {
+      "fingerprint": "2454a0695b027f3f68dc6dcc4737f66fa96cae6e5494869ee7b1e36b3119da6a",
+      "snapshot": {
+        "website/content/docs/core-concepts/modern-core.mdx": "0d760548e446d536157ba6a11728f3a6e5b2d4789ed057677662a7e7115f746d"
+      },
+      "head": "9bcc4764e89d15d4e794cd5377f47e8b38f72198",
+      "outcome": "no-change",
+      "reason": "Reviewed the modern core guide against the SDK 2.4.0 interoperability suite. The correction updates the tested SDK version and requires no change to skill guidance.",
+      "evidence": [
+        "source:website/content/docs/core-concepts/modern-core.mdx",
+        "test/client-interoperability.test.ts"
+      ]
+    },
+    "source:website/content/docs/extensions/tasks/examples.mdx": {
+      "fingerprint": "27506255461aaea92e21c62769fe838ef5ecd289b8cf3b4638b0796225112a91",
+      "snapshot": {
+        "website/content/docs/extensions/tasks/examples.mdx": "27de7433fc3cfddae2c98d6d0c3804c926e84ce6a8fbd6691f9ef6224b8105b9"
+      },
+      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
+      "outcome": "no-change",
+      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "evidence": [
+        "source:website/content/docs/extensions/tasks/examples.mdx",
+        "test/client-interoperability.test.ts",
+        "test/language-http.test.ts",
+        "test/events-network.test.ts"
+      ]
+    }
+  }
+}
