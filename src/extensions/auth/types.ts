@@ -1,3 +1,4 @@
+import type { McpDpopOptions } from './dpop-options.js'
 import type {
   MCP_CLIENT_CREDENTIALS_EXTENSION,
   MCP_ENTERPRISE_MANAGED_AUTH_EXTENSION
@@ -23,6 +24,8 @@ export interface McpAuthPrincipal {
   scopes: readonly string[]
   /** OAuth client identifier, when the token represents a workload. */
   clientId?: string
+  /** Verified RFC 9449 confirmation thumbprint from the token or introspection response. */
+  dpopJkt?: string
   /**
    * Non-sensitive, verified claims needed by application authorization.
    * The adapter never decodes an unverified access token to populate this value.
@@ -49,6 +52,8 @@ export type McpAccessTokenVerifierFunction = (
 ) => McpAuthPrincipal | Promise<McpAuthPrincipal>
 
 export interface McpAuthorizationContext {
+  /** Set when the adapter verified a DPoP proof for this request. */
+  scheme?: 'DPoP'
   principal: Readonly<McpAuthPrincipal>
   scopes: readonly string[]
   attributes: Readonly<Record<string, unknown>>
@@ -111,6 +116,8 @@ export interface McpAuthOptions {
   rootMetadataAlias?: boolean
   metadata?: Omit<McpProtectedResourceMetadataOptions, 'resource' | 'authorizationServers'>
   profiles?: McpAuthProfileOptions
+  /** Explicit opt-in to the currently supported DPoP draft. */
+  dpop?: McpDpopOptions
   /**
    * Maximum allowed clock skew for access-token expiry checks, in seconds.
    * Defaults to zero.
@@ -139,7 +146,7 @@ export interface McpAuthorizationFailure {
   ok: false
   status: 401 | 403
   challenge: string
-  error: 'invalid_request' | 'invalid_token' | 'insufficient_scope'
+  error: McpBearerChallengeError | 'invalid_dpop_proof'
   missingScopes?: string[]
 }
 

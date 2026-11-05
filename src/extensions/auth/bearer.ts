@@ -1,3 +1,4 @@
+import { MCP_DPOP_SIGNING_ALGORITHMS } from './dpop.js'
 import type { BearerAuthorizationResult, McpBearerChallengeOptions } from './types.js'
 
 // RFC 6750 section 2.1: b64token, with exactly one or more SP after Bearer.
@@ -35,6 +36,21 @@ function quoted(value: string): string {
  * to make responses and tests stable.
  */
 export function buildBearerChallenge(options: McpBearerChallengeOptions): string {
+  return 'Bearer ' + challengeParameters(options).join(', ')
+}
+
+export interface McpDpopChallengeOptions extends Omit<McpBearerChallengeOptions, 'error'> {
+  error?: McpBearerChallengeOptions['error'] | 'invalid_dpop_proof'
+}
+
+/** Builds an RFC 9449 DPoP challenge with the adapter's supported algorithms. */
+export function buildDpopChallenge(options: McpDpopChallengeOptions): string {
+  const parameters = challengeParameters(options)
+  parameters.push('algs=' + quoted(MCP_DPOP_SIGNING_ALGORITHMS.join(' ')))
+  return 'DPoP ' + parameters.join(', ')
+}
+
+function challengeParameters(options: McpDpopChallengeOptions): string[] {
   const resourceMetadata =
     options.resourceMetadata instanceof URL
       ? options.resourceMetadata.href
@@ -53,5 +69,5 @@ export function buildBearerChallenge(options: McpBearerChallengeOptions): string
     parameters.push(`scope=${quoted(scope)}`)
   }
 
-  return `Bearer ${parameters.join(', ')}`
+  return parameters
 }

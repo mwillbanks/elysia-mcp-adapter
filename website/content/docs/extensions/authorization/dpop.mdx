@@ -1,0 +1,93 @@
+---
+title: DPoP proof of possession
+description: Require sender-constrained OAuth access tokens on a protected MCP endpoint.
+---
+
+DPoP is an opt-in draft profile. The adapter implements the resource-server checks in
+[SEP-1932 at revision `2489116e`](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/2489116e1bf604005e12fc3df1283abefada7a84/seps/1932-dpop-extension.md)
+and [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449.html). Your authorization server issues
+DPoP-bound tokens. Clients create and sign a fresh proof for each HTTP request.
+
+## Configure the resource
+
+Configure `extensions.auth.dpop` with exactly one replay policy. Use an atomic `acceptReplay`
+callback for shared replay protection, or set `stateless: true` to rely on freshness checks.
+Use `dpop.required: true` to require a DPoP-bound token for every protected request.
+
+```ts
+import { Elysia } from "elysia";
+import { MCP_DPOP_DRAFT_REVISION, mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(
+  mcp({
+    extensions: {
+      auth: {
+        resource: "https://api.example.com/mcp",
+        authorizationServers: ["https://auth.example.com"],
+        scopes: ["mcp"],
+        dpop: {
+          version: MCP_DPOP_DRAFT_REVISION,
+          required: true,
+          acceptReplay: reserveDpopProof,
+        },
+        verifyAccessToken: async (token, { resource }) => {
+          const verified = await verifyWithAuthorizationServer(token, resource);
+          return {
+            tokenType: "access_token",
+            subject: verified.sub,
+            issuer: verified.iss,
+            audience: verified.aud,
+            expiresAt: verified.exp,
+            scopes: verified.scope.split(" "),
+            dpopJkt: verified.cnf?.jkt,
+          };
+        },
+      },
+    },
+  }),
+);
+```
+
+The host verifies the OAuth token and returns `dpopJkt` from the verified `cnf.jkt` claim
+or trusted token introspection. Reject invalid confirmation data in the host verifier. Omit
+`dpopJkt` only for an ordinary Bearer token. Supply the thumbprint whenever the issuer produces
+DPoP-bound tokens, even when DPoP is disabled. The adapter rejects those tokens under the
+Bearer scheme.
+
+Protected Resource Metadata advertises `ES256` and the required policy when DPoP is enabled.
+The endpoint uses `WWW-Authenticate: DPoP` for DPoP errors. In mixed mode it advertises both
+schemes and reports scope errors under the authenticated scheme.
+
+## Bind the proof to the HTTP request
+
+Send `Authorization: DPoP <access-token>` and `DPoP: <signed-proof-jwt>` over HTTPS.
+The adapter checks the proof signature with an embedded P-256 public key. It compares the
+method and normalized target URI from the actual request and ignores query and fragment
+components. Configure the protected resource with an HTTPS URI. The adapter requires an HTTPS
+`Request.url`, including for loopback development. Behind a TLS-terminating proxy, preserve the
+public HTTPS URI in the request your trusted server integration passes to the adapter. The adapter
+ignores forwarding headers supplied with the request.
+
+DPoP authorization finishes before MCP dispatch. Keep application guards compatible with the
+DPoP authorization scheme where a tool invokes an internal Elysia route. An explicit MCP
+handler can read `context.authorization` for the verified principal and scopes.
+
+## Bound the replay window
+
+The proof must arrive within 300 seconds before or after its `iat` timestamp. Set
+`dpop.maxAgeSeconds` to a smaller positive value to narrow the window.
+
+Set `dpop.acceptReplay` to use a shared replay store. Atomically reserve the structured tuple
+`(resource, jkt, jti)` through the supplied `expiresAt` in Unix seconds. Return `true` for a
+new reservation and `false` for a duplicate. The adapter denies the request if the replay store
+throws. Keep the store shared across replicas that serve the same endpoint.
+
+Set `dpop.stateless: true` when you deliberately accept replay within the freshness window.
+A captured valid proof can authorize another request to the same method and target during that
+window. Use an atomic replay store when repeated requests could have harmful effects.
+
+## Track the draft
+
+`version: "draft"` follows the current supported revision. A patch release can advance this
+pin and replace the draft wire contract. If an exact pin is obsolete, review the new contract
+before selecting the current revision. A later minor release can remove retired draft support.

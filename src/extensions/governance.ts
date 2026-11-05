@@ -489,7 +489,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'draft',
     approval: 'unapproved',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.dpop.source,
     proposal: pull(1932),
     group: authGroup

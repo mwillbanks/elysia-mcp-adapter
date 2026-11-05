@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { Elysia } from 'elysia'
 import {
-  buildProtectedResourceMetadata,
+  buildAdapterProtectedResourceMetadata,
   protectedResourceMetadataPaths
-} from './extensions/auth/index.js'
+} from './extensions/auth/metadata.js'
 import { recoverWebhookSubscriptions } from './extensions/events/index.js'
 import { MCP_SERVER_CARD_MIME_TYPE } from './extensions/server-card/index.js'
 import { installMcpMethods } from './methods/install.js'
@@ -49,13 +49,7 @@ export function mcp(options: McpPluginOptions = {}) {
     }
     const auth = normalized.extensions.auth
     if (auth) {
-      const metadata = buildProtectedResourceMetadata({
-        resource: auth.resource,
-        authorizationServers: auth.authorizationServers,
-        ...auth.metadata,
-        scopesSupported: auth.metadata?.scopesSupported ?? auth.scopes,
-        bearerMethodsSupported: auth.metadata?.bearerMethodsSupported ?? ['header']
-      })
+      const metadata = buildAdapterProtectedResourceMetadata(auth)
       for (const path of protectedResourceMetadataPaths(auth.resource, auth.rootMetadataAlias)) {
         configured = configured.get(path, () => metadata, {
           mcp: false,

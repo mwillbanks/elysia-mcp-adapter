@@ -10,8 +10,9 @@ import {
   resolveMcpAppsResourceMeta
 } from '../extensions/apps/index.js'
 import {
-  authorizeBearerRequest,
+  authorizeOAuthRequest,
   buildBearerChallenge,
+  buildDpopChallenge,
   type McpAuthorizationContext,
   missingRequiredScopes,
   protectedResourceMetadataUrl
@@ -252,7 +253,7 @@ async function handlePostPayload(
     }
   }
   const outcome = await handleJsonRpcMessage(app, payload, request, options, authorization)
-  return outcomeResponse(outcome, request, options)
+  return outcomeResponse(outcome, request, options, authorization)
 }
 
 async function handleBatchPayload(
@@ -347,22 +348,29 @@ async function selectEventStreamVariant(
 function outcomeResponse(
   outcome: RpcOutcome,
   request: Request,
-  options: NormalizedMcpPluginOptions
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
 ): Response {
   if (!outcome.response) return new Response(null, { status: 202 })
-  return jsonResponse(outcome.response, outcome.status, outcomeHeaders(outcome, request, options))
+  return jsonResponse(
+    outcome.response,
+    outcome.status,
+    outcomeHeaders(outcome, request, options, authorization)
+  )
 }
 
 function outcomeHeaders(
   outcome: RpcOutcome,
   request: Request,
-  options: NormalizedMcpPluginOptions
+  options: NormalizedMcpPluginOptions,
+  authorization?: McpAuthorizationContext
 ): HeadersInit {
   const headers: Record<string, string> = {}
   const session = initializedSessionId(request)
   if (session) headers['mcp-session-id'] = session
   if (outcome.status === 403 && options.extensions.auth) {
-    headers['www-authenticate'] = buildBearerChallenge({
+    const challenge = authorization?.scheme === 'DPoP' ? buildDpopChallenge : buildBearerChallenge
+    headers['www-authenticate'] = challenge({
       resourceMetadata: protectedResourceMetadataUrl(options.extensions.auth.resource),
       error: 'insufficient_scope',
       scope: requiredScopesFromOutcome(outcome)
@@ -1393,23 +1401,13 @@ async function authorizeRequest(
 ): Promise<McpAuthorizationContext | Response | undefined> {
   const auth = options.extensions.auth
   if (!auth) return undefined
-  if (new URL(request.url).searchParams.has('access_token')) {
-    return oauthFailure(
-      401,
-      buildBearerChallenge({
-        resourceMetadata: protectedResourceMetadataUrl(auth.resource),
-        error: 'invalid_request',
-        errorDescription: 'Query-string access tokens are not accepted'
-      }),
-      'invalid_request'
-    )
-  }
-  const result = await authorizeBearerRequest(request, {
+  const result = await authorizeOAuthRequest(request, {
     resource: auth.resource,
     verifier: auth.verifyAccessToken,
     authorizationServers: auth.authorizationServers,
     requiredScopes: auth.scopes,
-    clockSkewSeconds: auth.clockSkewSeconds
+    clockSkewSeconds: auth.clockSkewSeconds,
+    dpop: auth.dpop
   })
   return result.ok
     ? result.authorization
@@ -1561,7 +1559,7 @@ async function handleNotificationRequest(
   const rejected = await ready
   if (rejected) {
     await body.cancel()
-    return outcomeResponse(rejected, request, options)
+    return outcomeResponse(rejected, request, options, authorization)
   }
   return sseResponse(body)
 }

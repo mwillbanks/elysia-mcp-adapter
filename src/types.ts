@@ -10,7 +10,8 @@ import type {
 import type {
   McpAuthOptions,
   McpAuthorizationContext,
-  McpAuthVersion
+  McpAuthVersion,
+  NormalizedMcpDpopOptions
 } from './extensions/auth/index.js'
 import type {
   McpEventRegistration,
@@ -436,7 +437,10 @@ export interface NormalizedMcpPluginOptions extends Required<
   transport: Required<NonNullable<McpPluginOptions['transport']>>
   extensions: {
     tasks?: McpTasksOptions & { version: Exclude<TasksVersionInput, 'current'> }
-    auth?: McpAuthOptions & { version: Exclude<McpAuthVersion, 'current'> }
+    auth?: Omit<McpAuthOptions, 'dpop'> & {
+      version: Exclude<McpAuthVersion, 'current'>
+      dpop?: NormalizedMcpDpopOptions
+    }
     apps?: McpAppsOptions & { version: '2026-01-26' | 'draft' }
     skills?: McpSkillsOptions & {
       version: Exclude<NonNullable<McpSkillsOptions['version']>, 'current'>
