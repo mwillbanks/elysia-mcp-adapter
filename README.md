@@ -213,6 +213,7 @@ The full guides and API reference live at **[mwillbanks.github.io/elysia-mcp-ada
 - [MCP specification inventory](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/specification-inventory/)
 - [Tasks guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/tasks/)
 - [Authorization guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/authorization/)
+- [Structured authorization denials](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/authorization/structured-denials/) explains the opt-in SEP-2643 tool policy and remediation.
 - [Apps guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/apps/)
 - [Skills guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/skills/)
 

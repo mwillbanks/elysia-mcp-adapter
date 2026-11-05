@@ -41,6 +41,16 @@ export {
   protectedResourceMetadataUrl
 } from './metadata.js'
 export { authProfileCapabilities } from './profiles.js'
+export {
+  createMcpAuthorizationDenialResult,
+  type McpAuthorizationApprovalTaskContext,
+  type McpAuthorizationDenialMetadata,
+  type McpAuthorizationDetail,
+  type McpStructuredAuthorizationContext,
+  type McpStructuredAuthorizationDecision,
+  type McpStructuredAuthorizationDenialsOptions,
+  MCP_STRUCTURED_AUTHORIZATION_DENIALS_REVISION
+} from './structured-denials.js'
 export type {
   BearerAuthorizationResult,
   McpAccessTokenVerifier,

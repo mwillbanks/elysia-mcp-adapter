@@ -483,7 +483,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     stage: 'draft',
     approval: 'unapproved',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.structuredAuthorizationDenials.source,
     proposal: pull(2643),
     group: { charter: sources.authCharter, ownership: sources.structuredAuthorizationDenials }

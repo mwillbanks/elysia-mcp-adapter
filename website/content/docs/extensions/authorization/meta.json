@@ -1,4 +1,4 @@
 {
   "title": "Authorization",
-  "pages": ["index", "quick-start", "configuration", "dpop", "examples"]
+  "pages": ["index", "quick-start", "configuration", "dpop", "structured-denials", "examples"]
 }

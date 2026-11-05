@@ -3,6 +3,7 @@ import type {
   MCP_CLIENT_CREDENTIALS_EXTENSION,
   MCP_ENTERPRISE_MANAGED_AUTH_EXTENSION
 } from './constants.js'
+import type { McpStructuredAuthorizationDenialsOptions } from './structured-denials.js'
 
 export type McpAuthProfile = 'core' | 'client-credentials' | 'enterprise-managed'
 
@@ -118,6 +119,8 @@ export interface McpAuthOptions {
   profiles?: McpAuthProfileOptions
   /** Explicit opt-in to the currently supported DPoP draft. */
   dpop?: McpDpopOptions
+  /** Explicit opt-in to the current SEP-2643 draft and the host's preexecution tool policy. */
+  structuredDenials?: McpStructuredAuthorizationDenialsOptions
   /**
    * Maximum allowed clock skew for access-token expiry checks, in seconds.
    * Defaults to zero.

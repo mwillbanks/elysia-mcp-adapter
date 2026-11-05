@@ -1,4 +1,5 @@
 import { normalizeDpopOptions, resolveAuthVersion } from '../extensions/auth/index.js'
+import { normalizeStructuredAuthorizationDenials } from '../extensions/auth/structured-denials.js'
 import { resolveEventRevision } from '../extensions/events/types.js'
 import {
   MCP_INTERCEPTORS_LATEST_REVISION,
@@ -47,6 +48,7 @@ function normalizeAuth(auth: Extensions['auth']): NormalizedMcpPluginOptions['ex
     ...auth,
     profiles: normalizeAuthProfiles(auth),
     dpop: normalizeDpopOptions(auth.dpop),
+    structuredDenials: normalizeStructuredAuthorizationDenials(auth.structuredDenials),
     version: resolveAuthVersion('core', auth.version) as Exclude<
       NonNullable<typeof auth.version>,
       'current'

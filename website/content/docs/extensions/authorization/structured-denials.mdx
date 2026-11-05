@@ -1,0 +1,51 @@
+---
+title: Structured authorization denials
+description: Classify preexecution tool denials and advertise supported remediation.
+---
+
+The adapter serves revision `c74b0c9321e89a904780d1024d895232fbb03820` of the Fine-Grained Authorization Working Group draft when you set `extensions.auth.structuredDenials`. Use `version: 'current'` to follow the current pin, or select the exact revision. A patch release may replace this draft wire contract. [SEP-2643](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/c74b0c9321e89a904780d1024d895232fbb03820/seps/2643-structured-authorization-denials.md)
+
+The adapter verifies the OAuth credential and required scopes before it calls your policy. Standard HTTP failures still use `WWW-Authenticate`. The policy runs before a standalone tool, an Elysia route, or a tool task begins. It receives a snapshot of the validated arguments and verified principal. The policy runs on every retry, including calls over the legacy protocol.
+
+```ts
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const plugin = mcp({
+  extensions: {
+    auth: {
+      resource: "https://api.example.com/mcp",
+      authorizationServers: ["https://auth.example.com"],
+      verifyAccessToken,
+      structuredDenials: {
+        version: "current",
+        async evaluate({ tool, arguments: args, principal }) {
+          const allowed = await policy.mayRun({ tool, args, principal });
+          return allowed ? { kind: "allow" } : { kind: "deny", remediation: "unavailable" };
+        },
+      },
+    },
+  },
+});
+```
+
+Return `unavailable` if no remedy exists. Return `undisclosed` if a remedy exists but you cannot describe it. Denials carry an `io.modelcontextprotocol/authorization` envelope in result metadata. Return an optional opaque, server-generated `authorizationContextId` for audit correlation. Keep identities, resources, and policy data out of the handle. The adapter keeps client echoes out of the evaluation context. Base authorization on the current credential and policy state.
+
+## Credential remediation
+
+Return `kind: 'credential'` with an `authorizationDetails` array. Include only data safe for the client and authorization server. Validate the new token against the operation on retry, because clients can edit the requested details. The adapter can send an opaque `authorizationReference` that is stable for equivalent requirements. Set `singleUseCredential: true` for a one-use credential and omit the reference. [RFC 9396](https://www.rfc-editor.org/rfc/rfc9396.html)
+
+## URL approval
+
+Return `kind: 'url'` with an HTTPS `url`, a user-facing `message`, and an `inputKey`. The adapter sends a URL-mode elicitation only when a modern client declares that capability. The fallback is a tool denial with `undisclosed` remediation.
+
+Use a URL on an origin you control. Keep credentials, personal information, and preauthenticated access out of the URL. Authenticate the user who opens the URL and bind approval to the requesting user and client. [MCP URL elicitation security](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation#security-considerations)
+
+To bind a retry to server state, configure `core.continuation` signing and return an opaque `continuationState`. The adapter verifies the signed state against the principal and original request before the next evaluation. If policy still requires URL approval when the client declines or cancels, the adapter returns an `undisclosed` denial. Verify the actual approval on your server before allowing an operation.
+
+## Durable approval tasks
+
+Return `kind: 'task'` with a `start` callback. The adapter calls it only for a modern request that declares Tasks support and when the adapter has a Tasks provider and a verified principal. Otherwise it returns `undisclosed`.
+
+Use the supplied `principalKey` to persist a durable task that holds the original operation. Store the supplied `metadata` as task `_meta` while the task is pending. Return its task ID after the configured provider can read the record for that principal. The adapter checks that the new approval task has status `working`. Future `tasks/get` calls repeat its authorization envelope until the task reaches a terminal state.
+
+Your approval worker owns the approval record, principal checks, idempotency, and execution. Wait for the approval decision, then perform fresh authorization for the held operation before executing it. Use the normal application boundary to execute approved route operations. When approval is refused, store a `completed` task with `createMcpAuthorizationDenialResult('unavailable', authorizationContextId)` as its nested result. The authorization envelope then appears on the nested result.

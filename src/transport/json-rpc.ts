@@ -17,6 +17,11 @@ import {
   missingRequiredScopes,
   protectedResourceMetadataUrl
 } from '../extensions/auth/index.js'
+import {
+  evaluateStructuredAuthorization,
+  type NormalizedStructuredAuthorizationDenials,
+  sanitizeAuthorizationTaskResult
+} from '../extensions/auth/structured-denials.js'
 import { McpExtensionDispatcher } from '../extensions/dispatcher.js'
 import {
   listEvents,
@@ -869,6 +874,37 @@ async function callTool(
   options: NormalizedMcpPluginOptions,
   context: DispatchContext
 ): Promise<unknown> {
+  const tool = requireCallableTool(app, params, request, options, context)
+
+  const args = 'arguments' in params ? params.arguments : {}
+  assertToolInputElementLimit(args, options)
+  const invocation = await invocationContext(request, 'tools/call', params, context, options)
+  const policy = options.extensions.auth?.structuredDenials
+  if (policy) {
+    const denial = await toolAuthorizationPreflight(
+      policy,
+      tool,
+      args,
+      invocation,
+      params,
+      context,
+      options
+    )
+    if (denial !== undefined) return denial
+  }
+  if (!toolTaskDecision(tool, params, context, options)) {
+    return invokeToolWithinInputLimit(tool, args, invocation, options)
+  }
+  return createToolTask(tool, args, invocation, params, request, context, options)
+}
+
+function requireCallableTool(
+  app: AnyElysiaApp,
+  params: Record<string, unknown>,
+  request: Request,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): McpToolDefinition {
   const name = params.name
   if (typeof name !== 'string') throw new JsonRpcError(-32602, 'Missing tool name')
   const tool = getMcpRegistry(app, options).tools.get(name)
@@ -880,14 +916,59 @@ async function callTool(
     assertMirroredToolHeaders(request, tool, params.arguments)
   }
   enforceAuthorization(tool.authorization, context.authorization, options)
+  return tool
+}
 
-  const args = 'arguments' in params ? params.arguments : {}
-  assertToolInputElementLimit(args, options)
-  const invocation = await invocationContext(request, 'tools/call', params, context, options)
-  if (!toolTaskDecision(tool, params, context, options)) {
-    return invokeToolWithinInputLimit(tool, args, invocation, options)
-  }
-  return createToolTask(tool, args, invocation, params, request, context, options)
+async function toolAuthorizationPreflight(
+  policy: NormalizedStructuredAuthorizationDenials,
+  tool: McpToolDefinition,
+  args: unknown,
+  invocation: McpHandlerContext,
+  params: Record<string, unknown>,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+) {
+  const principal = context.authorization?.principal
+  if (!principal)
+    throw new McpProtocolError(-32603, 'Structured authorization requires a verified principal')
+
+  const input = args ?? {}
+  const validation = validateJsonSchema(tool.inputSchema, input)
+  if (!validation.ok) return createValidationToolError(validation.issues)
+
+  const request = invocation.request
+  const task = approvalTaskAccess(request, params, context, options)
+  const denial = await evaluateStructuredAuthorization(
+    policy,
+    {
+      tool: tool.name,
+      arguments: input,
+      principal,
+      signal: invocation.signal ?? request.signal,
+      continuationState: options.core.continuation ? invocation.requestState : undefined
+    },
+    { input: invocation.input, task }
+  )
+
+  if (!denial || context.protocol.modern) return denial
+  const { resultType: _resultType, ...legacy } = denial
+  return legacy
+}
+
+function approvalTaskAccess(
+  request: Request,
+  params: Record<string, unknown>,
+  context: DispatchContext,
+  options: NormalizedMcpPluginOptions
+) {
+  if (!options.extensions.tasks || !context.protocol.modern) return undefined
+  const meta = isRecord(params._meta) ? params._meta : undefined
+  if (!hasTasksCapability(meta)) return undefined
+  const taskOwner = taskRequestContext(request, {}, context)
+  const { principalKey } = taskOwner
+  return principalKey
+    ? { principalKey, get: (taskId: string) => taskController(options).get(taskId, taskOwner) }
+    : undefined
 }
 
 function toolTaskDecision(
@@ -1447,11 +1528,15 @@ function extensionDispatcher(
   if (options.extensions.tasks) {
     dispatcher.register(['tasks/get', 'tasks/update', 'tasks/cancel'], ({ request, params }) => {
       assertModernTasks(context, options)
-      return dispatchTaskRequest(taskController(options), {
-        method: paramsMethod(request, params),
-        params,
-        context: taskRequestContext(request, params, context)
-      })
+      return dispatchTaskRequest(
+        taskController(options),
+        {
+          method: paramsMethod(request, params),
+          params,
+          context: taskRequestContext(request, params, context)
+        },
+        options.extensions.auth?.structuredDenials ? sanitizeAuthorizationTaskResult : undefined
+      )
     })
   }
   return dispatcher

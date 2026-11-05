@@ -23,6 +23,7 @@ export interface Task {
   lastUpdatedAt: string
   ttlMs: number | null
   pollIntervalMs?: number
+  _meta?: Record<string, unknown>
 }
 
 export interface TaskElicitationInputRequest {

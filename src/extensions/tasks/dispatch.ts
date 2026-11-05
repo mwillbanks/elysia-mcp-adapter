@@ -1,5 +1,5 @@
 import type { TaskController } from './controller.js'
-import type { TaskDispatchRequest, TaskMethodResult } from './types.js'
+import type { GetTaskResult, TaskDispatchRequest, TaskMethodResult } from './types.js'
 import {
   validateCancelTaskParams,
   validateGetTaskParams,
@@ -8,14 +8,16 @@ import {
 
 export async function dispatchTaskRequest(
   controller: TaskController,
-  request: TaskDispatchRequest
+  request: TaskDispatchRequest,
+  prepareGetResult?: (result: GetTaskResult) => GetTaskResult
 ): Promise<TaskMethodResult> {
   controller.assertClientCapability(request.context.meta)
 
   switch (request.method) {
     case 'tasks/get': {
       const params = validateGetTaskParams(request.params)
-      return controller.get(params.taskId, request.context)
+      const result = await controller.get(params.taskId, request.context)
+      return prepareGetResult ? prepareGetResult(result) : result
     }
     case 'tasks/update': {
       const params = validateUpdateTaskParams(request.params)

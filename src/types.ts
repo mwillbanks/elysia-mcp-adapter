@@ -13,6 +13,7 @@ import type {
   McpAuthVersion,
   NormalizedMcpDpopOptions
 } from './extensions/auth/index.js'
+import type { NormalizedStructuredAuthorizationDenials } from './extensions/auth/structured-denials.js'
 import type {
   McpEventRegistration,
   McpEventsOptions,
@@ -438,9 +439,10 @@ export interface NormalizedMcpPluginOptions extends Required<
   transport: Required<NonNullable<McpPluginOptions['transport']>>
   extensions: {
     tasks?: McpTasksOptions & { version: Exclude<TasksVersionInput, 'current'> }
-    auth?: Omit<McpAuthOptions, 'dpop'> & {
+    auth?: Omit<McpAuthOptions, 'dpop' | 'structuredDenials'> & {
       version: Exclude<McpAuthVersion, 'current'>
       dpop?: NormalizedMcpDpopOptions
+      structuredDenials?: NormalizedStructuredAuthorizationDenials
     }
     apps?: McpAppsOptions & { version: '2026-01-26' | 'draft' }
     skills?: McpSkillsOptions & {
