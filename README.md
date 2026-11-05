@@ -160,7 +160,7 @@ See the [messaging guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/c
 
 `core.maxToolInputElements` optionally rejects oversized nested tool inputs before route handlers or task providers run. It counts object members and array elements and leaves input unlimited when omitted. `transport.allowedOrigins` accepts exact serialized origins and explicit non-HTTP scheme patterns such as `chrome-extension://*`. HTTP, HTTPS, and global wildcards remain forbidden.
 
-The MCP client SDK `2.3.1` interoperates with modern discovery, progress SSE, prompts, and task reads
+The MCP client SDK `2.4.0` interoperates with modern discovery, progress SSE, prompts, and task reads
 and cancellation. It rejects valid task-creation responses after creating the task because its decoder
 does not accept `resultType: 'task'`. Use the minimal Tasks clients for creation and avoid blind retries.
 

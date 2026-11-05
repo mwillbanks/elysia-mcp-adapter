@@ -12,10 +12,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      TASKS_TEST_REDIS_IMAGE: redis:8.10.2-alpine
+      TASKS_TEST_REDIS_IMAGE: redis:8.10.3-alpine
     services:
       redis:
-        image: redis:8.10.2-alpine
+        image: redis:8.10.3-alpine
         ports:
           - 6379:6379
         options: >-
@@ -24,8 +24,8 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
       - run: bun link

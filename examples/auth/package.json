@@ -10,14 +10,14 @@
     "build": "bun build oauth/app.ts oauth/flows.ts oauth/smoke.ts enterprise/app.ts enterprise/smoke.ts --outdir dist --target bun"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.7.12",
-    "@better-auth/sso": "1.7.12",
+    "@better-auth/oauth-provider": "1.7.18",
+    "@better-auth/sso": "1.7.18",
     "@mwillbanks/elysia-mcp-adapter": "link:@mwillbanks/elysia-mcp-adapter",
-    "better-auth": "1.7.12",
-    "elysia": "1.4.30"
+    "better-auth": "1.7.18",
+    "elysia": "1.4.31"
   },
   "devDependencies": {
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "typescript": "7.0.2"
   }
 }
