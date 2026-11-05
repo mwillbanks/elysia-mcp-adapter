@@ -67,6 +67,7 @@
     "pack:check": "bun scripts/check-packed-consumer.ts"
   },
   "dependencies": {
+    "@opentelemetry/api-logs": "^0.223.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "yaml": "^2.9.1"

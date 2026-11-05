@@ -1,5 +1,6 @@
 import type { McpAuthorizationContext } from '../extensions/auth/index.js'
 import { missingRequiredScopes } from '../extensions/auth/index.js'
+import { reportInputRequestNotices } from '../extensions/specification-notices.js'
 import {
   type DetailedTask,
   TaskController,
@@ -707,11 +708,13 @@ function taskNotification(
   protocol: McpRequestProtocolContext,
   options: NormalizedMcpPluginOptions
 ): Record<string, unknown> {
+  const inputRequests = pendingTaskInputRequests(task)
+  reportInputRequestNotices(options.diagnostics.reportSpecificationNotice, inputRequests)
   const params = { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscriptionId } }
   return {
     jsonrpc: JSON_RPC_VERSION,
     method: 'notifications/tasks',
-    params: pendingTaskInputRequests(task)
+    params: inputRequests
       ? localizeTaskInputNotification(params, protocol.language, options.core.language)
       : params
   }

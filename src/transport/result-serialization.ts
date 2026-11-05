@@ -1,4 +1,8 @@
 import { assertTrustResultMetadata } from '../extensions/annotations/index.js'
+import {
+  reportInputRequestNotices,
+  reportToolAnnotationNotices
+} from '../extensions/specification-notices.js'
 import { isRecord } from '../internal.js'
 import type {
   McpInputRequiredResult,
@@ -97,15 +101,21 @@ export async function serializeProtocolResult(
 ): Promise<unknown> {
   if (!isRecord(result)) return result
   if (method === 'tools/call') assertTrustResultMetadata(result._meta)
-  const pendingTaskInput = taskResultInputRequests(method, result) !== undefined
+  const pendingTaskInputs = protocol.modern ? taskResultInputRequests(method, result) : undefined
   const serialized = protocol.modern
     ? await serializeModernResult(method, result, params, context, options)
     : assertLegacyResult(result, runtime)
+  const inputRequests = isInputRequiredResult(serialized)
+    ? serialized.inputRequests
+    : pendingTaskInputs
+  const reportNotice = options.diagnostics.reportSpecificationNotice
+  reportInputRequestNotices(reportNotice, inputRequests)
+  reportToolAnnotationNotices(reportNotice, method, serialized)
   return localizeLanguageResult(
     method,
     serialized,
     protocol.language,
     options.core.language,
-    pendingTaskInput
+    pendingTaskInputs !== undefined
   )
 }

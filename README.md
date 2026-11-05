@@ -134,9 +134,12 @@ app.use(
 )
 ```
 
-Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks keeps `draft` pinned to revision `2c1425d` and exposes the current draft as `draft-b3d28ac`, so updating upstream does not move the legacy codec. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
+Omitting an extension version selects `current`; supported dated and draft selectors resolve through the exported `MCP_EXTENSION_SUPPORT` manifest. Tasks provides the approved `current` revision and the explicit draft `draft-b3d28ac`. Update retired draft selectors using the migration guidance in the configuration error. Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`, while legacy `2025-11-25` initialization remains supported. Tasks require modern MCP and a durable provider.
 
 Workers can create a `McpTaskExecutionContext` with `createMcpTaskExecutionContext(options)`. Pass `McpTaskExecutionContextOptions` with the task ID, the original provider context, and the provider's persistence callbacks. Use `execution.notify.status()` for updates and `execution.input.request()` for client input. Rebuild the context from durable data after a restart. See the [Tasks worker example](./examples/tasks/) for the full flow.
+
+See the [specification inventory](https://mwillbanks.github.io/elysia-mcp-adapter/docs/extensions/specification-inventory/) for exact revisions and draft compatibility.
+Configure [specification notices](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/specification-notices/) to receive deprecation and pre-release notices in application logs or through your OpenTelemetry Logs provider.
 
 ### Modern core behavior
 
@@ -155,6 +158,8 @@ mcp({
 ```
 
 Tools, resource reads, and prompts can return `McpInputRequiredResult`. Invocation contexts expose `notify.progress()`, opt-in `notify.message()`, and typed `input` helpers alongside the existing `reportProgress()`, `inputResponses`, and `requestState` APIs. Route handlers read the same request-scoped values with `getMcpInvocationContext(request)`. Prompt and resource-template registrations accept completion callbacks. Pagination and subscriptions remain disabled until configured. Signing keys must contain at least 32 bytes. Single-use continuations require an application provider.
+
+Use [request language preferences](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/language-preference/) to provide localized display text from your application.
 
 See the [messaging guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/core-concepts/messaging/) for live and durable updates, input, subscriptions, and tool-linked prompts. Set `prompt` on a tool to add a companion prompt without duplicating its registration.
 

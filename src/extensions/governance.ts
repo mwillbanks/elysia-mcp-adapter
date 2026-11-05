@@ -1,4 +1,8 @@
-import { MCP_EXTENSION_LATEST_REVIEWED, type McpExtensionSource } from './manifest.js'
+import {
+  MCP_EXTENSION_LATEST_REVIEWED,
+  MCP_EXTENSION_SUPPORT,
+  type McpExtensionSource
+} from './manifest.js'
 
 const upstream = 'https://github.com/modelcontextprotocol/modelcontextprotocol'
 const pull = (number: number): string => `${upstream}/pull/${number}`
@@ -266,6 +270,15 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
     }
   },
   oldEvents: MCP_EXTENSION_LATEST_REVIEWED.triggersEvents,
+  coreMaintainers: {
+    source: {
+      repository: upstream,
+      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      path: 'docs/community/governance.mdx',
+      sha256: '628b17a407982570f978e5d16492345c6e3d1059aca7fc6baed79f797cc1a856'
+    }
+  },
+  authorizationDraft: { source: MCP_EXTENSION_SUPPORT.auth.versions.draft.source },
   authCharter: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
@@ -354,11 +367,12 @@ export const MCP_SPECIFICATION_INVENTORY = {
   appsDraft: {
     stage: 'draft',
     approval: 'unapproved',
-    scope: 'external',
-    disposition: 'inventory',
+    scope: 'server',
+    disposition: 'implemented',
     source: sources.appsDraft.source,
     group: { charter: sources.appsCharter, ownership: sources.appsDraft },
-    reason: 'The changes concern host framing and view SDK interoperability.'
+    reason:
+      'The existing server wire profile covers the draft. The changes concern host framing and view SDK interoperability.'
   },
   tasks: {
     stage: 'beta',
@@ -373,7 +387,7 @@ export const MCP_SPECIFICATION_INVENTORY = {
     approval: 'unapproved',
     scope: 'server',
     disposition: 'implemented',
-    source: sources.tasksDraft.source,
+    source: MCP_EXTENSION_SUPPORT.tasks.versions[MCP_EXTENSION_SUPPORT.tasks.draft].source,
     group: { charter: sources.eventsCharter, ownership: sources.tasksDraft }
   },
   skills: {
@@ -381,7 +395,16 @@ export const MCP_SPECIFICATION_INVENTORY = {
     approval: 'accepted',
     scope: 'server',
     disposition: 'implemented',
-    source: sources.skills.source,
+    source: MCP_EXTENSION_SUPPORT.skills.versions[MCP_EXTENSION_SUPPORT.skills.current].source,
+    proposal: pull(2640)
+  },
+  skillsHistorical: {
+    stage: 'beta',
+    approval: 'accepted',
+    scope: 'server',
+    disposition: 'implemented',
+    source:
+      MCP_EXTENSION_SUPPORT.skills.versions['167da6c0d42c247a8f8470228a10ca711e3f6c45'].source,
     proposal: pull(2640)
   },
   serverCard: {
@@ -405,6 +428,16 @@ export const MCP_SPECIFICATION_INVENTORY = {
     },
     reason:
       'The proposal records the Tasks and Events Working Group agreement on metadata placement.'
+  },
+  authorizationDraft: {
+    stage: 'draft',
+    approval: 'unapproved',
+    scope: 'server',
+    disposition: 'implemented',
+    source: sources.authorizationDraft.source,
+    group: { charter: sources.coreMaintainers, ownership: sources.authorizationDraft },
+    reason:
+      'The MCP Core Maintainers publish the core authorization draft in the official specification.'
   },
   clientCredentials: {
     stage: 'stable',

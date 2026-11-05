@@ -6,6 +6,10 @@ import {
 } from './extensions/auth/metadata.js'
 import { recoverWebhookSubscriptions } from './extensions/events/index.js'
 import { MCP_SERVER_CARD_MIME_TYPE } from './extensions/server-card/index.js'
+import {
+  createSpecificationNoticeReporter,
+  reportConfiguredSpecificationNotices
+} from './extensions/specification-notices.js'
 import { installMcpMethods } from './methods/install.js'
 import { normalizeOptions } from './options.js'
 import { ensureMcpState } from './state.js'
@@ -13,9 +17,15 @@ import { handleMcpHttpRequest } from './transport/json-rpc.js'
 import type { AnyElysiaApp, McpPluginOptions, McpRouteOptions } from './types.js'
 
 export function mcp(options: McpPluginOptions = {}) {
-  const normalized = normalizeOptions(options)
+  const prepared = normalizeOptions(options)
+  const noticeOptions = { ...options.diagnostics?.specificationNotices }
 
   return function elysiaMcpAdapter<T extends AnyElysiaApp>(app: T) {
+    const reportSpecificationNotice = createSpecificationNoticeReporter(noticeOptions)
+    const normalized = {
+      ...prepared,
+      diagnostics: { ...prepared.diagnostics, reportSpecificationNotice }
+    }
     ensureMcpState(app).pluginOptions = normalized
     installMcpMethods(app)
 
@@ -62,6 +72,7 @@ export function mcp(options: McpPluginOptions = {}) {
       }
     }
 
+    reportConfiguredSpecificationNotices(normalized, reportSpecificationNotice)
     recoverWebhookSubscriptions(configured as AnyElysiaApp, normalized)
 
     return configured.all(

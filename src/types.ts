@@ -26,6 +26,10 @@ import type {
 import type { McpProtocolVersion } from './extensions/manifest.js'
 import type { McpServerCardOptions } from './extensions/server-card/index.js'
 import type {
+  McpSpecificationNoticeOptions,
+  SpecificationNoticeReporter
+} from './extensions/specification-notices.js'
+import type {
   ExplicitSkillRegistration,
   McpSkillDefinition,
   McpSkillsOptions
@@ -417,6 +421,7 @@ export interface McpPluginOptions {
   core?: McpCoreOptions
   diagnostics?: {
     failOnMissingSchema?: boolean
+    specificationNotices?: McpSpecificationNoticeOptions
   }
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
 }
@@ -477,7 +482,10 @@ export interface NormalizedMcpPluginOptions extends Required<
     }
     subscriptions?: McpSubscriptionOptions & { heartbeatMs: number }
   }
-  diagnostics: Required<NonNullable<McpPluginOptions['diagnostics']>>
+  diagnostics: {
+    failOnMissingSchema: boolean
+    reportSpecificationNotice?: SpecificationNoticeReporter
+  }
   operationNameResolver: (operation: McpRouteOperation) => string
   mapJsonSchema?: (schema: unknown, context: McpSchemaMapContext) => unknown
 }

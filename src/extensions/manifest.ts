@@ -140,7 +140,7 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-          revision: '41d9e938e9a9edf23a69429be180cad172e00f4e',
+          revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
           path: 'docs/specification/draft/basic/authorization/index.mdx',
           sha256: '7559c591b265ef71549f02775423c8c1ae152028601ee331da12f66bec0baa55'
         }
@@ -230,10 +230,9 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/ext-apps',
-          revision: 'v1.7.5',
+          revision: '19256f52cad5517ba8272581ed2e11d6a81273d5',
           path: 'specification/draft/apps.mdx',
-          sha256: '00e97500a71cd46f27a0c661a3c9ee4df60cf64ba7b069e41227ddf8d41b4269',
-          packageVersion: '1.7.5'
+          sha256: '9a38887ea6aaae24c97200ca41620cf5b0404aa69ed55c5bd95e48b32a84dfa1'
         }
       }
     }

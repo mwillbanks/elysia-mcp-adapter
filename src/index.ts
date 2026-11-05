@@ -38,6 +38,10 @@ export type {
   McpLanguageDisplayField,
   McpLanguageOptions
 } from './transport/language.js'
+export type {
+  McpSpecificationNotice,
+  McpSpecificationNoticeOptions
+} from './extensions/specification-notices.js'
 export type { McpInvocationNotify, McpLogLevel } from './transport/notifications.js'
 export {
   createMcpSubscriptionPublisher,
