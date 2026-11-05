@@ -3,6 +3,9 @@ import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
 import type { McpEventWebhookOptions, McpWebhookAddress, McpWebhookLastError } from './types.js'
 
+export const MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS = 32
+let activeWebhookDnsResolutions = 0
+
 const IPV4_SPECIAL: ReadonlyArray<readonly [string, boolean]> = [
   ['0.0.0.0/8', false],
   ['0.0.0.0/32', false],
@@ -90,19 +93,67 @@ export function parseWebhookUrl(value: string): URL {
   return endpoint
 }
 
+async function resolveHostAddresses(
+  hostname: string,
+  options: Pick<McpEventWebhookOptions, 'resolveAddresses'>,
+  signal?: AbortSignal
+): Promise<readonly McpWebhookAddress[]> {
+  if (signal?.aborted) throw new McpWebhookNetworkError('timeout')
+  if (activeWebhookDnsResolutions >= MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS)
+    throw new McpWebhookNetworkError('connection_refused')
+
+  activeWebhookDnsResolutions += 1
+  const release = () => {
+    activeWebhookDnsResolutions -= 1
+  }
+  const resolution = Promise.resolve()
+    .then(() => {
+      if (signal?.aborted) throw new McpWebhookNetworkError('timeout')
+      return options.resolveAddresses
+        ? options.resolveAddresses(hostname, signal)
+        : lookup(hostname, { all: true, verbatim: true }).then((values) =>
+            values.map(({ address, family }) => ({ address, family: family as 4 | 6 }))
+          )
+    })
+    // Keep the slot until the underlying resolver settles, even if its caller aborts.
+    .finally(release)
+  return raceResolutionWithAbort(resolution, signal)
+}
+
+function raceResolutionWithAbort<T>(resolution: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return resolution
+  if (signal.aborted) return Promise.reject(new McpWebhookNetworkError('timeout'))
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    const abort = () => {
+      cleanup()
+      reject(new McpWebhookNetworkError('timeout'))
+    }
+    signal.addEventListener('abort', abort, { once: true })
+    resolution.then(
+      (value) => {
+        cleanup()
+        resolve(value)
+      },
+      (error: unknown) => {
+        cleanup()
+        reject(error)
+      }
+    )
+  })
+}
+
 export async function resolveWebhookEndpoint(
   endpoint: URL,
-  options: Pick<McpEventWebhookOptions, 'allowPrivateAddresses' | 'resolveAddresses'>
+  options: Pick<McpEventWebhookOptions, 'allowPrivateAddresses' | 'resolveAddresses'>,
+  signal?: AbortSignal
 ): Promise<readonly McpWebhookAddress[]> {
+  if (signal?.aborted) throw new McpWebhookNetworkError('timeout')
   const hostname = stripBrackets(endpoint.hostname)
   const family = isIP(hostname)
   const addresses = family
     ? [{ address: hostname, family: family as 4 | 6 }]
-    : await (options.resolveAddresses
-        ? options.resolveAddresses(hostname)
-        : lookup(hostname, { all: true, verbatim: true }).then((values) =>
-            values.map(({ address, family }) => ({ address, family: family as 4 | 6 }))
-          ))
+    : await resolveHostAddresses(hostname, options, signal)
   if (addresses.length === 0) throw new McpWebhookNetworkError('connection_refused')
   for (const address of addresses) {
     if ((address.family !== 4 && address.family !== 6) || isIP(address.address) !== address.family)
@@ -136,16 +187,7 @@ export async function postWebhook(
   )
   try {
     if (controller.signal.aborted) throw new McpWebhookNetworkError('timeout')
-    const addresses = await Promise.race([
-      resolveWebhookEndpoint(endpoint, options),
-      new Promise<never>((_, reject) =>
-        controller.signal.addEventListener(
-          'abort',
-          () => reject(new McpWebhookNetworkError('timeout')),
-          { once: true }
-        )
-      )
-    ])
+    const addresses = await resolveWebhookEndpoint(endpoint, options, controller.signal)
     const selected = addresses[0] as McpWebhookAddress
     return await new Promise<McpWebhookHttpResponse>((resolve, reject) => {
       let settled = false

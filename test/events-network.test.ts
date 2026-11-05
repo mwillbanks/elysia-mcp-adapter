@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import {
   isGloballyRoutableAddress,
+  MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS,
   McpWebhookNetworkError,
   parseWebhookUrl,
   postWebhook,
   resolveWebhookEndpoint
 } from '../src/extensions/events/network.js'
-import { within } from './events-test-helpers.js'
 
 const fixture = new URL('./fixtures/events-network/runner.ts', import.meta.url)
 const ca = new URL('./fixtures/events-network/ca.pem', import.meta.url)
@@ -170,26 +170,9 @@ describe('webhook network boundary', () => {
     expect(isGloballyRoutableAddress('2001:3::1')).toBe(true)
   })
 
-  test('bounds hanging DNS, honors pre-abort, and cancels an active request', async () => {
+  test('honors pre-abort and cancels an active DNS resolver', async () => {
     const endpoint = new URL('https://callback.test/hook')
-    const hanging = () => new Promise<never>(() => {})
-    await expect(
-      within(
-        postWebhook(
-          endpoint,
-          new Uint8Array(),
-          {},
-          {
-            allowPrivateAddresses: true,
-            resolveAddresses: hanging,
-            requestTimeoutMs: 25,
-            maxResponseBytes: 16
-          }
-        ),
-        'hanging DNS request timeout'
-      )
-    ).rejects.toMatchObject({ reason: 'timeout' })
-
+    let calls = 0
     const preAborted = new AbortController()
     preAborted.abort('cancelled')
     await expect(
@@ -199,29 +182,127 @@ describe('webhook network boundary', () => {
         {},
         {
           allowPrivateAddresses: true,
-          resolveAddresses: hanging,
+          resolveAddresses: async () => {
+            calls += 1
+            return [{ address: '192.0.0.9', family: 4 }]
+          },
           requestTimeoutMs: 5_000,
           maxResponseBytes: 16
         },
         preAborted.signal
       )
-    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
+    ).rejects.toMatchObject({ reason: 'timeout' })
+    expect(calls).toBe(0)
 
     const active = new AbortController()
+    let resolveStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      resolveStarted = resolve
+    })
+    let receivedSignal: AbortSignal | undefined
     const pending = postWebhook(
       endpoint,
       new Uint8Array(),
       {},
       {
         allowPrivateAddresses: true,
-        resolveAddresses: hanging,
+        resolveAddresses: (_hostname, signal) => {
+          calls += 1
+          receivedSignal = signal
+          resolveStarted()
+          return new Promise((_, reject) => {
+            const abort = () => reject(new McpWebhookNetworkError('timeout'))
+            if (signal?.aborted) abort()
+            else signal?.addEventListener('abort', abort, { once: true })
+          })
+        },
         requestTimeoutMs: 5_000,
         maxResponseBytes: 16
       },
       active.signal
     )
+    await started
+    expect(receivedSignal?.aborted).toBe(false)
     active.abort('cancelled')
     await expect(pending).rejects.toMatchObject({ reason: 'timeout' })
+    expect(receivedSignal?.aborted).toBe(true)
+    expect(calls).toBe(1)
+  })
+
+  test('passes cancellation to custom DNS resolvers even when they abort synchronously', async () => {
+    const endpoint = new URL('https://callback.test/hook')
+    const controller = new AbortController()
+    let receivedSignal: AbortSignal | undefined
+    const pending = resolveWebhookEndpoint(
+      endpoint,
+      {
+        allowPrivateAddresses: true,
+        resolveAddresses: (_hostname, signal) => {
+          receivedSignal = signal
+          controller.abort('cancelled during resolution')
+          return Promise.resolve([{ address: '192.0.0.9', family: 4 as const }])
+        }
+      },
+      controller.signal
+    )
+
+    await expect(pending).rejects.toMatchObject({ reason: 'timeout' })
+    expect(receivedSignal).toBe(controller.signal)
+  })
+
+  test('bounds unresolved DNS work without a waiter queue and releases slots on settlement', async () => {
+    const endpoint = new URL('https://callback.test/hook')
+    const controllers = Array.from(
+      { length: MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS },
+      () => new AbortController()
+    )
+    const started = controllers.map(() => {
+      let resolve!: () => void
+      const promise = new Promise<void>((done) => {
+        resolve = done
+      })
+      return { promise, resolve }
+    })
+    const resolvers: Array<(addresses: readonly { address: string; family: 4 }[]) => void> = []
+    let callCount = 0
+    const options = {
+      allowPrivateAddresses: true,
+      resolveAddresses: () => {
+        const index = callCount++
+        started[index]?.resolve()
+        return new Promise<readonly { address: string; family: 4 }[]>((resolve) => {
+          resolvers[index] = resolve
+        })
+      }
+    }
+    const pending = controllers.map((controller) =>
+      resolveWebhookEndpoint(endpoint, options, controller.signal)
+    )
+    try {
+      await Promise.all(started.map(({ promise }) => promise))
+      expect(callCount).toBe(MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS)
+
+      controllers[0]?.abort('cancel first caller')
+      await expect(pending[0]).rejects.toMatchObject({ reason: 'timeout' })
+      await expect(resolveWebhookEndpoint(endpoint, options)).rejects.toMatchObject({
+        reason: 'connection_refused'
+      })
+      expect(callCount).toBe(MAX_CONCURRENT_WEBHOOK_DNS_RESOLUTIONS)
+
+      for (const controller of controllers.slice(1)) controller.abort('cancel remaining callers')
+      resolvers.slice(1).forEach((resolve) => resolve?.([{ address: '192.0.0.9', family: 4 }]))
+      await Promise.allSettled(pending.slice(1))
+      await expect(
+        resolveWebhookEndpoint(endpoint, {
+          allowPrivateAddresses: true,
+          resolveAddresses: async () => [{ address: '192.0.0.9', family: 4 as const }]
+        })
+      ).resolves.toEqual([{ address: '192.0.0.9', family: 4 }])
+    } finally {
+      for (const controller of controllers) controller.abort('clean up test resolver')
+      resolvers.forEach((resolve) => resolve?.([{ address: '192.0.0.9', family: 4 }]))
+      await Promise.allSettled(pending)
+    }
   })
 
   test('aborts and times out active TLS sockets after the receiver observes the request', async () => {

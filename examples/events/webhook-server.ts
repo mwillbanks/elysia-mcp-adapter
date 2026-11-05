@@ -43,7 +43,7 @@ export function createWebhookEventApp(
     .use(
       mcp({
         allowedRoutes: [],
-        transport: { protocolVersions: ['2025-11-25'] },
+        transport: { protocolVersions: ['2026-07-28'] },
         extensions: {
           auth: {
             version: '2025-11-25',

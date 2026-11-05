@@ -63,7 +63,7 @@ await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 const address = server.address()
 if (!address || typeof address === 'string') throw new Error('Missing listener')
 const options = normalizeOptions({
-  transport: { protocolVersions: ['2025-11-25'] },
+  transport: { protocolVersions: ['2026-07-28'] },
   extensions: {
     events: {
       version,
@@ -102,12 +102,12 @@ const app = new Elysia().use(withMcpMethods()).mcpEvent(
     cursor: null,
     ...(termination === undefined
       ? {}
-      : { terminated: { code: -32011 - termination, message: messages[termination]! } })
+      : { terminated: { code: -32023 - termination, message: messages[termination]! } })
   })
 )
 const context = {
   request: new Request('http://localhost/mcp'),
-  protocolVersion: '2025-11-25' as const,
+  protocolVersion: '2026-07-28' as const,
   authorization
 }
 const params = (path: string) => ({

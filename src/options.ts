@@ -5,6 +5,7 @@ import {
   DEFAULT_HTTP_METHODS,
   DEFAULT_MARSHAL,
   DEFAULT_MCP_PATH,
+  DEFAULT_PROTOCOL_VERSION,
   DEFAULT_PASS_THROUGH_HEADERS,
   LEGACY_PROTOCOL_VERSION
 } from './constants.js'
@@ -42,15 +43,20 @@ function normalizeEndpointPath(path: string): string {
   return path.startsWith('/') ? path : `/${path}`
 }
 
-function assertLegacyExtensions(normalized: NormalizedMcpPluginOptions): void {
+function assertExtensionTransport(normalized: NormalizedMcpPluginOptions): void {
   const legacyOnly =
     normalized.transport.protocolVersions.length === 1 &&
     normalized.transport.protocolVersions[0] === LEGACY_PROTOCOL_VERSION
   if (normalized.extensions.variants && !legacyOnly) {
     throw new TypeError('Server variants require legacy-only protocol configuration')
   }
-  if (normalized.extensions.events && !legacyOnly) {
-    throw new TypeError('Events require legacy-only protocol configuration')
+  const events = normalized.extensions.events
+  if (!events) return
+  if (!normalized.transport.protocolVersions.includes(DEFAULT_PROTOCOL_VERSION)) {
+    throw new TypeError('Events require MCP 2026-07-28. Enable it in transport.protocolVersions.')
+  }
+  if (events.listChanged && !normalized.core.subscriptions) {
+    throw new TypeError('Events listChanged requires a core subscriptions provider')
   }
 }
 
@@ -74,6 +80,6 @@ export function normalizeOptions(options: McpPluginOptions = {}): NormalizedMcpP
     diagnostics: { failOnMissingSchema: options.diagnostics?.failOnMissingSchema ?? false },
     mapJsonSchema: options.mapJsonSchema
   } satisfies NormalizedMcpPluginOptions
-  assertLegacyExtensions(normalized)
+  assertExtensionTransport(normalized)
   return normalized
 }

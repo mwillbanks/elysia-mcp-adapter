@@ -2,7 +2,6 @@ import {
   assertEventDefinition,
   type McpEventDefinition,
   type McpEventHandler,
-  notifyMcpEventListChanged,
   snapshotEventDefinition
 } from '../extensions/events/index.js'
 import {
@@ -153,12 +152,14 @@ export function installMcpMethods(app: AnyElysiaApp): AnyElysiaApp {
       ) {
         assertEventDefinition(definition)
         const state = ensureMcpState(this)
-        state.explicitEvents.set(definition.name, {
-          definition: snapshotEventDefinition(definition),
-          handler
-        })
-        invalidateRegistry(this, 'events')
-        notifyMcpEventListChanged(this)
+        const previous = state.explicitEvents.get(definition.name)
+        const snapshot = snapshotEventDefinition(definition)
+        state.explicitEvents.set(definition.name, { definition: snapshot, handler })
+        invalidateRegistry(this)
+        const visibleTo = previous
+          ? [previous.definition.authorization, snapshot.authorization]
+          : [snapshot.authorization]
+        notifyRegistryChange(this, 'events', visibleTo)
         return this
       }
     })

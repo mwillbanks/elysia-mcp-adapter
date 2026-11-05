@@ -1,5 +1,5 @@
 import { normalizeDpopOptions, resolveAuthVersion } from '../extensions/auth/index.js'
-import { MCP_EVENTS_LATEST_REVISION, MCP_EVENTS_REVISION } from '../extensions/events/types.js'
+import { resolveEventRevision } from '../extensions/events/types.js'
 import {
   MCP_INTERCEPTORS_LATEST_REVISION,
   MCP_INTERCEPTORS_REVISION
@@ -258,10 +258,7 @@ function normalizeEvents(
   validateEventPagination(events)
   return {
     ...events,
-    version:
-      events.version === MCP_EVENTS_REVISION
-        ? MCP_EVENTS_REVISION
-        : resolveExperimentalRevision('events', events.version, MCP_EVENTS_LATEST_REVISION),
+    version: resolveEventRevision(events.version),
     cursor: { ...events.cursor, ttlMs: withDefault(events.cursor.ttlMs, 24 * 60 * 60_000) },
     heartbeatMs: withDefault(events.heartbeatMs, 15_000),
     pollIntervalMs: withDefault(events.pollIntervalMs, 5_000),

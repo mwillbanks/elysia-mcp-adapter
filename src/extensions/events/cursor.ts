@@ -105,11 +105,6 @@ export function eventPrincipalKey(
     : undefined
 }
 
-export function eventVariantKey(meta: Record<string, unknown> | undefined): string | undefined {
-  const value = meta?.['io.modelcontextprotocol/server-variant']
-  return typeof value === 'string' ? value : undefined
-}
-
 function sha256(value: string): string {
   return createHmac('sha256', 'mcp-events-binding').update(value).digest('hex')
 }

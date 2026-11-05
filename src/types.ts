@@ -245,6 +245,7 @@ export type McpCompletionHandler = (
 ) => McpCompletionResult | Promise<McpCompletionResult>
 
 export interface McpSubscriptionFilter {
+  eventsListChanged?: boolean
   toolsListChanged?: boolean
   promptsListChanged?: boolean
   resourcesListChanged?: boolean

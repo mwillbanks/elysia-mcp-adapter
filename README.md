@@ -194,7 +194,7 @@ Legacy server variants bind discovery, selection, cursors, registries, subscript
 
 Action metadata describes destinations, sources, sensitivity, outcome, and review needs. Trust result metadata distinguishes an absent boolean from `false`. Evidence references are bounded descriptors; the adapter does not fetch them. Hosts own approval, union-strengthening, consent, evidence retrieval, and unavailable functionality. Behavioral annotations never grant authorization.
 
-Events are legacy-only and default to revision `d5316be214be2e76e51462069c1d67e00a5a7619`. The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
+Events require MCP `2026-07-28` and default to [the Triggers & Events Working Group draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/b08e4f9dd684f39d846d94089487fbeb28e666f5/seps/0000-events-extension.md). The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
 
@@ -248,8 +248,7 @@ use `io.modelcontextprotocol.skills/`. Resource digests still cover exact publis
 Interceptors use the current `07c89a24` proposal, including timestamped invocation context,
 optional span/session identifiers, and per-call configuration validation. See the separate HTTP
 service in `examples/experimental`; local chain helpers remain local utilities.
-Events uses proposal `d5316be2` and codes `-32023` through `-32027`; explicitly selecting
-`6682596d` retains historical codes. Events and Variants remain legacy transport experiments.
+Events uses draft `b08e4f9d` and codes `-32023` through `-32027`. Migrate older Events pins to `current` and discover Events on `server/discover`. Server Variants still uses legacy transport.
 
 Apps, Client Credentials, and Enterprise-Managed Authorization have approved profiles.
 Server Cards follows Final SEP-2127. Tasks exposes approved and pinned draft selections.

@@ -34,6 +34,14 @@ export interface McpLatestExtensionRecord {
   reason?: string
 }
 
+const eventsDraftSource = {
+  repository: 'https://github.com/pja-ant/modelcontextprotocol',
+  revision: 'b08e4f9dd684f39d846d94089487fbeb28e666f5',
+  path: 'seps/0000-events-extension.md',
+  sha256: 'ba056d7f8afb9c61dbfff6820ec25f691cd7eefaa1f55fd73c03ba6983bf40fa',
+  trackHead: false
+} as const satisfies McpExtensionSource
+
 export const MCP_EXTENSION_SUPPORT = {
   protocol: {
     current: '2026-07-28',
@@ -331,8 +339,15 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   events: {
     identifier: 'io.modelcontextprotocol/events',
-    current: 'd5316be214be2e76e51462069c1d67e00a5a7619',
+    current: eventsDraftSource.revision,
     versions: {
+      [eventsDraftSource.revision]: {
+        status: 'draft',
+        includedAt: '2026-11-05',
+        source: eventsDraftSource
+      }
+    },
+    historicalDrafts: {
       d5316be214be2e76e51462069c1d67e00a5a7619: {
         status: 'experimental',
         includedAt: '2026-10-22',
@@ -852,17 +867,24 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
       sha256: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb'
     }
   },
+  events: {
+    identifier: MCP_EXTENSION_SUPPORT.events.identifier,
+    maturity: 'draft',
+    protocolEra: '2026-07-28',
+    availability: 'reviewed',
+    source: eventsDraftSource
+  },
   triggersEvents: {
     identifier: 'io.modelcontextprotocol/triggers-events',
     maturity: 'experimental',
-    protocolEra: 'draft',
+    protocolEra: 'historical-draft',
     availability: 'reviewed',
     source: {
-      repository: 'https://github.com/modelcontextprotocol/experimental-ext-triggers-events',
-      revision: 'd5316be214be2e76e51462069c1d67e00a5a7619',
-      path: 'docs/design-sketch-proposal.md',
-      sha256: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59'
-    }
+      ...MCP_EXTENSION_SUPPORT.events.historicalDrafts.d5316be214be2e76e51462069c1d67e00a5a7619
+        .source,
+      trackHead: false
+    },
+    reason: 'The group replaced the legacy design sketch with SEP-3415.'
   },
   standardWebhooks: {
     identifier: 'standardwebhooks.com/specification',

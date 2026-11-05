@@ -1,16 +1,10 @@
-import { LEGACY_PROTOCOL_VERSION } from '../../constants.js'
+import { DEFAULT_PROTOCOL_VERSION } from '../../constants.js'
 import { getMcpRegistry } from '../../registry.js'
 import { decodeCursor, encodeCursor } from '../../transport/core.js'
+import { createSseCapacity } from '../../transport/sse-capacity.js'
 import type { AnyElysiaApp, McpInvocationContext, NormalizedMcpPluginOptions } from '../../types.js'
 import { missingRequiredScopes } from '../auth/index.js'
-import {
-  canonicalJson,
-  decodeEventCursor,
-  encodeEventCursor,
-  eventPrincipalKey,
-  eventVariantKey
-} from './cursor.js'
-import { MCP_EVENTS_LATEST_REVISION } from './types.js'
+import { canonicalJson, decodeEventCursor, encodeEventCursor, eventPrincipalKey } from './cursor.js'
 import { abortableDelay } from './delay.js'
 import { McpWebhookNetworkError, parseWebhookUrl } from './network.js'
 import {
@@ -22,6 +16,7 @@ import {
   webhookWorkers,
   withWebhookLifecycleLock
 } from './runtime-state.js'
+import { MCP_EVENT_SUBSCRIPTION_META_KEY } from './types.js'
 import type {
   McpEventDefinition,
   McpEventDescriptor,
@@ -74,7 +69,7 @@ export async function listEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  return eventOperation(options, async () => {
+  return eventOperation(async () => {
     const config = eventOptions(options)
     await authorizeExtension(config, context)
     if (params.cursor !== undefined && !config.pagination)
@@ -100,6 +95,7 @@ export async function listEvents(
             context
           )
     return {
+      resultType: 'complete',
       events: page.events,
       ...(page.nextOffset !== undefined && config.pagination
         ? {
@@ -212,7 +208,7 @@ export async function pollEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  return eventOperation(options, async () => {
+  return eventOperation(async () => {
     const prepared = await prepareEventRequest(app, params, 'poll', options, context)
     const result = await pollSource(prepared.source, prepared.request, context, options)
     if (result.terminated) throw eventError(result.terminated)
@@ -233,7 +229,7 @@ export async function streamEvents(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Response> {
-  return eventOperation(options, async () => {
+  return eventOperation(async () => {
     const prepared = await prepareEventRequest(app, params, 'push', options, context)
     const initial = await pollSource(prepared.source, prepared.request, context, options)
     if (initial.terminated) throw eventError(initial.terminated)
@@ -249,10 +245,18 @@ export async function streamEvents(
     )
     const originalDescriptor = eventDescriptor(prepared.source.definition)
     const abort = new AbortController()
-    const relay = () => abort.abort(context.signal?.reason)
-    if (context.signal?.aborted) abort.abort(context.signal.reason)
-    else context.signal?.addEventListener('abort', relay, { once: true })
+    const capacity = createSseCapacity()
     let session: EventStreamSession | undefined
+    const relay = () => {
+      if (!session) return
+      try {
+        session.controller.close()
+      } catch {
+        // The producer or reader may already have closed the stream.
+      } finally {
+        void cleanupEventStream(session)
+      }
+    }
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         session = createEventStreamSession(
@@ -265,10 +269,17 @@ export async function streamEvents(
           originalDescriptor,
           abort,
           relay,
-          controller
+          controller,
+          capacity
         )
+        if (context.signal?.aborted) {
+          relay()
+          return
+        }
+        context.signal?.addEventListener('abort', relay, { once: true })
         void runEventStream(session)
       },
+      pull: capacity.wake,
       async cancel() {
         if (session) await cleanupEventStream(session)
       }
@@ -297,7 +308,8 @@ interface EventStreamSession {
   meta: Record<string, string | number>
   cursor: string | null
   heartbeat?: ReturnType<typeof setInterval>
-  cleaned: boolean
+  capacity: ReturnType<typeof createSseCapacity>
+  cleaning?: Promise<void>
 }
 
 function createEventStreamSession(
@@ -310,7 +322,8 @@ function createEventStreamSession(
   originalDescriptor: McpEventDescriptor,
   abort: AbortController,
   relay: () => void,
-  controller: ReadableStreamDefaultController<Uint8Array>
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  capacity: EventStreamSession['capacity']
 ): EventStreamSession {
   return {
     app,
@@ -323,16 +336,17 @@ function createEventStreamSession(
     abort,
     relay,
     controller,
-    meta: { 'io.modelcontextprotocol/subscriptionId': parentId },
-    cursor: prepared.initial || initial.truncated ? initial.cursor : prepared.request.cursor,
-    cleaned: false
+    meta: { [MCP_EVENT_SUBSCRIPTION_META_KEY]: parentId },
+    cursor:
+      prepared.initial || initial.truncated ? gapCheckpoint(initial) : prepared.request.cursor,
+    capacity
   }
 }
 
 async function runEventStream(session: EventStreamSession): Promise<void> {
   let serverClosed = false
   try {
-    initializeEventStream(session)
+    await initializeEventStream(session)
     let nextPollMs = session.initial.nextPollMs ?? eventOptions(session.options).pollIntervalMs
     while (!session.abort.signal.aborted) {
       const tick = await pollEventStream(session, nextPollMs)
@@ -342,7 +356,7 @@ async function runEventStream(session: EventStreamSession): Promise<void> {
       }
       nextPollMs = tick.nextPollMs
     }
-    if (serverClosed && !session.abort.signal.aborted) closeEventStream(session)
+    if (serverClosed && !session.abort.signal.aborted) await closeEventStream(session)
   } catch {
     if (!session.abort.signal.aborted) session.controller.error(new Error('Event stream failed'))
   } finally {
@@ -350,20 +364,19 @@ async function runEventStream(session: EventStreamSession): Promise<void> {
   }
 }
 
-function initializeEventStream(session: EventStreamSession): void {
-  sendEventStream(session, {
-    jsonrpc: '2.0',
-    method: 'notifications/events/active',
-    params: {
-      cursor: encodedEventStreamCursor(session),
-      truncated: session.initial.truncated ?? false,
-      _meta: session.meta
-    }
+async function initializeEventStream(session: EventStreamSession): Promise<void> {
+  const { initial } = session
+  await sendEventStream(session, eventStreamActive(session, initial.truncated === true))
+  await sendEventStreamBatch(session, initial)
+  if (!session.abort.signal.aborted) startEventStreamHeartbeat(session)
+}
+
+function eventStreamActive(session: EventStreamSession, truncated: boolean) {
+  return eventNotification('active', {
+    cursor: encodedEventStreamCursor(session),
+    truncated,
+    _meta: session.meta
   })
-  for (const occurrence of session.initial.events)
-    sendEventStreamOccurrence(session, occurrence, session.initial.cursor !== null)
-  if (session.initial.events.length === 0) session.cursor = session.initial.cursor
-  startEventStreamHeartbeat(session)
 }
 
 interface EventStreamTick {
@@ -380,7 +393,7 @@ async function pollEventStream(
   await abortableDelay(Math.min(nextPollMs, config.heartbeatMs), session.abort.signal)
   const current = await resolveEventStreamSource(session)
   if (!current) return { stop: true, serverClosed: true, nextPollMs }
-  if (!validateEventStreamSource(session, current))
+  if (!(await validateEventStreamSource(session, current)))
     return { stop: true, serverClosed: true, nextPollMs }
   return pollCurrentEventStreamSource(session, current, nextPollMs)
 }
@@ -393,13 +406,14 @@ async function resolveEventStreamSource(session: EventStreamSession): Promise<Ev
       session.context,
       session.options
     )
+    await authorizeExtension(eventOptions(session.options), session.context)
     await authorizeEvent(current.definition, session.prepared.request.arguments, session.context)
     return current
   } catch (error) {
-    sendEventStream(
+    await sendEventStream(
       session,
       eventNotification('terminated', {
-        error: revisionEventError(terminationForResolution(error), eventOptions(session.options)),
+        error: terminationForResolution(error),
         _meta: session.meta
       })
     )
@@ -407,7 +421,10 @@ async function resolveEventStreamSource(session: EventStreamSession): Promise<Ev
   }
 }
 
-function validateEventStreamSource(session: EventStreamSession, current: EventSource): boolean {
+async function validateEventStreamSource(
+  session: EventStreamSession,
+  current: EventSource
+): Promise<boolean> {
   const schemaChange = incompatibleEventSchema(
     session.originalDescriptor,
     eventDescriptor(current.definition)
@@ -416,11 +433,11 @@ function validateEventStreamSource(session: EventStreamSession, current: EventSo
     (mode) => !current.definition.delivery.includes(mode)
   )
   if (!deliveryRemoved && !schemaChange) return true
-  sendEventStream(
+  await sendEventStream(
     session,
     eventNotification('terminated', {
       error: {
-        code: eventErrorCode(-32014, eventOptions(session.options)),
+        code: -32026,
         message: 'Unsupported',
         data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
       },
@@ -443,16 +460,16 @@ async function pollCurrentEventStreamSource(
       session.options
     )
     if (result.terminated) {
-      sendEventStream(
+      await sendEventStream(
         session,
         eventNotification('terminated', {
-          error: revisionEventError(result.terminated, eventOptions(session.options)),
+          error: result.terminated,
           _meta: session.meta
         })
       )
       return { stop: true, serverClosed: true, nextPollMs: previousNextPollMs }
     }
-    applyEventStreamPollResult(session, result)
+    await applyEventStreamPollResult(session, result)
     return {
       stop: false,
       serverClosed: false,
@@ -461,7 +478,7 @@ async function pollCurrentEventStreamSource(
   } catch {
     if (session.abort.signal.aborted)
       return { stop: true, serverClosed: false, nextPollMs: previousNextPollMs }
-    sendEventStream(
+    await sendEventStream(
       session,
       eventNotification('error', {
         error: { code: -32603, message: 'UpstreamError' },
@@ -472,46 +489,50 @@ async function pollCurrentEventStreamSource(
   }
 }
 
-function applyEventStreamPollResult(session: EventStreamSession, result: McpEventPollResult): void {
+async function applyEventStreamPollResult(
+  session: EventStreamSession,
+  result: McpEventPollResult
+): Promise<void> {
   if (result.truncated) {
-    session.cursor = result.cursor
-    sendEventStream(
+    session.cursor = gapCheckpoint(result)
+    await sendEventStream(session, eventStreamActive(session, true))
+  }
+  await sendEventStreamBatch(session, result)
+}
+
+function gapCheckpoint(result: McpEventPollResult): string | null {
+  return result.events.length === 0 || result.cursor === null
+    ? result.cursor
+    : (result.replayStartCursor ?? null)
+}
+
+async function sendEventStreamBatch(
+  session: EventStreamSession,
+  result: McpEventPollResult
+): Promise<void> {
+  for (const occurrence of result.events) {
+    await session.capacity.wait(session.controller, session.abort.signal)
+    if (session.abort.signal.aborted) return
+    if (result.cursor !== null && occurrence.cursor == null)
+      throw internalError('Replayable push events require per-event cursors')
+    session.cursor = occurrence.cursor ?? null
+    enqueueEventStream(
       session,
-      eventNotification('active', {
+      eventNotification('event', {
+        ...occurrence,
         cursor: encodedEventStreamCursor(session),
-        truncated: true,
-        _meta: session.meta
+        _meta: { ...occurrence._meta, ...session.meta }
       })
     )
   }
-  for (const occurrence of result.events)
-    sendEventStreamOccurrence(session, occurrence, result.cursor !== null)
-  if (result.events.length === 0) session.cursor = result.cursor
-}
-
-function sendEventStreamOccurrence(
-  session: EventStreamSession,
-  occurrence: McpEventOccurrence,
-  replayable: boolean
-): void {
-  if (replayable && occurrence.cursor == null)
-    throw internalError('Replayable push events require per-event cursors')
-  session.cursor = occurrence.cursor ?? null
-  sendEventStream(
-    session,
-    eventNotification('event', {
-      ...occurrence,
-      cursor: encodedEventStreamCursor(session),
-      _meta: { ...occurrence._meta, ...session.meta }
-    })
-  )
+  session.cursor = result.cursor
 }
 
 function startEventStreamHeartbeat(session: EventStreamSession): void {
   session.heartbeat = setInterval(() => {
-    if (session.abort.signal.aborted) return
+    if (session.abort.signal.aborted || (session.controller.desiredSize ?? 0) <= 0) return
     try {
-      sendEventStream(
+      enqueueEventStream(
         session,
         eventNotification('heartbeat', {
           cursor: encodedEventStreamCursor(session),
@@ -531,31 +552,44 @@ function encodedEventStreamCursor(session: EventStreamSession): string | null {
     session.prepared.request.name,
     session.prepared.request.arguments,
     session.context.authorization,
-    session.prepared.variant,
+    undefined,
     eventOptions(session.options).cursor
   )
 }
 
-function sendEventStream(session: EventStreamSession, value: unknown): void {
+async function sendEventStream(session: EventStreamSession, value: unknown): Promise<void> {
+  await session.capacity.wait(session.controller, session.abort.signal)
+  if (!session.abort.signal.aborted) enqueueEventStream(session, value)
+}
+
+function enqueueEventStream(session: EventStreamSession, value: unknown): void {
   session.controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`))
 }
 
-function closeEventStream(session: EventStreamSession): void {
-  sendEventStream(session, { jsonrpc: '2.0', id: session.parentId, result: { _meta: {} } })
-  session.controller.close()
+async function closeEventStream(session: EventStreamSession): Promise<void> {
+  await sendEventStream(session, {
+    jsonrpc: '2.0',
+    id: session.parentId,
+    result: { resultType: 'complete', _meta: session.meta }
+  })
+  if (!session.abort.signal.aborted) session.controller.close()
 }
 
-async function cleanupEventStream(session: EventStreamSession): Promise<void> {
-  if (session.cleaned) return
-  session.cleaned = true
+function cleanupEventStream(session: EventStreamSession): Promise<void> {
+  if (session.cleaning) return session.cleaning
   if (session.heartbeat) clearInterval(session.heartbeat)
   session.abort.abort('Event stream closed')
   session.context.signal?.removeEventListener('abort', session.relay)
-  await session.prepared.source.definition.onUnsubscribe?.(
-    session.prepared.request.arguments,
-    String(session.parentId),
-    session.context
-  )
+  session.cleaning = Promise.resolve()
+    .then(() =>
+      session.prepared.source.definition.onUnsubscribe?.(
+        session.prepared.request.arguments,
+        String(session.parentId),
+        session.context
+      )
+    )
+    .catch(() => {})
+  return session.cleaning
 }
 
 export async function subscribeEventsWebhook(
@@ -564,7 +598,7 @@ export async function subscribeEventsWebhook(
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
 ): Promise<Record<string, unknown>> {
-  return eventOperation(options, async () => {
+  return eventOperation(async () => {
     const { config, webhook, principal } = webhookRequestEnvironment(options, context)
     const prepared = await prepareEventRequest(app, params, 'webhook', options, context)
     const delivery = parseWebhookDelivery(params.delivery)
@@ -573,8 +607,7 @@ export async function subscribeEventsWebhook(
       delivery.url,
       prepared.request.name,
       prepared.request.arguments,
-      config.cursor.signingKey,
-      prepared.variant
+      config.cursor.signingKey
     )
     const request: WebhookSubscriptionRequest = {
       app,
@@ -703,7 +736,7 @@ function assertWebhookSubscriptionOwner(
     existing.url === request.delivery.url &&
     existing.name === request.prepared.request.name &&
     canonicalJson(existing.arguments) === canonicalJson(request.prepared.request.arguments) &&
-    existing.variant === request.prepared.variant
+    existing.variant === undefined
   if (!valid) throw internalError('Webhook provider returned an invalid subscription owner')
 }
 
@@ -752,8 +785,7 @@ function newWebhookSubscriptionRecord(
     verified: false,
     active: true,
     createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-    variant: request.prepared.variant
+    updatedAt: now.toISOString()
   }
 }
 
@@ -768,7 +800,7 @@ async function verifySubscriptionEndpoint(flow: WebhookSubscriptionFlow): Promis
       error instanceof McpWebhookVerificationError || error instanceof McpWebhookNetworkError
         ? error.reason
         : 'connection_refused'
-    throw new McpEventProtocolError(-32015, 'CallbackEndpointError', { reason })
+    throw new McpEventProtocolError(-32027, 'CallbackEndpointError', { reason })
   }
   flow.record.verified = true
 }
@@ -801,8 +833,9 @@ function applyWebhookInitialResult(
     flow.initialResult = undefined
     return
   }
-  flow.responseCursor = safeCursor
-  flow.cursor = safeCursor
+  const checkpoint = result.truncated ? gapCheckpoint(result) : safeCursor
+  flow.responseCursor = checkpoint
+  flow.cursor = checkpoint
   flow.awaitInitialForSafeCursor = (result.truncated ?? false) && result.events.length > 0
   result.truncated = false
   flow.initialResult = result
@@ -828,7 +861,7 @@ async function storeWebhookSubscription(flow: WebhookSubscriptionFlow): Promise<
       maxSubscriptionsPerPrincipal: flow.webhook.maxSubscriptionsPerPrincipal
     })
     if ('limitExceeded' in stored)
-      throw new McpEventProtocolError(-32013, 'ResourceExhausted', {
+      throw new McpEventProtocolError(-32025, 'ResourceExhausted', {
         limit: 'subscriptions',
         max: flow.webhook.maxSubscriptionsPerPrincipal
       })
@@ -851,7 +884,7 @@ function assertStoredWebhookSubscription(
     stored.principal === expected.principal &&
     stored.url === expected.url &&
     stored.name === expected.name &&
-    stored.variant === expected.variant &&
+    stored.variant === undefined &&
     stored.maxAgeMs === expected.maxAgeMs &&
     canonicalJson(stored.arguments) === canonicalJson(expected.arguments)
   if (!valid) throw internalError('Webhook provider changed subscription ownership')
@@ -961,6 +994,7 @@ async function rollbackWebhookLifecycle(
 
 function webhookSubscriptionResult(flow: WebhookSubscriptionFlow): Record<string, unknown> {
   return {
+    resultType: 'complete',
     id: flow.record.id,
     refreshBefore: flow.refreshBefore,
     cursor: encodeEventCursor(
@@ -968,7 +1002,7 @@ function webhookSubscriptionResult(flow: WebhookSubscriptionFlow): Record<string
       flow.record.name,
       flow.record.arguments,
       flow.context.authorization,
-      flow.record.variant,
+      undefined,
       flow.config.cursor
     ),
     truncated: flow.responseTruncated,
@@ -981,8 +1015,8 @@ export async function unsubscribeEventsWebhook(
   params: Record<string, unknown>,
   options: NormalizedMcpPluginOptions,
   context: McpInvocationContext
-): Promise<Record<string, never>> {
-  return eventOperation(options, async () => {
+): Promise<{ resultType: 'complete' }> {
+  return eventOperation(async () => {
     const { config, webhook, principal } = webhookRequestEnvironment(options, context)
     const tuple = parseWebhookUnsubscribeTuple(params)
     const identity = deriveWebhookSubscriptionIdentity(
@@ -990,8 +1024,7 @@ export async function unsubscribeEventsWebhook(
       tuple.url,
       tuple.name,
       tuple.arguments,
-      config.cursor.signingKey,
-      eventVariantKey(context.meta)
+      config.cursor.signingKey
     )
     const request: WebhookUnsubscribeRequest = {
       app,
@@ -1066,7 +1099,7 @@ function webhookRequestEnvironment(
 
 async function unsubscribeWebhookLocked(
   request: WebhookUnsubscribeRequest
-): Promise<Record<string, never>> {
+): Promise<{ resultType: 'complete' }> {
   const record = await request.webhook.provider.get(request.identity.key)
   assertUnsubscribeRecord(record, request)
   const worker = webhookWorkers(request.app, request.options).get(record.id)
@@ -1081,7 +1114,7 @@ async function unsubscribeWebhookLocked(
   } finally {
     retireWebhookLifecycleEpoch(request.app, request.options, record.id, epoch)
   }
-  return {}
+  return { resultType: 'complete' }
 }
 
 function assertUnsubscribeRecord(
@@ -1095,9 +1128,9 @@ function assertUnsubscribeRecord(
     record.principal === request.principal &&
     record.url === request.tuple.url &&
     record.name === request.tuple.name &&
-    record.variant === eventVariantKey(request.context.meta) &&
+    record.variant === undefined &&
     canonicalJson(record.arguments) === canonicalJson(request.tuple.arguments)
-  if (!valid) throw new McpEventProtocolError(-32011, 'NotFound', { kind: 'subscription' })
+  if (!valid) throw new McpEventProtocolError(-32023, 'NotFound', { kind: 'subscription' })
 }
 
 async function deleteWebhookSubscription(
@@ -1168,7 +1201,7 @@ function validateRecoveredWebhookRecord(
   record: McpWebhookSubscriptionRecord,
   config: NormalizedMcpEventsOptions
 ): { key: string; id: string } | null {
-  if (!record.verified || !record.active) return null
+  if (!record.verified || !record.active || record.variant !== undefined) return null
   if (
     record.maxAgeMs !== undefined &&
     (!Number.isSafeInteger(record.maxAgeMs) || record.maxAgeMs < 0)
@@ -1181,8 +1214,7 @@ function validateRecoveredWebhookRecord(
     record.url,
     record.name,
     record.arguments,
-    config.cursor.signingKey,
-    record.variant
+    config.cursor.signingKey
   )
   return identity.key === record.key && identity.id === record.id ? identity : null
 }
@@ -1200,7 +1232,8 @@ async function recoverWebhookLocked(
   if (webhookWorkers(app, options).has(current.id)) return
   const authorization = await webhook.provider.authorizeDelivery(current)
   if (!authorization || eventPrincipalKey(authorization) !== current.principal) return
-  const context = recoveredWebhookContext(current, authorization)
+  const context = recoveredWebhookContext(authorization)
+  await authorizeExtension(eventOptions(options), context)
   const source = await resolveEventSource(app, current.name, context, options)
   await authorizeEvent(source.definition, current.arguments, context)
   await source.definition.onSubscribe?.(current.arguments, current.id, context)
@@ -1219,19 +1252,17 @@ function validCurrentRecoveryRecord(
     current.key === identity.key &&
     current.id === identity.id &&
     current.principal === original.principal &&
-    current.variant === original.variant
+    current.variant === undefined
   )
 }
 
 function recoveredWebhookContext(
-  record: McpWebhookSubscriptionRecord,
   authorization: NonNullable<McpInvocationContext['authorization']>
 ): McpInvocationContext {
   return {
     request: new Request('https://localhost/mcp'),
-    protocolVersion: LEGACY_PROTOCOL_VERSION,
-    authorization,
-    meta: record.variant ? { 'io.modelcontextprotocol/server-variant': record.variant } : undefined
+    protocolVersion: DEFAULT_PROTOCOL_VERSION,
+    authorization
   }
 }
 
@@ -1356,8 +1387,7 @@ async function authorizeWebhookWorkerCycle(
       worker.record,
       forbiddenError(),
       worker.webhook,
-      worker.state.abort.signal,
-      eventOptions(worker.options)
+      worker.state.abort.signal
     )
     markWebhookWorkerTerminal(worker)
     return null
@@ -1365,13 +1395,7 @@ async function authorizeWebhookWorkerCycle(
   return {
     ...worker.state.context,
     signal: worker.state.abort.signal,
-    authorization,
-    meta: worker.record.variant
-      ? {
-          ...worker.state.context.meta,
-          'io.modelcontextprotocol/server-variant': worker.record.variant
-        }
-      : worker.state.context.meta
+    authorization
   }
 }
 
@@ -1381,6 +1405,7 @@ async function resolveWebhookWorkerSource(
 ): Promise<EventSource | null> {
   try {
     const source = await resolveEventSource(worker.app, worker.record.name, context, worker.options)
+    await authorizeExtension(eventOptions(worker.options), context)
     await authorizeEvent(source.definition, worker.record.arguments, context)
     return source
   } catch (error) {
@@ -1388,8 +1413,7 @@ async function resolveWebhookWorkerSource(
       worker.record,
       terminationForResolution(error),
       worker.webhook,
-      worker.state.abort.signal,
-      eventOptions(worker.options)
+      worker.state.abort.signal
     )
     markWebhookWorkerTerminal(worker)
     return null
@@ -1413,13 +1437,12 @@ async function acceptWebhookWorkerDescriptor(
   await terminateWebhook(
     worker.record,
     {
-      code: -32014,
+      code: -32026,
       message: 'Unsupported',
       data: { feature: schemaChange ?? 'deliveryMode', reason: 'schema_changed' }
     },
     worker.webhook,
-    worker.state.abort.signal,
-    eventOptions(worker.options)
+    worker.state.abort.signal
   )
   markWebhookWorkerTerminal(worker)
   return false
@@ -1439,8 +1462,7 @@ async function processWebhookWorkerBatchSafely(
         worker.record,
         result.terminated,
         worker.webhook,
-        worker.state.abort.signal,
-        eventOptions(worker.options)
+        worker.state.abort.signal
       )
       markWebhookWorkerTerminal(worker)
       return 'terminal'
@@ -1492,15 +1514,14 @@ async function processWebhookPollResult(
   result: McpEventPollResult
 ): Promise<void> {
   suppressInitialWebhookReplay(worker, result)
-  const delayedGap = (result.truncated ?? false) && result.events.length > 0
-  if (result.truncated && !delayedGap) {
-    await deliverWebhookGap(worker, result.cursor, context)
-    worker.state.cursor = result.cursor
+  if (result.truncated) {
+    const checkpoint = gapCheckpoint(result)
+    if (!(await deliverWebhookGap(worker, source, context, checkpoint))) return
+    worker.state.cursor = checkpoint
   }
   for (const occurrence of result.events)
     await deliverWebhookOccurrence(worker, source, context, occurrence, result.cursor !== null)
   worker.state.cursor = result.cursor
-  if (delayedGap) await deliverWebhookGap(worker, worker.state.cursor, context)
 }
 
 function suppressInitialWebhookReplay(worker: WebhookWorkerLoop, result: McpEventPollResult): void {
@@ -1513,24 +1534,28 @@ function suppressInitialWebhookReplay(worker: WebhookWorkerLoop, result: McpEven
 
 async function deliverWebhookGap(
   worker: WebhookWorkerLoop,
-  cursor: string | null,
-  context: McpInvocationContext
-): Promise<void> {
+  source: EventSource,
+  context: McpInvocationContext,
+  cursor: string | null
+): Promise<boolean> {
   const fresh = encodeEventCursor(
     cursor,
     worker.record.name,
     worker.record.arguments,
     context.authorization,
-    worker.record.variant,
+    undefined,
     worker.config.cursor
   )
-  await deliverWebhook(
+  const delivery = await deliverWebhook(
     worker.record,
     { type: 'gap', cursor: fresh },
     webhookControlMessageId('gap'),
     worker.webhook,
-    worker.state.abort.signal
+    worker.state.abort.signal,
+    () => authorizeWebhookDeliveryAttempt(worker, source, context)
   )
+  worker.record = updateDeliveryStatus(worker.record, delivery.lastError)
+  return delivery.acknowledged
 }
 
 async function deliverWebhookOccurrence(
@@ -1547,7 +1572,7 @@ async function deliverWebhookOccurrence(
     worker.record.name,
     worker.record.arguments,
     context.authorization,
-    worker.record.variant,
+    undefined,
     worker.config.cursor
   )
   const delivery = await deliverWebhook(
@@ -1569,10 +1594,15 @@ async function authorizeWebhookDeliveryAttempt(
 ): Promise<boolean> {
   const authorization = await worker.webhook.provider.authorizeDelivery(worker.record)
   if (!authorization || eventPrincipalKey(authorization) !== worker.record.principal) return false
-  return isEventAuthorizedForDelivery(source.definition, worker.record.arguments, {
-    ...context,
-    authorization
-  })
+  return isEventAuthorizedForDelivery(
+    source.definition,
+    worker.record.arguments,
+    {
+      ...context,
+      authorization
+    },
+    eventOptions(worker.options)
+  )
 }
 
 async function persistWebhookWorkerRecord(worker: WebhookWorkerLoop): Promise<void> {
@@ -1595,8 +1625,7 @@ async function handleWebhookWorkerBatchError(
       worker.record,
       forbiddenError(),
       worker.webhook,
-      worker.state.abort.signal,
-      eventOptions(worker.options)
+      worker.state.abort.signal
     )
     markWebhookWorkerTerminal(worker)
     return 'terminal'
@@ -1606,8 +1635,7 @@ async function handleWebhookWorkerBatchError(
       worker.record,
       { code: -32603, message: 'UpstreamError' },
       worker.webhook,
-      worker.state.abort.signal,
-      eventOptions(worker.options)
+      worker.state.abort.signal
     )
     markWebhookWorkerTerminal(worker)
     return 'terminal'
@@ -1659,9 +1687,11 @@ function scheduleTerminalWebhookCleanup(worker: WebhookWorkerLoop): void {
 async function isEventAuthorizedForDelivery(
   definition: McpEventDefinition,
   arguments_: Record<string, unknown>,
-  context: McpInvocationContext
+  context: McpInvocationContext,
+  config: NormalizedMcpEventsOptions
 ): Promise<boolean> {
   try {
+    await authorizeExtension(config, context)
     await authorizeEvent(definition, arguments_, context)
     return true
   } catch {
@@ -1707,7 +1737,6 @@ async function renewPollLease(
   const config = eventOptions(options)
   const key = canonicalJson([
     eventPrincipalKey(context.authorization) ?? null,
-    prepared.variant ?? null,
     prepared.request.name,
     prepared.request.arguments
   ])
@@ -1719,7 +1748,7 @@ async function renewPollLease(
       prepared.request.arguments,
       `poll_${deriveWebhookSubscriptionIdentity(
         eventPrincipalKey(context.authorization) ?? 'anonymous',
-        prepared.variant ?? 'default',
+        'poll',
         prepared.request.name,
         prepared.request.arguments,
         config.cursor.signingKey
@@ -1734,7 +1763,7 @@ async function renewPollLease(
         prepared.request.arguments,
         `poll_${deriveWebhookSubscriptionIdentity(
           eventPrincipalKey(context.authorization) ?? 'anonymous',
-          prepared.variant ?? 'default',
+          'poll',
           prepared.request.name,
           prepared.request.arguments,
           config.cursor.signingKey
@@ -1753,13 +1782,12 @@ async function terminateWebhook(
   record: McpWebhookSubscriptionRecord,
   error: McpEventError,
   webhook: NonNullable<NormalizedMcpEventsOptions['webhook']>,
-  signal: AbortSignal,
-  config: NormalizedMcpEventsOptions
+  signal: AbortSignal
 ): Promise<void> {
   try {
     await deliverWebhook(
       record,
-      { type: 'terminated', error: revisionEventError(error, config) },
+      { type: 'terminated', error },
       webhookControlMessageId('terminated'),
       webhook,
       signal
@@ -1778,7 +1806,6 @@ async function prepareEventRequest(
   request: McpEventPollRequest
   initial: boolean
   cursorExpired: boolean
-  variant?: string
 }> {
   const config = eventOptions(options)
   await authorizeExtension(config, context)
@@ -1791,8 +1818,7 @@ async function prepareEventRequest(
     throw invalidParams(error instanceof Error ? error.message : 'Invalid event arguments')
   }
   await authorizeEvent(source.definition, parsed.arguments, context)
-  const variant = eventVariantKey(context.meta)
-  const decoded = decodeRequestCursor(params.cursor, parsed, context, variant, config)
+  const decoded = decodeRequestCursor(params.cursor, parsed, context, config)
   return {
     source,
     request: {
@@ -1803,8 +1829,7 @@ async function prepareEventRequest(
       maxEvents: parsed.maxEvents
     },
     initial: params.cursor === undefined || params.cursor === null || decoded.expired,
-    cursorExpired: decoded.expired,
-    variant
+    cursorExpired: decoded.expired
   }
 }
 
@@ -1843,7 +1868,6 @@ function decodeRequestCursor(
   value: unknown,
   request: ParsedEventRequest,
   context: McpInvocationContext,
-  variant: string | undefined,
   config: NormalizedMcpEventsOptions
 ): { cursor: string | null; expired: boolean } {
   try {
@@ -1852,7 +1876,7 @@ function decodeRequestCursor(
       request.name,
       request.arguments,
       context.authorization,
-      variant,
+      undefined,
       config.cursor
     )
     return { cursor: decoded.expired ? null : decoded.cursor, expired: decoded.expired }
@@ -1870,7 +1894,7 @@ async function resolveEventSource(
   const local = getMcpRegistry(app, options).events?.get(name)
   if (local) return { definition: local.definition, registration: local }
   const definition = await eventOptions(options).provider?.get(name, context)
-  if (!definition) throw new McpEventProtocolError(-32011, 'NotFound', { kind: 'event' })
+  if (!definition) throw new McpEventProtocolError(-32023, 'NotFound', { kind: 'event' })
   assertProviderDefinition(definition)
   if (definition.name !== name) throw internalError('Event provider returned the wrong event')
   return { definition }
@@ -1906,6 +1930,7 @@ function serializePollResult(
   includeOccurrenceCursors: boolean
 ): Record<string, unknown> {
   return {
+    resultType: 'complete',
     events: result.events.map((event) => {
       const copy = structuredClone(event) as McpEventOccurrence
       if (!includeOccurrenceCursors) delete copy.cursor
@@ -1916,7 +1941,7 @@ function serializePollResult(
       prepared.request.name,
       prepared.request.arguments,
       context.authorization,
-      prepared.variant,
+      undefined,
       eventOptions(options).cursor
     ),
     truncated: result.truncated ?? false,
@@ -2028,23 +2053,22 @@ function eventNotification(type: string, params: Record<string, unknown>) {
 
 function terminationForResolution(error: unknown): McpEventError {
   if (error instanceof McpEventProtocolError) {
-    if (error.code === -32012 || error.code === -32024) return forbiddenError()
-    if (error.code === -32011 || error.code === -32023)
-      return { code: -32011, message: 'NotFound', data: { kind: 'event' } }
+    if (error.code === -32024) return forbiddenError()
+    if (error.code === -32023) return { code: -32023, message: 'NotFound', data: { kind: 'event' } }
   }
   return { code: -32603, message: 'UpstreamError' }
 }
 
 function forbidden(): McpEventProtocolError {
-  return new McpEventProtocolError(-32012, 'Forbidden')
+  return new McpEventProtocolError(-32024, 'Forbidden')
 }
 
 function forbiddenError(): McpEventError {
-  return { code: -32012, message: 'Forbidden', data: { reason: 'Access revoked' } }
+  return { code: -32024, message: 'Forbidden', data: { reason: 'Access revoked' } }
 }
 
 function unsupported(feature: string, value: string): McpEventProtocolError {
-  return new McpEventProtocolError(-32014, 'Unsupported', { feature, value })
+  return new McpEventProtocolError(-32026, 'Unsupported', { feature, value })
 }
 
 function invalidParams(message: string): McpEventProtocolError {
@@ -2059,41 +2083,11 @@ function eventError(error: McpEventError): McpEventProtocolError {
   return new McpEventProtocolError(error.code, error.message, error.data)
 }
 
-// Internal errors use the historical vocabulary. Only protocol error boundaries translate
-// codes, so event payloads and unrelated JSON-RPC errors retain their original values.
-function eventErrorCode(code: number, config: NormalizedMcpEventsOptions): number {
-  const historical = code <= -32023 && code >= -32027 ? code + 12 : code
-  return config.version === MCP_EVENTS_LATEST_REVISION &&
-    historical <= -32011 &&
-    historical >= -32015
-    ? historical - 12
-    : historical
-}
-
-function revisionEventError(
-  error: McpEventError,
-  config: NormalizedMcpEventsOptions
-): McpEventError {
-  return { ...error, code: eventErrorCode(error.code, config) }
-}
-
-async function eventOperation<T>(
-  options: NormalizedMcpPluginOptions,
-  operation: () => Promise<T>
-): Promise<T> {
+async function eventOperation<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation()
   } catch (error) {
-    if (error instanceof McpEventProtocolError) {
-      const config = options.extensions.events
-      if (!config) throw error
-      throw new McpEventProtocolError(
-        eventErrorCode(error.code, config),
-        error.message,
-        error.data,
-        error.status
-      )
-    }
+    if (error instanceof McpEventProtocolError) throw error
     throw internalError('UpstreamError')
   }
 }

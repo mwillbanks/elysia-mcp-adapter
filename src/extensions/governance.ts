@@ -54,15 +54,7 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
       sha256: '6ec5fc903d1be37e5ab0afda2acd7765aaf2909b90a2dca405e1aaea8936225b'
     }
   },
-  eventsDraft: {
-    source: {
-      repository: 'https://github.com/pja-ant/modelcontextprotocol',
-      revision: 'b08e4f9dd684f39d846d94089487fbeb28e666f5',
-      path: 'seps/0000-events-extension.md',
-      sha256: 'ba056d7f8afb9c61dbfff6820ec25f691cd7eefaa1f55fd73c03ba6983bf40fa',
-      trackHead: false
-    }
-  },
+  eventsDraft: MCP_EXTENSION_LATEST_REVIEWED.events,
   interceptorsDraft: {
     source: {
       repository: 'https://github.com/Degiorgio/modelcontextprotocol',
@@ -273,14 +265,7 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
       sha256: '6ff8f68b27dd020ebee2a4795d46034c8bd13469e49f485268fb77c37df870ff'
     }
   },
-  oldEvents: {
-    source: {
-      repository: 'https://github.com/modelcontextprotocol/experimental-ext-triggers-events',
-      revision: 'd5316be214be2e76e51462069c1d67e00a5a7619',
-      path: 'docs/design-sketch-proposal.md',
-      sha256: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59'
-    }
-  },
+  oldEvents: MCP_EXTENSION_LATEST_REVIEWED.triggersEvents,
   authCharter: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
@@ -444,10 +429,10 @@ export const MCP_SPECIFICATION_INVENTORY = {
     source: sources.enterpriseAuth.source
   },
   events: {
-    stage: 'experimental',
+    stage: 'draft',
     approval: 'unapproved',
     scope: 'server',
-    disposition: 'planned',
+    disposition: 'implemented',
     source: sources.eventsDraft.source,
     proposal: pull(3415),
     group: eventsGroup

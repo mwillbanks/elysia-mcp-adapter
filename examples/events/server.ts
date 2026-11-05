@@ -13,9 +13,7 @@ function createEventApp() {
       mcp({
         allowedRoutes: [],
         transport: {
-          protocolVersions: ['2025-11-25'],
-          enableGetSse: true,
-          enableDeleteSession: true
+          protocolVersions: ['2026-07-28']
         },
         extensions: {
           events: {

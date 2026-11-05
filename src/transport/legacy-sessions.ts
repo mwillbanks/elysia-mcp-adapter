@@ -1,5 +1,4 @@
 import type { McpAuthorizationContext } from '../extensions/auth/index.js'
-import { attachEventSessionStream, deleteEventSession } from '../extensions/events/index.js'
 import type { AnyElysiaApp, JsonRpcResponse, NormalizedMcpPluginOptions } from '../types.js'
 import { variantPrincipal } from './variant-selection.js'
 import { type VariantSession, variantSessions } from './variant-subscriptions.js'
@@ -35,12 +34,10 @@ function variantSessionForRequest(
 function closeLegacyStream(
   session: VariantSession | undefined,
   controller: ReadableStreamDefaultController<Uint8Array>,
-  heartbeat: ReturnType<typeof setInterval> | undefined,
-  detachEvents: (() => void) | undefined
+  heartbeat: ReturnType<typeof setInterval> | undefined
 ): void {
   if (heartbeat) clearInterval(heartbeat)
   session?.streams.delete(controller)
-  detachEvents?.()
   try {
     controller.close()
   } catch {
@@ -49,19 +46,14 @@ function closeLegacyStream(
 }
 
 function legacyStream(
-  app: AnyElysiaApp,
   request: Request,
   options: NormalizedMcpPluginOptions,
-  authorization: McpAuthorizationContext | undefined,
   session: VariantSession | undefined
 ): ReadableStream<Uint8Array> {
-  const sessionId = request.headers.get('mcp-session-id')
-  const principal = variantPrincipal(authorization)
   const encoder = new TextEncoder()
   let controller: ReadableStreamDefaultController<Uint8Array>
   let heartbeat: ReturnType<typeof setInterval> | undefined
-  let detachEvents: (() => void) | undefined
-  const close = () => closeLegacyStream(session, controller, heartbeat, detachEvents)
+  const close = () => closeLegacyStream(session, controller, heartbeat)
   return new ReadableStream<Uint8Array>({
     start(stream) {
       controller = stream
@@ -70,14 +62,6 @@ function legacyStream(
         options.core.subscriptions?.heartbeatMs ?? 15_000
       )
       session?.streams.set(stream, heartbeat)
-      detachEvents = sessionId
-        ? attachEventSessionStream(app, sessionId, principal, stream, close, options)
-        : undefined
-      if (options.extensions.events && !detachEvents) {
-        clearInterval(heartbeat)
-        stream.error(new Error('Unknown MCP event session'))
-        return
-      }
       stream.enqueue(encoder.encode(': connected\n\n'))
       if (request.signal.aborted) close()
       else request.signal.addEventListener('abort', close, { once: true })
@@ -114,11 +98,11 @@ function handleLegacyGet(
   runtime: LegacySessionRuntime
 ): Response {
   if (!options.transport.enableGetSse) return methodDisabled()
-  if (!options.extensions.variants && !options.extensions.events) return emptySseResponse()
+  if (!options.extensions.variants) return emptySseResponse()
   const session = variantSessionForRequest(app, request, options, authorization, runtime)
   if (session instanceof Response) return session
   return legacySseResponse(
-    legacyStream(app, request, options, authorization, session),
+    legacyStream(request, options, session),
     request.headers.get('mcp-session-id')
   )
 }
@@ -155,12 +139,6 @@ async function handleLegacyDelete(
   if (!options.transport.enableDeleteSession) return methodDisabled()
   const variantFailure = await closeVariantSession(app, request, options, authorization, runtime)
   if (variantFailure) return variantFailure
-  if (options.extensions.events) {
-    const sessionId = request.headers.get('mcp-session-id')
-    const deleted =
-      sessionId && deleteEventSession(app, sessionId, variantPrincipal(authorization), options)
-    if (!deleted) return unknownSession(runtime)
-  }
   return new Response(null, { status: 202 })
 }
 

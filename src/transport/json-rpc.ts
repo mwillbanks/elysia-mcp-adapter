@@ -238,13 +238,7 @@ async function handlePostPayload(
     )
   }
   if (isRecord(payload) && payload.method === 'events/stream') {
-    return handleEventStreamRequest(
-      app,
-      payload as unknown as JsonRpcRequest,
-      request,
-      options,
-      authorization
-    )
+    return handleEventStreamRequest(app, payload, request, options, authorization)
   }
   if (isJsonRpcRequest(payload) && isRequestId(payload.id)) {
     const channels = requestNotificationChannels(payload, request, options)
@@ -279,70 +273,37 @@ async function handleBatchPayload(
 
 async function handleEventStreamRequest(
   app: AnyElysiaApp,
-  eventRequest: JsonRpcRequest,
+  eventRequest: Record<string, unknown>,
   request: Request,
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined
 ): Promise<Response> {
-  const validation = validateEventStreamRequest(eventRequest, options)
-  if (validation) return validation
+  if (!isJsonRpcRequest(eventRequest) || !isRequestId(eventRequest.id)) {
+    return jsonResponse(
+      createErrorResponse(
+        errorIdForRequest(request, options, eventRequest),
+        -32600,
+        'Invalid Request'
+      ),
+      400
+    )
+  }
   try {
     const protocol = resolveRequestProtocol(request, eventRequest, options)
-    if (protocol.modern) {
-      throw new McpEventProtocolError(-32601, 'Events extension is legacy-only', undefined, 404)
-    }
-    const params = isRecord(eventRequest.params) ? eventRequest.params : {}
     const dispatch: DispatchContext = { protocol, authorization }
-    await selectEventStreamVariant(app, request, params, options, dispatch)
+    assertModernEvents('events/stream', options, dispatch)
+    const params = isRecord(eventRequest.params) ? eventRequest.params : {}
+    await applyRequestVariant(app, 'events/stream', params, request, options, dispatch)
     return await streamEvents(
       app,
       params,
-      eventRequest.id as string | number,
+      eventRequest.id,
       options,
       await invocationContext(request, 'events/stream', params, dispatch, options)
     )
   } catch (error) {
     return jsonResponse(normalizeDispatchError(eventRequest.id, error), errorStatus(error))
   }
-}
-
-function validateEventStreamRequest(
-  eventRequest: JsonRpcRequest,
-  options: NormalizedMcpPluginOptions
-): Response | undefined {
-  if (!options.extensions.events) {
-    return jsonResponse(
-      createErrorResponse(eventRequest.id, -32601, 'Events extension is not enabled'),
-      404
-    )
-  }
-  if (!isRequestId(eventRequest.id)) {
-    return jsonResponse(createErrorResponse(undefined, -32600, 'Invalid Request'), 400)
-  }
-  return undefined
-}
-
-async function selectEventStreamVariant(
-  app: AnyElysiaApp,
-  request: Request,
-  params: Record<string, unknown>,
-  options: NormalizedMcpPluginOptions,
-  dispatch: DispatchContext
-): Promise<void> {
-  if (!options.extensions.variants) return
-  const selected = await resolveActiveVariant(
-    app,
-    request,
-    params,
-    options,
-    dispatch.authorization,
-    VARIANT_SELECTION_RUNTIME
-  )
-  dispatch.activeVariant = selected.variant
-  dispatch.sessionId = selected.sessionId
-  const meta = isRecord(params._meta) ? { ...params._meta } : {}
-  meta[MCP_SERVER_VARIANT_META_KEY] = selected.variant.id
-  params._meta = meta
 }
 
 function outcomeResponse(
@@ -521,6 +482,7 @@ async function dispatchRequest(
   context: DispatchContext
 ): Promise<unknown> {
   const method = payload.method ?? ''
+  if (method.startsWith('events/')) assertModernEvents(method, options, context)
   const params = isRecord(payload.params) ? payload.params : {}
   await applyRequestVariant(app, method, params, request, options, context)
   const extensionResult = await extensionDispatcher(options, context).dispatch(method, {
@@ -700,6 +662,14 @@ function dispatchInterceptorRequest(
     return invokeRegisteredInterceptor(app, params, request, options, context)
   }
   throw methodNotFound(method, context)
+}
+
+function assertModernEvents(
+  method: string,
+  options: NormalizedMcpPluginOptions,
+  context: DispatchContext
+): void {
+  if (!context.protocol.modern || !options.extensions.events) throw methodNotFound(method, context)
 }
 
 async function dispatchEventRequest(

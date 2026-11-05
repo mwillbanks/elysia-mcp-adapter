@@ -51,7 +51,7 @@ try {
   let allowlistCalls = 0
   const getAllowlistCalls = () => allowlistCalls
   const normalized = normalizeOptions({
-    transport: { protocolVersions: ['2025-11-25'] },
+    transport: { protocolVersions: ['2026-07-28'] },
     extensions: {
       events: {
         cursor: { signingKey: 'verification-timer-fixture-signing-key' },
@@ -85,7 +85,7 @@ try {
   }
   const context = {
     request: new Request('http://localhost/mcp'),
-    protocolVersion: '2025-11-25' as const
+    protocolVersion: '2026-07-28' as const
   }
 
   await verifyWebhookEndpoint(record, context, options)
