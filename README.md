@@ -210,7 +210,7 @@ The MCP client SDK `2.4.0` interoperates with modern discovery, progress SSE, pr
 and cancellation. It rejects valid task-creation responses after creating the task because its decoder
 does not accept `resultType: 'task'`. Use the minimal Tasks clients for creation and avoid blind retries.
 
-Unversioned requests select the modern default and must include its complete envelope. Send `MCP-Protocol-Version: 2025-11-25`, or configure `protocolVersions: ['2025-11-25']`, for legacy clients. Hosts approve and fulfill elicitation, sampling, and roots requests before retrying the original operation.
+Requests without a version header or version metadata use classic `2025-11-25` when enabled. Modern clients send the full `2026-07-28` envelope. Classic clients should send the negotiated `MCP-Protocol-Version` on requests after initialization. Hosts approve and fulfill elicitation, sampling, and roots requests before retrying the original operation.
 
 The exported `MCP_EXTENSION_LATEST_REVIEWED` manifest records reviewed upstream sources for planning. It does not advertise adapter support.
 
@@ -240,7 +240,7 @@ Legacy server variants bind discovery, selection, cursors, registries, subscript
 
 Action metadata describes destinations, sources, sensitivity, outcome, and review needs. Trust result metadata distinguishes an absent boolean from `false`. Evidence references are bounded descriptors; the adapter does not fetch them. Hosts own approval, union-strengthening, consent, evidence retrieval, and unavailable functionality. Behavioral annotations never grant authorization.
 
-Events require MCP `2026-07-28` and default to [the Triggers & Events Working Group draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/b08e4f9dd684f39d846d94089487fbeb28e666f5/seps/0000-events-extension.md). The adapter supports authorized discovery, replay polling, event-only SSE, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
+Events require MCP `2026-07-28` and default to [accepted SEP-3415](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/f77a5fe31b91c052dbfc2a37add98b9e84662b34/seps/3415-events-extension.md). The adapter supports authorized discovery, replay polling, event-only SSE with negotiated idle heartbeats, and durable webhook subscriptions. Clients own replay cursors. Webhook providers atomically preserve ownership, verification, secrets, expiry, and status, then reauthorize every delivery. The runnable example performs real signed TLS subscription, rotation, restart recovery, and unsubscribe operations through the adapter.
 
 Client support changes independently of this package. Consult the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
 
@@ -295,11 +295,11 @@ use `io.modelcontextprotocol.skills/`. Resource digests still cover exact publis
 Interceptors use the current `07c89a24` proposal, including timestamped invocation context,
 optional span/session identifiers, and per-call configuration validation. See the separate HTTP
 service in `examples/experimental`; local chain helpers remain local utilities.
-Events uses draft `b08e4f9d` and codes `-32023` through `-32027`. Migrate older Events pins to `current` and discover Events on `server/discover`. Server Variants still uses legacy transport.
+Events uses accepted revision `f77a5fe` and codes `-32023` through `-32027`. Migrate older Events pins to `current` and discover Events on `server/discover`. Server Variants still uses legacy transport.
 
 Apps, Client Credentials, and Enterprise-Managed Authorization have approved profiles.
 Server Cards follows Final SEP-2127. Tasks exposes approved and pinned draft selections.
-File Uploads and Filesystems have no defined wire contract: they are inventoried, not implemented.
+File Uploads has an eligible working-group draft and is planned. Filesystems remains inventory-only while the group develops its specification.
 See the website specification inventory for immutable sources, hashes, limitations, and all selectors.
 
 ## License

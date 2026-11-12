@@ -29,17 +29,17 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
   coreDraft: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/draft/schema.json',
-      sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+      sha256: 'e995a3aca2858f133ba50f58e2b1d2637a70daf1d518058001cdfae69e014a45'
     }
   },
   coreSchema: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/2026-07-28/schema.json',
-      sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+      sha256: 'edbb197ed0f92e90d658866e23cf76f107df0caac5ce25c2b9e64e1ca9a6314a'
     }
   },
   coreTools: {
@@ -58,7 +58,24 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
       sha256: '6ec5fc903d1be37e5ab0afda2acd7765aaf2909b90a2dca405e1aaea8936225b'
     }
   },
-  eventsDraft: MCP_EXTENSION_LATEST_REVIEWED.events,
+  eventsSep: MCP_EXTENSION_LATEST_REVIEWED.events,
+  eventsRepository: {
+    source: {
+      repository: 'https://github.com/modelcontextprotocol/ext-events',
+      revision: 'd5316be214be2e76e51462069c1d67e00a5a7619',
+      path: 'README.md',
+      sha256: '9f40b6f84a6a4a9feb4944b4c537881b4b95b93f14bf8fb67a9ea097a423ae32'
+    }
+  },
+  fileUploadsRepository: {
+    source: {
+      repository: 'https://github.com/modelcontextprotocol/experimental-ext-file-uploads',
+      revision: '8a859b8f268926fe4beb84d78565e7cc6f9fa617',
+      path: 'README.md',
+      sha256: 'be9e068dfab5eec631e3126e29f40d3e4741c6c50efd18619c99fa6bcf934bf4'
+    }
+  },
+  fileUploadsDraft: MCP_EXTENSION_LATEST_REVIEWED.fileUploads,
   interceptorsDraft: {
     source: {
       repository: 'https://github.com/Degiorgio/modelcontextprotocol',
@@ -71,9 +88,9 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
   language: {
     source: {
       repository: 'https://github.com/SamMorrowDrums/modelcontextprotocol',
-      revision: '65f75c48df509f94afc8b039ae641a0fa4856a88',
+      revision: '4acafbea1468d2553f861e7d507f57b14fbced19',
       path: 'seps/2792-i18n-language-negotiation.md',
-      sha256: '72c6b9a98e4b8a283d2ce4b136702d72f86c316818bd4683634009f31032be4f',
+      sha256: '7086baf8a6c1dde9fdc2aa1d34b98e9bdc6286e2fca038ffaf03a78c3b82fc1f',
       trackHead: false
     }
   },
@@ -152,9 +169,9 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
   filesystems: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/experimental-ext-filesystems',
-      revision: '6f9daa1706766685542c4d26a00027992d143f68',
+      revision: '80238acb936513e74cb82359585215fe6299dd59',
       path: 'README.md',
-      sha256: 'f36dc4ebd0449d52e290ed71daa8b4b4861c80c34da08301c7d933f7a001180a'
+      sha256: '45fc2751dff41973f696894c929aa78e6e64005d8d9a3a14b6a5eba8a1ac341c'
     }
   },
   catalog: {
@@ -168,17 +185,17 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
   governance: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'docs/community/working-interest-groups.mdx',
-      sha256: '62b4e174778adeddf034bf2ab3b606f5ffa500189ae5325fbf8a6418c335f8ee'
+      sha256: 'bad7641e511f9cf03d55e0d955d2080e279ebb0c8fe93c1b18d2b3152c768b98'
     }
   },
   policy: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'docs/community/feature-lifecycle.mdx',
-      sha256: 'b4f7436905c6162801f19565518342238bd76c1e7d23ade6f1fae24c22c3ec7c'
+      sha256: '615dc50f1d20493ca4753f643860c809e4530df80a3681b70a5b26ecd9e20a2c'
     }
   },
   eventsCharter: {
@@ -208,9 +225,9 @@ export const MCP_SPECIFICATION_GOVERNANCE_SOURCES = {
   uploadsCharter: {
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'docs/community/working-groups/file-uploads.mdx',
-      sha256: '594bfbff35d1683b7663eeebe132863bb513949ccd829cbfd1b3098704aefdf6'
+      sha256: 'c0c0b9ce35cd6965768ba77d4411293bed3fc5eb65a2625b60582193cb38459d'
     }
   },
   filesystemsCharter: {
@@ -326,7 +343,7 @@ interface McpSpecificationRecord {
   reason?: string
 }
 
-const eventsGroup = { charter: sources.eventsCharter, ownership: sources.eventsDraft }
+const eventsGroup = { charter: sources.eventsCharter, ownership: sources.eventsRepository }
 const interceptorGroup = {
   charter: sources.interceptorsCharter,
   ownership: sources.interceptorsRepo
@@ -463,10 +480,10 @@ export const MCP_SPECIFICATION_INVENTORY = {
   },
   events: {
     stage: 'draft',
-    approval: 'unapproved',
+    approval: 'accepted',
     scope: 'server',
     disposition: 'implemented',
-    source: sources.eventsDraft.source,
+    source: sources.eventsSep.source,
     proposal: pull(3415),
     group: eventsGroup
   },
@@ -558,12 +575,14 @@ export const MCP_SPECIFICATION_INVENTORY = {
     reason: 'This is a separate proposal seeking a sponsor.'
   },
   fileUploads: {
-    stage: 'experimental',
+    stage: 'draft',
     approval: 'unapproved',
-    scope: 'undefined',
-    disposition: 'inventory',
-    group: { charter: sources.uploadsCharter },
-    reason: 'The group has not published an implementable wire contract.'
+    scope: 'server',
+    disposition: 'planned',
+    source: sources.fileUploadsDraft.source,
+    group: { charter: sources.uploadsCharter, ownership: sources.fileUploadsRepository },
+    reason:
+      'The group draft is eligible. Upload targets require a storage contract and qualification.'
   },
   filesystems: {
     stage: 'experimental',
@@ -601,8 +620,8 @@ export const MCP_SPECIFICATION_PROPOSAL_HEADS = [
   {
     repository: 'modelcontextprotocol/modelcontextprotocol',
     number: 3415,
-    pin: sources.eventsDraft.source,
-    accepted: false
+    pin: sources.eventsSep.source,
+    accepted: true
   },
   {
     repository: 'modelcontextprotocol/modelcontextprotocol',

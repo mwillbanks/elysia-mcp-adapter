@@ -3,19 +3,14 @@ title: MCP extensions
 description: Add durable work, OAuth authorization, and interactive application views to MCP.
 ---
 
-MCP Extensions add optional capabilities to the core protocol without forcing every client and
-server to implement them. This adapter implements **Tasks**, **Authorization**, **Apps**, **Skills**, and finalized **Server Cards** as
-thin, opt-in protocol layers around the same Elysia application. Route-backed operations still
-pass through Elysia validation, hooks, guards, error handling, and response mapping.
+MCP Extensions add optional capabilities to the core protocol. This adapter implements **Tasks**, **Authorization**, **Apps**, **Skills**, and finalized **Server Cards** as thin, opt-in protocol layers around the same Elysia application. Route-backed operations still pass through Elysia validation, hooks, guards, error handling, and response mapping.
 
 ```ts
 import { mcp } from "@mwillbanks/elysia-mcp-adapter";
 
 app.use(
   mcp({
-    transport: {
-      protocolVersions: ["2026-07-28", "2025-11-25"],
-    },
+    transport: { protocolVersions: ["2026-07-28", "2025-11-25"] },
     extensions: {
       tasks: { version: "current", provider },
       auth: {
@@ -48,52 +43,30 @@ app.use(
 
 ## Implemented extensions and versions
 
-The table separates upstream maturity from the status of each wire revision. `current` selects the
-adapter's default implementation. Draft selectors
-are extension-specific. Tasks exposes `draft-b3d28ac` as its current opt-in draft. A supported `YYYY-MM-DD` is immutable, and omitting
-`version` means `current`. Unsupported versions fail during plugin construction.
+The table separates upstream maturity from the status of each wire revision. `current` selects the adapter's default implementation. Draft selectors are extension-specific. Tasks exposes `draft-b3d28ac` as its current opt-in draft. A supported `YYYY-MM-DD` is immutable, and omitting `version` means `current`. Unsupported versions fail during plugin construction.
 
 <ExtensionSupportTable />
 
-The table is generated from the package's exported `MCP_EXTENSION_SUPPORT` manifest. Every pin
-records its inclusion date, upstream revision or package version, specification path, status, and
-schema hash. Aliases move only through reviewed source, fixtures, tests, and documentation. The
-manual drift check reports upstream changes but never changes an alias automatically.
+The table is generated from the package's exported `MCP_EXTENSION_SUPPORT` manifest. Every pin records its inclusion date, upstream revision or package version, specification path, status, and schema hash. Aliases move only through reviewed source, fixtures, tests, and documentation. The manual drift check reports upstream changes but never changes an alias automatically.
 
 ## Tasks
 
-[Tasks](/docs/extensions/tasks) turn eligible tool calls into durable work that clients can poll,
-cancel, supply input to, and subscribe to. The application supplies the durable provider and owns
-retention, isolation, execution, and recovery.
+[Tasks](/docs/extensions/tasks) turn eligible tool calls into durable work that clients can poll, cancel, supply input to, and subscribe to. The application supplies the durable provider and owns retention, isolation, execution, and recovery.
 
 ## Authorization
 
-[Authorization](/docs/extensions/authorization) makes the adapter an OAuth protected resource.
-It verifies final access tokens, publishes RFC 9728 metadata, filters discovery by scope, and
-supports the Client Credentials and Enterprise-Managed Authorization capability profiles.
+[Authorization](/docs/extensions/authorization) makes the adapter an OAuth protected resource. It verifies final access tokens, publishes RFC 9728 metadata, filters discovery by scope, and supports the Client Credentials and Enterprise-Managed Authorization capability profiles.
 
 ## Apps
 
-[Apps](/docs/extensions/apps) associate tools with self-contained `ui://` HTML resources. Apps
-can receive structured tool results and call app-only tools while preserving useful text fallback
-for clients without an Apps host.
+[Apps](/docs/extensions/apps) associate tools with self-contained `ui://` HTML resources. Apps can receive structured tool results and call app-only tools while preserving useful text fallback for clients without an Apps host.
 
 ## Skills
 
-[Skills](/docs/extensions/skills) publish Agent Skills as byte-bound MCP resources. The adapter
-validates exact frontmatter, builds complete SHA-256 manifests, supports direct lookup, and keeps
-directory reads, binary resources, and scalable providers explicitly configured.
+[Skills](/docs/extensions/skills) publish Agent Skills as byte-bound MCP resources. The adapter validates exact frontmatter, builds complete SHA-256 manifests, supports direct lookup, and keeps directory reads, binary resources, and scalable providers explicitly configured.
 
-Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only.
-
-Client implementations vary. Use the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) when deciding which capabilities to enable.
+Modern MCP `2026-07-28` uses per-request protocol metadata and `server/discover`. Legacy `2025-11-25` initialization remains available, but Tasks methods are modern-only. Client implementations vary. Use the canonical [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix) when deciding which capabilities to enable.
 
 ## Experimental and undefined contracts
 
-[Interceptors](/docs/extensions/experimental/interceptors), [Events](/docs/extensions/experimental/events),
-[Variants](/docs/extensions/experimental/server-variants), and
-[annotations](/docs/extensions/experimental/annotations) remain opt-in experiments.
-[Server Cards](/docs/extensions/server-card) is Beta with an approved wire baseline under Final SEP-2127.
-Client Credentials and Enterprise-Managed Authorization have approved profiles.
-File Uploads and Filesystems have no defined wire contract and are not implemented.
-The [specification inventory](/docs/extensions/specification-inventory) records all reviewed sources.
+[Experimental extensions](/docs/extensions/experimental) each have an overview, quick start, configuration, and examples. [Server Cards](/docs/extensions/server-card) is Beta with an approved wire baseline under Final SEP-2127. Client Credentials and Enterprise-Managed Authorization have approved profiles. File Uploads has an eligible draft, while Filesystems remains undefined. The [specification inventory](/docs/extensions/specification-inventory) records all reviewed sources.

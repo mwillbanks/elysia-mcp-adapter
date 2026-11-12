@@ -1,0 +1,27 @@
+---
+title: Trust Annotations quick start
+description: Attach trust metadata to a tool result.
+---
+
+Add trust metadata to the result `_meta`:
+
+```ts
+import { Elysia } from "elysia";
+import { MCP_TRUST_ANNOTATIONS_ID, mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(mcp({ allowedRoutes: [] })).mcpTool(
+  "read-report",
+  async () => ({
+    content: [{ type: "text", text: "Review pending" }],
+    _meta: {
+      [MCP_TRUST_ANNOTATIONS_ID]: {
+        sensitive: false,
+        untrusted: false,
+      },
+    },
+  }),
+  { description: "Read the report status" },
+);
+```
+
+These fields are annotations for host processing. They do not verify evidence or authorize an operation.

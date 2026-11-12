@@ -32,10 +32,33 @@ describe("extension documentation", () => {
         expect(existsSync(resolve(extensionsRoot, extension, `${page}.mdx`))).toBe(true);
       }
     }
+    const experiments = [
+      "events",
+      "interceptors",
+      "server-variants",
+      "action-metadata",
+      "trust-annotations",
+    ];
+    const experimentalMeta = JSON.parse(read("experimental/meta.json"));
+    expect(experimentalMeta.pages).toEqual(["index", ...experiments]);
+    for (const extension of experiments) {
+      expect(JSON.parse(read(`experimental/${extension}/meta.json`)).pages).toEqual(standard);
+      for (const page of standard) {
+        expect(existsSync(resolve(extensionsRoot, "experimental", extension, `${page}.mdx`))).toBe(
+          true,
+        );
+      }
+    }
+    expect(read("experimental/annotations.mdx")).toContain("/action-metadata");
+    expect(read("experimental/annotations.mdx")).toContain("/trust-annotations");
+    expect(existsSync(resolve(extensionsRoot, "experimental/server-card.mdx"))).toBe(false);
   });
 
   test("uses the exported manifest table and only the canonical client matrix", () => {
     const overview = read("index.mdx");
+    const focusedSurface = readFileSync(resolve(websiteRoot, "content/docs/index.mdx"), "utf8");
+    expect(focusedSurface).toMatch(/\| Surface\s+\|/);
+    expect(focusedSurface).toContain("Experimental Extension");
     expect(overview).toContain("<ExtensionSupportTable />");
     expect(overview).toContain("<Mermaid");
 
@@ -52,10 +75,10 @@ describe("extension documentation", () => {
   test("documents current revisions and undefined experiments without implementation claims", () => {
     expect(read("specification-inventory.mdx")).toContain("2026-10-22");
     expect(read("specification-inventory.mdx")).toContain(
-      "File Uploads and Filesystems are undefined experiments",
+      "File Uploads is eligible for implementation. Filesystems remains an undefined experiment.",
     );
-    expect(read("experimental/interceptors.mdx")).toContain("interceptor-service.ts");
-    expect(read("experimental/events.mdx")).toContain("-32027");
+    expect(read("experimental/interceptors/configuration.mdx")).toContain("interceptor-service.ts");
+    expect(read("experimental/events/configuration.mdx")).toContain("-32027");
     expect(read("skills/configuration.mdx")).toContain("io.modelcontextprotocol.skills/");
     expect(read("tasks/configuration.mdx")).toContain("draft-b3d28ac");
     expect(read("server-card.mdx")).not.toContain("status: 'experimental'");

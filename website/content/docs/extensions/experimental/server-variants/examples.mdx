@@ -1,0 +1,17 @@
+---
+title: Server Variants examples
+description: Inspect the deprecated legacy server variant integration tests.
+---
+
+The [experimental workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental) contains the legacy variant application and tests. The example requires protocol `2025-11-25`, GET SSE, and session deletion.
+
+Run the workspace checks from the repository root:
+
+```bash
+bun --bun run --cwd examples/experimental typecheck
+bun --bun run --cwd examples/experimental test
+bun --bun run --cwd examples/experimental build
+bun --bun run --cwd examples/experimental smoke
+```
+
+The [variant app](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental/server.ts) exercises discovery, session binding, principal-bound registries, resource subscriptions, and teardown. Treat it as a compatibility example while migrating to distinct endpoints.

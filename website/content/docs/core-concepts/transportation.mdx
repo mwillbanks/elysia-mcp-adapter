@@ -16,7 +16,7 @@ The adapter exposes MCP over HTTP at `POST /mcp` by default. It accepts JSON-RPC
 - `completion/complete`
 - `subscriptions/listen`
 
-Modern requests use one POST per message and reject batches. Legacy `2025-11-25` requests retain batches and initialization. Accepted notifications receive an empty `202` response. Protocol errors use JSON-RPC error objects.
+Modern requests use one POST per message and reject batches. Requests without a version header or version metadata use classic semantics when `2025-11-25` is enabled. Classic initialization negotiates a supported classic revision. Send the negotiated version on subsequent requests. The adapter also accepts headerless classic follow-up requests for compatibility. Accepted notifications receive an empty `202` response.
 
 ## Route-backed request lifecycle
 

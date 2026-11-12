@@ -1,0 +1,10 @@
+---
+title: Events
+description: Publish authorized events through experimental polling, streams, and durable webhooks.
+---
+
+Events is an opt-in extension based on the accepted SEP-3415 proposal. It adds event discovery, replay polling, event-only POST streams, and durable webhook subscriptions to modern MCP. The adapter keeps Events experimental because its extension implementation is still evolving.
+
+Set `extensions.events` explicitly. Its `heartbeatMs` option sets the default and maximum heartbeat interval. The client may request a shorter interval for its stream.
+
+Start with the [quick start](/docs/extensions/experimental/events/quick-start), then review [configuration](/docs/extensions/experimental/events/configuration) and the [runnable examples](/docs/extensions/experimental/events/examples).

@@ -1,0 +1,24 @@
+---
+title: Action Metadata quick start
+description: Add an action metadata annotation to a registered tool.
+---
+
+Add the metadata under tool annotations:
+
+```ts
+import { Elysia } from "elysia";
+import { MCP_ACTION_METADATA_ID, mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(mcp({ allowedRoutes: [] })).mcpTool("prepare-report", () => "ready", {
+  annotations: {
+    [MCP_ACTION_METADATA_ID]: {
+      inputMetadata: { destination: "external-service", sensitivity: "internal" },
+      returnMetadata: { source: "report-service", sensitivity: "public" },
+      outcome: "consequential",
+      requiresReview: true,
+    },
+  },
+});
+```
+
+The adapter includes these annotations in tool discovery. The host decides how to display and act on them. Review [the draft vocabularies and boundaries](/docs/extensions/experimental/action-metadata/configuration).

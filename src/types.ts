@@ -637,9 +637,8 @@ export interface McpResourceReadResult {
 
 export type McpResourceHandlerResult = McpResourceReadResult | McpInputRequiredResult
 
-export interface McpResourceDefinition {
+interface McpResourceDefinitionBase {
   source: 'route' | 'explicit'
-  uri: string
   name: string
   title?: string
   description?: string
@@ -652,19 +651,12 @@ export interface McpResourceDefinition {
   read: (context: McpResourceInvocationContext) => Promise<McpResourceHandlerResult>
 }
 
-export interface McpResourceTemplateDefinition {
-  source: 'route' | 'explicit'
+export interface McpResourceDefinition extends McpResourceDefinitionBase {
+  uri: string
+}
+
+export interface McpResourceTemplateDefinition extends McpResourceDefinitionBase {
   uriTemplate: string
-  name: string
-  title?: string
-  description?: string
-  mimeType?: string
-  annotations?: McpAnnotations
-  icons?: McpIcon[]
-  authorization?: McpAuthorizationOptions
-  app?: McpAppResourceMetadata
-  complete?: McpCompletionHandler
-  read: (context: McpResourceInvocationContext) => Promise<McpResourceHandlerResult>
 }
 
 export interface McpPromptArgument {

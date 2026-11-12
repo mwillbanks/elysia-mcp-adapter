@@ -1,0 +1,10 @@
+---
+title: Interceptors
+description: Add experimental request and response interceptors to MCP operations.
+---
+
+Interceptors let a server expose validators, mutators, and audit handlers for selected MCP operations. The adapter registers and runs handlers locally. It does not discover external interceptor services.
+
+Enable `extensions.interceptors` and register each handler with `.mcpInterceptor()`. The experimental source defines the wire contract and can change. The adapter exposes interceptor methods over classic and modern MCP.
+
+See the [quick start](/docs/extensions/experimental/interceptors/quick-start), [configuration reference](/docs/extensions/experimental/interceptors/configuration), and [examples](/docs/extensions/experimental/interceptors/examples).

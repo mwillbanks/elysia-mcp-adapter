@@ -1,0 +1,38 @@
+---
+title: Events quick start
+description: Register a modern MCP event source and stream matching events.
+---
+
+Enable the modern protocol and Events explicitly, then register a handler with `.mcpEvent()`:
+
+```ts
+import { Elysia } from "elysia";
+import { MCP_EVENTS_LATEST_REVISION, mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia()
+  .use(
+    mcp({
+      allowedRoutes: [],
+      transport: { protocolVersions: ["2026-07-28"] },
+      extensions: {
+        events: {
+          version: MCP_EVENTS_LATEST_REVISION,
+          cursor: { signingKey: process.env.MCP_EVENT_CURSOR_KEY! },
+          heartbeatMs: 15_000,
+        },
+      },
+    }),
+  )
+  .mcpEvent(
+    {
+      name: "com.example.build.changed",
+      description: "A build changed state",
+      delivery: ["poll", "push"],
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      payloadSchema: { type: "object", properties: {}, additionalProperties: false },
+    },
+    async () => ({ events: [], cursor: null }),
+  );
+```
+
+The signing key must be a secret with at least 32 bytes. Register an event name under a domain you control. Start with [the complete server example](/docs/extensions/experimental/events/examples) for provider schemas and cursor handling.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "Wire fixture derived from SEP-3415 at b08e4f9dd684f39d846d94089487fbeb28e666f5.",
+  "$comment": "Wire fixture derived from SEP-3415 at f77a5fe31b91c052dbfc2a37add98b9e84662b34.",
   "$defs": {
     "Cursor": { "type": ["string", "null"] },
     "IsoDateTime": {
@@ -55,17 +55,6 @@
       },
       "additionalProperties": false
     },
-    "SubscriptionRequest": {
-      "type": "object",
-      "required": ["name", "arguments"],
-      "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "arguments": { "type": "object" },
-        "cursor": { "$ref": "#/$defs/Cursor" },
-        "maxAgeMs": { "type": "integer", "minimum": 0 }
-      },
-      "additionalProperties": false
-    },
     "PollRequest": {
       "type": "object",
       "required": ["name", "arguments"],
@@ -97,7 +86,18 @@
       },
       "additionalProperties": false
     },
-    "StreamRequest": { "$ref": "#/$defs/SubscriptionRequest" },
+    "StreamRequest": {
+      "type": "object",
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" },
+        "cursor": { "$ref": "#/$defs/Cursor" },
+        "maxAgeMs": { "type": "integer", "minimum": 0 },
+        "heartbeatMs": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      },
+      "additionalProperties": false
+    },
     "StreamResult": {
       "type": "object",
       "required": ["resultType", "_meta"],
@@ -220,10 +220,11 @@
     },
     "ActiveNotificationParams": {
       "type": "object",
-      "required": ["truncated", "_meta"],
+      "required": ["truncated", "heartbeatMs", "_meta"],
       "properties": {
         "cursor": { "$ref": "#/$defs/Cursor" },
         "truncated": { "type": "boolean" },
+        "heartbeatMs": { "type": "integer", "minimum": 1 },
         "_meta": { "$ref": "#/$defs/SubscriptionMeta" }
       },
       "additionalProperties": false

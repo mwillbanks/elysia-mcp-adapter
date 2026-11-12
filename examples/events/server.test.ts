@@ -43,16 +43,26 @@ describe('events example', () => {
     const abort = new AbortController()
     const response = await stream(
       app,
-      { name: 'com.example.build.changed', arguments: { project: 'adapter' }, cursor: null },
+      {
+        name: 'com.example.build.changed',
+        arguments: { project: 'adapter' },
+        cursor: null,
+        heartbeatMs: 1_000
+      },
       abort.signal
     )
     const reader = response.body?.getReader()
     if (!reader) throw new Error('Missing SSE body')
-    const first = new TextDecoder().decode((await reader.read()).value)
-    expect(first).toContain('notifications/events/active')
-    expect(first).not.toContain('notifications/tools')
-    abort.abort()
-    await reader.cancel()
+    try {
+      const first = new TextDecoder().decode((await reader.read()).value)
+      expect(parseEventStream(first)).toMatchObject([
+        { method: 'notifications/events/active', params: { heartbeatMs: 25 } }
+      ])
+      expect(first).not.toContain('notifications/tools')
+    } finally {
+      abort.abort()
+      await reader.cancel()
+    }
   })
 
   test('replays stable retained events, advances cursors, filters, and reports history gaps', async () => {

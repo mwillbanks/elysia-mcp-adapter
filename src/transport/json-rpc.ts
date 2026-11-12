@@ -1,3 +1,4 @@
+import { LEGACY_PROTOCOL_VERSION } from '../constants.js'
 import {
   assertMcpAppsResourceContent,
   assertMcpAppsResourceMetadata,
@@ -99,6 +100,9 @@ import {
 } from './notifications.js'
 import { isOriginAllowed } from './origin-policy.js'
 import {
+  createErrorResponse,
+  errorIdForRequest,
+  hasModernProtocolVersion,
   McpProtocolError,
   type McpRequestProtocolContext,
   resolveRequestProtocol
@@ -202,7 +206,7 @@ async function handleAuthorizedHttpRequest(
     return handleAuxiliaryHttpRequest(app, request, options, authorization)
   }
   if (request.method !== 'POST') return methodNotAllowedResponse()
-  const parsed = await readRequestPayload(request, options)
+  const parsed = await readRequestPayload(request)
   if (parsed instanceof Response) return parsed
   if (!options.core.language) {
     return handlePostPayload(app, parsed.payload, request, options, authorization)
@@ -229,7 +233,7 @@ function resolvePostLanguage(
   request: Request,
   options: NormalizedMcpPluginOptions
 ): McpRequestLanguage | Response | undefined {
-  if (Array.isArray(payload) && usesModernErrorEnvelope(request, options)) return undefined
+  if (Array.isArray(payload) && rejectsBatch(request, payload, options)) return undefined
   const messages: unknown[] = Array.isArray(payload) ? payload : [payload]
   let language: McpRequestLanguage | undefined
   for (const message of messages) {
@@ -242,7 +246,7 @@ function resolvePostLanguage(
       )
       language ??= resolved
     } catch (error) {
-      const id = errorIdForRequest(request, options, message)
+      const id = errorIdForRequest(request, message)
       return jsonResponse(normalizeDispatchError(id, error), errorStatus(error), {
         vary: 'Accept-Language'
       })
@@ -251,14 +255,11 @@ function resolvePostLanguage(
   return language
 }
 
-async function readRequestPayload(
-  request: Request,
-  options: NormalizedMcpPluginOptions
-): Promise<{ payload: unknown } | Response> {
+async function readRequestPayload(request: Request): Promise<{ payload: unknown } | Response> {
   try {
     return { payload: await request.json() }
   } catch (error) {
-    return parseErrorResponse(request, options, error)
+    return parseErrorResponse(request, error)
   }
 }
 
@@ -268,7 +269,7 @@ function handleAuxiliaryHttpRequest(
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined
 ): Promise<Response> | Response {
-  if (usesModernErrorEnvelope(request, options)) {
+  if (hasModernProtocolVersion(request) || !supportsClassicProtocol(options)) {
     return jsonResponse(createErrorResponse(undefined, -32600, 'Modern MCP is POST-only'), 405)
   }
   return handleLegacyAuxiliaryMethod(app, request, options, authorization, LEGACY_SESSION_RUNTIME)
@@ -313,11 +314,14 @@ async function handleBatchPayload(
   options: NormalizedMcpPluginOptions,
   authorization: McpAuthorizationContext | undefined
 ): Promise<Response> {
-  if (usesModernErrorEnvelope(request, options)) {
+  if (rejectsBatch(request, payload, options)) {
     return jsonResponse(
       createErrorResponse(undefined, -32600, 'Modern MCP does not support batches'),
       400
     )
+  }
+  if (payload.length === 0) {
+    return jsonResponse(createErrorResponse(null, -32600, 'Invalid Request'), 400)
   }
   const responses: JsonRpcResponse[] = []
   for (const item of payload) {
@@ -341,11 +345,7 @@ async function handleEventStreamRequest(
 ): Promise<Response> {
   if (!isJsonRpcRequest(eventRequest) || !isRequestId(eventRequest.id)) {
     return jsonResponse(
-      createErrorResponse(
-        errorIdForRequest(request, options, eventRequest),
-        -32600,
-        'Invalid Request'
-      ),
+      createErrorResponse(errorIdForRequest(request, eventRequest), -32600, 'Invalid Request'),
       400
     )
   }
@@ -416,26 +416,23 @@ function validateProtocolHeader(
     return undefined
   }
   return jsonResponse(
-    {
-      jsonrpc: JSON_RPC_VERSION,
-      error: {
-        code: -32022,
-        message: `Unsupported protocol version: ${protocol}`,
-        data: { supported: options.transport.protocolVersions, requested: protocol }
+    createErrorResponse(
+      protocol === options.transport.protocolVersion ? null : undefined,
+      -32022,
+      `Unsupported protocol version: ${protocol}`,
+      {
+        supported: options.transport.protocolVersions,
+        requested: protocol
       }
-    },
+    ),
     400
   )
 }
 
-function parseErrorResponse(
-  request: Request,
-  options: NormalizedMcpPluginOptions,
-  error: unknown
-): Response {
+function parseErrorResponse(request: Request, error: unknown): Response {
   return jsonResponse(
     createErrorResponse(
-      errorIdForRequest(request, options),
+      errorIdForRequest(request),
       -32700,
       'Parse error',
       error instanceof Error ? error.message : undefined
@@ -456,21 +453,20 @@ async function handleJsonRpcMessage(
   authorization?: McpAuthorizationContext,
   overrides: Pick<DispatchContext, 'signal' | 'notify' | 'reportProgress'> = {}
 ): Promise<RpcOutcome> {
-  const validation = validateJsonRpcMessage(payload, request, options)
+  const validation = validateJsonRpcMessage(payload, request)
   if ('outcome' in validation) return validation.outcome
   return executeJsonRpcMessage(app, validation.payload, request, options, authorization, overrides)
 }
 
 function validateJsonRpcMessage(
   payload: unknown,
-  request: Request,
-  options: NormalizedMcpPluginOptions
+  request: Request
 ): { payload: JsonRpcRequest } | { outcome: RpcOutcome } {
   if (!isJsonRpcRequest(payload)) {
     return {
       outcome: {
         response: createErrorResponse(
-          errorIdForRequest(request, options, payload),
+          errorIdForRequest(request, payload),
           -32600,
           'Invalid Request'
         ),
@@ -479,7 +475,7 @@ function validateJsonRpcMessage(
     }
   }
   if (
-    usesModernErrorEnvelope(request, options) &&
+    hasModernProtocolVersion(request, payload) &&
     payload.id !== undefined &&
     !isRequestId(payload.id)
   ) {
@@ -502,7 +498,7 @@ async function executeJsonRpcMessage(
   overrides: Pick<DispatchContext, 'signal' | 'notify' | 'reportProgress'>
 ): Promise<RpcOutcome> {
   const id = payload.id ?? null
-  const errorId = errorIdForRequest(request, options, payload)
+  const errorId = errorIdForRequest(request, payload)
   try {
     const protocol = resolveRequestProtocol(request, payload, options)
     if (payload.id === undefined || payload.id === null) return { status: 202 }
@@ -1670,7 +1666,7 @@ async function handleNotificationRequest(
       settle(outcome.status === 403 ? outcome : undefined)
       return outcome.response
     },
-    (error) => normalizeDispatchError(errorIdForRequest(request, options, payload), error),
+    (error) => normalizeDispatchError(errorIdForRequest(request, payload), error),
     () => settle()
   )
   const rejected = await ready
@@ -1809,7 +1805,7 @@ function validateOrigin(
     !isOriginAllowed(origin, options.transport.allowedOrigins)
   ) {
     return jsonResponse(
-      createErrorResponse(errorIdForRequest(request, options), -32000, 'Forbidden origin'),
+      createErrorResponse(errorIdForRequest(request), -32000, 'Forbidden origin'),
       403
     )
   }
@@ -1823,34 +1819,19 @@ function jsonResponse(body: unknown, status = 200, extraHeaders: HeadersInit = {
   })
 }
 
-function createErrorResponse(
-  id: string | number | null | undefined,
-  code: number,
-  message: string,
-  data?: unknown
-): JsonRpcResponse {
-  return {
-    jsonrpc: JSON_RPC_VERSION,
-    ...(id === undefined ? {} : { id }),
-    error: pruneUndefined({ code, message, data }) as JsonRpcResponse['error']
-  }
+function supportsClassicProtocol(options: NormalizedMcpPluginOptions): boolean {
+  return options.transport.protocolVersions.includes(LEGACY_PROTOCOL_VERSION)
 }
 
-function errorIdForRequest(
+function rejectsBatch(
   request: Request,
-  options: NormalizedMcpPluginOptions,
-  payload?: unknown
-): string | number | null | undefined {
-  if (isRecord(payload) && isRequestId(payload.id)) return payload.id
-  return usesModernErrorEnvelope(request, options) ? undefined : null
-}
-
-function usesModernErrorEnvelope(request: Request, options: NormalizedMcpPluginOptions): boolean {
-  const protocolHeader = request.headers.get('mcp-protocol-version')
+  payload: unknown[],
+  options: NormalizedMcpPluginOptions
+): boolean {
   return (
-    protocolHeader === MCP_EXTENSION_SUPPORT.protocol.current ||
-    (protocolHeader === null &&
-      options.transport.protocolVersions[0] === MCP_EXTENSION_SUPPORT.protocol.current)
+    !supportsClassicProtocol(options) ||
+    hasModernProtocolVersion(request) ||
+    payload.some((message) => hasModernProtocolVersion(request, message))
   )
 }
 

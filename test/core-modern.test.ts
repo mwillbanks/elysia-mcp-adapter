@@ -667,18 +667,20 @@ describe('modern core MRTR', () => {
 })
 
 describe('modern core utilities', () => {
-  test('selects modern by default and retains explicit legacy-only operation', async () => {
+  test('serves classic and modern requests on the default dual-era transport', async () => {
     expect(DEFAULT_PROTOCOL_VERSION).toBe('2026-07-28')
-    const modernDefault = new Elysia().use(mcp())
-    const missingEnvelope = await modernDefault.handle(
+    const dualEra = new Elysia().use(mcp())
+    const headerless = await dualEra.handle(
       new Request('http://localhost/mcp', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
       })
     )
-    expect(missingEnvelope.status).toBe(400)
-    expect(((await missingEnvelope.json()) as any).error.code).toBe(-32020)
+    expect(headerless.status).toBe(200)
+    const classicResult = ((await headerless.json()) as any).result
+    expect(classicResult.tools).toEqual([])
+    expect(classicResult).not.toHaveProperty('resultType')
 
     const malformedModernEnvelopes = [
       {
@@ -706,7 +708,7 @@ describe('modern core utilities', () => {
       }
     ]
     for (const envelope of malformedModernEnvelopes) {
-      const response = await modernDefault.handle(
+      const response = await dualEra.handle(
         new Request('http://localhost/mcp', {
           method: 'POST',
           headers: envelope.headers,
@@ -870,7 +872,7 @@ describe('modern core utilities', () => {
       new URL('./fixtures/core-2026-07-28.schema.json', import.meta.url)
     ).arrayBuffer()
     expect(createHash('sha256').update(Buffer.from(fixtureBytes)).digest('hex')).toBe(
-      'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+      'edbb197ed0f92e90d658866e23cf76f107df0caac5ce25c2b9e64e1ca9a6314a'
     )
     const app = new Elysia().use(mcp())
     const complete = await modernRpc(app, 'tools/list')

@@ -4,7 +4,7 @@ description: Configure MCP 2026-07-28 MRTR, pagination, caching, completion, pro
 icon: RefreshCcw
 ---
 
-The adapter selects MCP `2026-07-28` by default. Every modern POST includes matching protocol and method headers. Calls and reads also include a target header. `_meta` requires the protocol version and client capabilities. Client information is optional and validated when present. `Accept` lists JSON and event streams.
+The adapter advertises MCP `2026-07-28` first by default. Requests without a version header or version metadata use classic MCP when enabled. Every modern POST includes matching protocol and method headers. Calls and reads also include a target header. `_meta` requires the protocol version and client capabilities. Client information is optional and validated when present. `Accept` lists JSON and event streams.
 
 For handler examples and delivery rules, see [Messaging and Input](/docs/core-concepts/messaging).
 

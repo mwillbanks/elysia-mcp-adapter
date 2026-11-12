@@ -231,6 +231,7 @@ export async function streamEvents(
 ): Promise<Response> {
   return eventOperation(async () => {
     const prepared = await prepareEventRequest(app, params, 'push', options, context)
+    const heartbeatMs = grantEventHeartbeat(params.heartbeatMs, eventOptions(options).heartbeatMs)
     const initial = await pollSource(prepared.source, prepared.request, context, options)
     if (initial.terminated) throw eventError(initial.terminated)
     if (prepared.initial) {
@@ -267,6 +268,7 @@ export async function streamEvents(
           prepared,
           initial,
           originalDescriptor,
+          heartbeatMs,
           abort,
           relay,
           controller,
@@ -279,7 +281,10 @@ export async function streamEvents(
         context.signal?.addEventListener('abort', relay, { once: true })
         void runEventStream(session)
       },
-      pull: capacity.wake,
+      pull() {
+        capacity.wake()
+        if (session?.heartbeatDue) sendEventStreamHeartbeat(session)
+      },
       async cancel() {
         if (session) await cleanupEventStream(session)
       }
@@ -292,6 +297,13 @@ export async function streamEvents(
       }
     })
   })
+}
+
+function grantEventHeartbeat(suggestion: unknown, configured: number): number {
+  if (suggestion === undefined) return configured
+  if (typeof suggestion !== 'number' || !Number.isSafeInteger(suggestion) || suggestion <= 0)
+    throw invalidParams('Events stream heartbeatMs must be a positive safe integer')
+  return Math.max(Math.min(1_000, configured), Math.min(suggestion, configured))
 }
 
 interface EventStreamSession {
@@ -307,7 +319,9 @@ interface EventStreamSession {
   controller: ReadableStreamDefaultController<Uint8Array>
   meta: Record<string, string | number>
   cursor: string | null
-  heartbeat?: ReturnType<typeof setInterval>
+  heartbeatMs: number
+  heartbeat?: ReturnType<typeof setTimeout>
+  heartbeatDue?: boolean
   capacity: ReturnType<typeof createSseCapacity>
   cleaning?: Promise<void>
 }
@@ -320,6 +334,7 @@ function createEventStreamSession(
   prepared: Awaited<ReturnType<typeof prepareEventRequest>>,
   initial: McpEventPollResult,
   originalDescriptor: McpEventDescriptor,
+  heartbeatMs: number,
   abort: AbortController,
   relay: () => void,
   controller: ReadableStreamDefaultController<Uint8Array>,
@@ -333,6 +348,7 @@ function createEventStreamSession(
     prepared,
     initial,
     originalDescriptor,
+    heartbeatMs,
     abort,
     relay,
     controller,
@@ -368,13 +384,13 @@ async function initializeEventStream(session: EventStreamSession): Promise<void>
   const { initial } = session
   await sendEventStream(session, eventStreamActive(session, initial.truncated === true))
   await sendEventStreamBatch(session, initial)
-  if (!session.abort.signal.aborted) startEventStreamHeartbeat(session)
 }
 
 function eventStreamActive(session: EventStreamSession, truncated: boolean) {
   return eventNotification('active', {
     cursor: encodedEventStreamCursor(session),
     truncated,
+    heartbeatMs: session.heartbeatMs,
     _meta: session.meta
   })
 }
@@ -528,22 +544,31 @@ async function sendEventStreamBatch(
   session.cursor = result.cursor
 }
 
-function startEventStreamHeartbeat(session: EventStreamSession): void {
-  session.heartbeat = setInterval(() => {
-    if (session.abort.signal.aborted || (session.controller.desiredSize ?? 0) <= 0) return
-    try {
-      enqueueEventStream(
-        session,
-        eventNotification('heartbeat', {
-          cursor: encodedEventStreamCursor(session),
-          _meta: session.meta
-        })
-      )
-    } catch {
-      session.abort.abort('Event stream heartbeat failed')
-    }
-  }, eventOptions(session.options).heartbeatMs)
+function scheduleEventStreamHeartbeat(session: EventStreamSession): void {
+  if (session.heartbeat !== undefined) clearTimeout(session.heartbeat)
+  session.heartbeatDue = false
+  session.heartbeat = setTimeout(() => {
+    session.heartbeat = undefined
+    session.heartbeatDue = true
+    sendEventStreamHeartbeat(session)
+  }, session.heartbeatMs)
   session.heartbeat.unref?.()
+}
+
+function sendEventStreamHeartbeat(session: EventStreamSession): void {
+  if (session.abort.signal.aborted || (session.controller.desiredSize ?? 0) <= 0) return
+  try {
+    enqueueEventStream(
+      session,
+      eventNotification('heartbeat', {
+        cursor: encodedEventStreamCursor(session),
+        _meta: session.meta
+      })
+    )
+  } catch {
+    session.controller.error(new Error('Event stream heartbeat failed'))
+    void cleanupEventStream(session)
+  }
 }
 
 function encodedEventStreamCursor(session: EventStreamSession): string | null {
@@ -564,6 +589,7 @@ async function sendEventStream(session: EventStreamSession, value: unknown): Pro
 
 function enqueueEventStream(session: EventStreamSession, value: unknown): void {
   session.controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`))
+  scheduleEventStreamHeartbeat(session)
 }
 
 async function closeEventStream(session: EventStreamSession): Promise<void> {
@@ -577,7 +603,7 @@ async function closeEventStream(session: EventStreamSession): Promise<void> {
 
 function cleanupEventStream(session: EventStreamSession): Promise<void> {
   if (session.cleaning) return session.cleaning
-  if (session.heartbeat) clearInterval(session.heartbeat)
+  if (session.heartbeat !== undefined) clearTimeout(session.heartbeat)
   session.abort.abort('Event stream closed')
   session.context.signal?.removeEventListener('abort', session.relay)
   session.cleaning = Promise.resolve()

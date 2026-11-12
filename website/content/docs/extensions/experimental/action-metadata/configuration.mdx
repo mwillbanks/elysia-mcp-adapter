@@ -1,0 +1,14 @@
+---
+title: Action metadata configuration
+description: Add experimental behavioral metadata to tool definitions.
+---
+
+Action metadata appears under tool annotations at `io.modelcontextprotocol/action-metadata`. It can describe input destination and sensitivity, return source and sensitivity, outcome as `benign`, `consequential`, or `irreversible`, and `requiresReview`.
+
+The adapter follows [draft revision `fecace78a9552f70ba735d750fc3c4b190e20429`](https://github.com/modelcontextprotocol/experimental-ext-tool-annotations/blob/fecace78a9552f70ba735d750fc3c4b190e20429/specification/draft/action-metadata.mdx).
+
+Destination and sensitivity vocabularies remain open strings in the draft. Hosts can strengthen multiple signals as a union. They must not weaken a stronger annotation because another signal is absent.
+
+The adapter validates and preserves the annotation. Hosts own approval and display behavior. Action metadata never replaces authentication or authorization.
+
+When runtime annotations change, publish `notifications/tools/list_changed` through the configured subscription provider. Hosts must refresh the tool list before using the new annotation set.

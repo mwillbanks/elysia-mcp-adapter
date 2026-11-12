@@ -3,77 +3,74 @@
   "baseline": "32721f89f69c642946a6ec0e37f57f95dd8e8351",
   "items": {
     "skill:skills/elysia-mcp-adapter/SKILL.md": {
-      "fingerprint": "b05ad0cf11be986c1310820969b6d7a88b6c5a77ecd70c282c53edcf09539513",
+      "fingerprint": "159ff7ec0624d68c291ebfb7551910da372fbc7841267fae6ae4a02ab70c74b8",
       "snapshot": {
-        "README.md": "40dd8211ced998a6c4387f4f6d37095524c90c4e7c79e0e2a5b0c43a88fd3b81",
+        "README.md": "b815b900532943bae7f39ca64ce83f59622cc06f930e86dd9651a17e5e097a5b",
         "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
-        "skills/elysia-mcp-adapter/references/extensions.md": "58c3c6894c4703f796550b227602fd24ba8b51649cacb374559416a1d34cdc3b",
+        "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
-        "skills/elysia-mcp-adapter/references/transport-authorization.md": "163cbf02da401c801ae8fe887cd154d39c082a5eb997781f2e7e44d9222072c0",
+        "skills/elysia-mcp-adapter/references/transport-authorization.md": "591bb2d1a79487ce9b625db530cb6eba0a7b325c7e3627246c1fd3f1938f03d5",
         "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
         "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
         "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
         "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
-        "website/content/docs/core-concepts/transportation.mdx": "9970dc2a4dc0cf28887f0af965b03ed4a03bd684684409d909b01b23924a4d5b",
+        "website/content/docs/core-concepts/transportation.mdx": "27d481007e9a44ee6abff9ff06049c56f0d01a9b83a6abd844138b736b15e2f0",
         "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
-        "website/content/docs/extensions/index.mdx": "2732b5abd3ea4b47b126b7412bca8302ca8557552eb760a2460083f67a9bb92e",
-        "website/content/docs/extensions/specification-inventory.mdx": "880852d1ca40de9a78c875a1c45db2aca0d18038db4855dd771db9b715710ec3",
-        "website/content/docs/extensions/versioning.mdx": "804d009d2da9449b80b44a943b30b6c48e059cb3b1b8d58c73cac9d0dc8dec3f"
+        "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
+        "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
+        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6"
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Updated packaged guidance for headerless classic transport and the accepted Events heartbeat grant.",
       "evidence": [
-        "skill:skills/elysia-mcp-adapter/SKILL.md",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
+        "skills/elysia-mcp-adapter/references/transport-authorization.md",
+        "skills/elysia-mcp-adapter/references/extensions.md",
+        "test/classic-transport.test.ts",
+        "test/events.test.ts"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "b2aa414e2599574b3ffe5a9cb0bd0b398d915b772ad879f91dfb0363e0c475be",
+      "fingerprint": "29aa045495826277eeac0e8c06b578c71ef9fef2334ad39727679f55a02e62ab",
       "snapshot": {
-        "README.md": "40dd8211ced998a6c4387f4f6d37095524c90c4e7c79e0e2a5b0c43a88fd3b81",
+        "README.md": "b815b900532943bae7f39ca64ce83f59622cc06f930e86dd9651a17e5e097a5b",
         "_artifacts/domain_map.yaml": "45c2fa7634565fad530e15249b232ca2ad862fc4e88d2c4de900d8902de6e6da",
         "_artifacts/skill_spec.md": "8c00fc5c68344afed276f4167cbd21824abbe75e28650bbffa44476651fa6363",
         "_artifacts/skill_tree.yaml": "8d3eb0600977eb16f6bb026b7c014bdbe1f1f9e4aeeaf828135e66d010bf9997",
         "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
-        "skills/elysia-mcp-adapter/references/extensions.md": "58c3c6894c4703f796550b227602fd24ba8b51649cacb374559416a1d34cdc3b",
+        "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
-        "skills/elysia-mcp-adapter/references/transport-authorization.md": "163cbf02da401c801ae8fe887cd154d39c082a5eb997781f2e7e44d9222072c0",
+        "skills/elysia-mcp-adapter/references/transport-authorization.md": "591bb2d1a79487ce9b625db530cb6eba0a7b325c7e3627246c1fd3f1938f03d5",
         "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
         "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
         "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
         "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
-        "website/content/docs/core-concepts/transportation.mdx": "9970dc2a4dc0cf28887f0af965b03ed4a03bd684684409d909b01b23924a4d5b",
+        "website/content/docs/core-concepts/transportation.mdx": "27d481007e9a44ee6abff9ff06049c56f0d01a9b83a6abd844138b736b15e2f0",
         "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
-        "website/content/docs/extensions/index.mdx": "2732b5abd3ea4b47b126b7412bca8302ca8557552eb760a2460083f67a9bb92e",
-        "website/content/docs/extensions/specification-inventory.mdx": "880852d1ca40de9a78c875a1c45db2aca0d18038db4855dd771db9b715710ec3",
-        "website/content/docs/extensions/versioning.mdx": "804d009d2da9449b80b44a943b30b6c48e059cb3b1b8d58c73cac9d0dc8dec3f"
+        "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
+        "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
+        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6"
       },
-      "head": "95184b293d9f1ea6aac593fa40ee636ae8efbe81",
-      "outcome": "updated",
-      "reason": "Excluded generated release metadata from unmapped review. The domain map, skill specification, and skill tree still cover the same adapter guidance and canonical sources.",
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "no-change",
+      "reason": "The existing guidance structure and canonical source assignments cover the revised transport and extension contracts.",
       "evidence": [
-        "_artifacts/domain_map.yaml",
         "_artifacts/skill_spec.md",
-        "_artifacts/skill_tree.yaml",
-        "Release PR #13 changes only the generated changelog, release manifest, and package version."
+        "skills/elysia-mcp-adapter/references/transport-authorization.md",
+        "skills/elysia-mcp-adapter/references/extensions.md"
       ]
     },
     "source:examples/events/README.md": {
-      "fingerprint": "6d66b4dd0d1e3fb5f4d8ee0f5166410341b38493a122b58134a1104549f7bc49",
+      "fingerprint": "3c757f139712a32a0404ed922463bd0ac16b7744e956c06cbb5f2a574ab87a01",
       "snapshot": {
-        "examples/events/README.md": "61a4407c2c4b2a7eb1ee43062cb84e9fa534fd248a3856d6a4572f5eb746f4fa"
+        "examples/events/README.md": "3698ebd2aa1c0477db52d2171d6cb73ceb4fbcafaae87eedc0525a4e9cfd222a"
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
-      "outcome": "no-change",
-      "reason": "The example adds replay and webhook operations. The extension reference covers selection and points to protocol-specific guidance.",
-      "evidence": [
-        "Checked that the example uses explicit experimental Events and that the current revision selection remains governed by the version manifest."
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Updated the Events example guidance for revision migration and the negotiated heartbeat interval.",
+      "evidence": ["src/extensions/events/runtime.ts", "examples/events/server.test.ts"]
     },
     "source:examples/tasks/README.md": {
       "fingerprint": "c6cddfa551d353b9b3e961acd727e6fe1693895baa6d5fe942f1cd0cd7ad9159",
@@ -86,19 +83,14 @@
       "evidence": ["examples/tasks/test-support.ts", ".github/workflows/ci.yml"]
     },
     "source:website/content/docs/core-concepts/language-preference.mdx": {
-      "fingerprint": "4c04755548f97882b9b213a25c9581ecc04d6661398d7acd0acff088002f0cd0",
+      "fingerprint": "436a2dde15941394af4fb18dce0e667d167001b4e849533b004d36d7ab2cb734",
       "snapshot": {
-        "website/content/docs/core-concepts/language-preference.mdx": "992efd0bdec03d1e611597a3044b6d720865f0044b8482ebedb552a678407473"
+        "website/content/docs/core-concepts/language-preference.mdx": "665e505f3ee7ba3233557ad255b349efcc3504e05cb2e8adc8ba923de9c64bd4"
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
-      "evidence": [
-        "source:website/content/docs/core-concepts/language-preference.mdx",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed language mirroring and cache behavior against the accepted proposal.",
+      "evidence": ["test/language-http.test.ts", "src/extensions/governance.ts"]
     },
     "source:website/content/docs/core-concepts/meta.json": {
       "fingerprint": "436a7890253923805939641b903008db648b5b3a0c8e3f0ee98fb2a260f5b9b6",
@@ -158,51 +150,44 @@
       "evidence": ["Checked the pinned profile and its verifier, scopes, and policy ordering."]
     },
     "source:website/content/docs/extensions/experimental/events.mdx": {
-      "fingerprint": "6f30e81ed2c51b6f88174c16e84d37e7687d24204ca4bf6f2e2797a69a605568",
+      "fingerprint": "74ec3ea94c01369e556b23a6eb1024dd5b5671a8a571d389c090cd5975287fb4",
       "snapshot": {
-        "website/content/docs/extensions/experimental/events.mdx": "2c7c3cfdace50be0b59d106c4a3ee2286a3944e19eee94e99eded92d9fe54c4f"
+        "website/content/docs/extensions/experimental/events.mdx": null
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
-      "evidence": [
-        "source:website/content/docs/extensions/experimental/events.mdx",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/index.mdx": {
-      "fingerprint": "2bc970f1b81eb82ee1c23461e86f6890e5840092d701500ca96db4927e6e38c2",
+      "fingerprint": "eee2b71f04722dfc4b89446b06c35a6e8fbe5e6f017655bd2f130c18e23ee8c4",
       "snapshot": {
-        "website/content/docs/extensions/experimental/index.mdx": "848e00ccdaf723ff1440ddecd2cf6a85e9311f78aa7c9f9e56c1a37c4fa10e55"
+        "website/content/docs/extensions/experimental/index.mdx": "48e1a34e2ee6694dc10e1acadc998ac6b70854890517bfd5ddf830c4ae139bf0"
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
-      "outcome": "no-change",
-      "reason": "The experimental catalog adds selectors and implementation links within the selection procedure already described by the skill.",
-      "evidence": [
-        "Compared the opt-in inventory and modern Events entry with the extension selection reference."
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/interceptors.mdx": {
-      "fingerprint": "74a77bb3b5d3921d7896d8409e1cc2e9311e96a539b2cc8f23ff707179f97fce",
+      "fingerprint": "c5cb8ea73c8d4d44ce4529d8b2f0eb060a9b680c2550c3cd30ee0ba3ba214ca9",
       "snapshot": {
-        "website/content/docs/extensions/experimental/interceptors.mdx": "7ab1508e334f559018936dc9a03be427e146e7955876621fb7dc6d829f653725"
+        "website/content/docs/extensions/experimental/interceptors.mdx": null
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
-      "outcome": "no-change",
-      "reason": "Interceptor registration and chain semantics remain in their feature guide. The skill covers explicit selector choice and capability verification.",
-      "evidence": ["Checked the opt-in, singular wire method, and local chain guidance."]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/server-variants.mdx": {
-      "fingerprint": "ac6320484b77f51e973f1d5dbce315b6bf51d3b0b97732af4dd1c7c5fb0ecd53",
+      "fingerprint": "94fbcecf02deb77bc7e529f2219f35307d1f81d60ae4cd2cd2544cb8c2e235a3",
       "snapshot": {
-        "website/content/docs/extensions/experimental/server-variants.mdx": "90c3ab6940530ddbcd303afacc28d22c4247aa47ab39e706ef33224ef022ee8b"
+        "website/content/docs/extensions/experimental/server-variants.mdx": null
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
-      "outcome": "no-change",
-      "reason": "The migration belongs in the feature and inventory pages linked by the extension reference. The reference already tells consumers to retire deprecated selectors.",
-      "evidence": ["Checked the legacy opt-in and migration to separate MCP endpoints."]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/server-card.mdx": {
       "fingerprint": "3d2470bfd752028cddf598dde1ebce1bdd1a0c5bd59d04e05638e1b644b2335f",
@@ -239,16 +224,14 @@
       ]
     },
     "source:website/content/docs/extensions/experimental/server-card.mdx": {
-      "fingerprint": "de3b73e2bb910262b404e7384d79832ffc8d6ba9f58d3cca2324a30a8583a222",
+      "fingerprint": "195bf967efa0cd1219ef03eaa28b49eb97a08fcbc16bb6bc356a80504bddca49",
       "snapshot": {
-        "website/content/docs/extensions/experimental/server-card.mdx": "6b8cdca8c6e79d35a1f348610acc36bba5f6917d51d4743026ea48a969756086"
+        "website/content/docs/extensions/experimental/server-card.mdx": null
       },
-      "head": "f7e5a3828c011e41cad5e9535e9d7e027769b8eb",
-      "outcome": "no-change",
-      "reason": "The guide now matches the approved authorization profiles or approved Beta baseline. Existing package guidance applies.",
-      "evidence": [
-        "Compared the changed guide with the public extension support catalog and canonical extension index."
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:examples/core/README.md": {
       "fingerprint": "d8579991c4c0c3938f44aebe33c1412b3a38524d7c8d36ccc70971cd0cae0796",
@@ -266,17 +249,14 @@
       ]
     },
     "source:website/content/docs/core-concepts/modern-core.mdx": {
-      "fingerprint": "2454a0695b027f3f68dc6dcc4737f66fa96cae6e5494869ee7b1e36b3119da6a",
+      "fingerprint": "76c1e250bd8d39e90c5381d637c683e2de92e8111c7a6a4c0d8f909b0077c5e6",
       "snapshot": {
-        "website/content/docs/core-concepts/modern-core.mdx": "0d760548e446d536157ba6a11728f3a6e5b2d4789ed057677662a7e7115f746d"
+        "website/content/docs/core-concepts/modern-core.mdx": "2debb42dfd51c3d3c3db3749a6f560c71e3a2eb8a2c1f17c73d10b24cf3fdf1b"
       },
-      "head": "9bcc4764e89d15d4e794cd5377f47e8b38f72198",
-      "outcome": "no-change",
-      "reason": "Reviewed the modern core guide against the SDK 2.4.0 interoperability suite. The correction updates the tested SDK version and requires no change to skill guidance.",
-      "evidence": [
-        "source:website/content/docs/core-concepts/modern-core.mdx",
-        "test/client-interoperability.test.ts"
-      ]
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed modern Core schema and route composition guidance against the shipped schema and protocol tests.",
+      "evidence": ["test/core-modern.test.ts", "test/classic-transport.test.ts"]
     },
     "source:website/content/docs/extensions/tasks/examples.mdx": {
       "fingerprint": "27506255461aaea92e21c62769fe838ef5ecd289b8cf3b4638b0796225112a91",
@@ -291,6 +271,331 @@
         "test/client-interoperability.test.ts",
         "test/language-http.test.ts",
         "test/events-network.test.ts"
+      ]
+    },
+    "source:website/content/docs/core-concepts/route-backed-tools.mdx": {
+      "fingerprint": "c740763e2264b9ac356247da60f4901de4bb3f1a887e425ebe2c79a6bffb15ae",
+      "snapshot": {
+        "website/content/docs/core-concepts/route-backed-tools.mdx": "0531cb1a6a8c2462b68cf389c6e734a682939ecc9e7a0f42a9ad3a5e4af3da95"
+      },
+      "head": "c7ec4325a2c220ad4910fed434cfc2266ea7aa78",
+      "outcome": "updated",
+      "reason": "Clarified shared constraints and branch-specific constraints while preserving the immutable upstream schema fixture.",
+      "evidence": ["test/fixtures/core-2026-07-28.schema.json", "test/core-modern.test.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/action-metadata/configuration.mdx": {
+      "fingerprint": "ac6a8808fd3078fb9e86ef72f2507408a112691b313170a0f7b2ae7fa471b249",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/action-metadata/configuration.mdx": "836a89b1a089b21c36d50334c676beab34e012a5e613573e7c3ae1be4befa494"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/action-metadata/examples.mdx": {
+      "fingerprint": "5b11c848be58f1b3b4d8acd23ec1106f2d89580a50d7b0e3b3cdcb198d477bb9",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/action-metadata/examples.mdx": "cae3a11544d60711010db764ab92a244b5e0f2e512443f2a1bc0af0bed9c19a5"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/action-metadata/index.mdx": {
+      "fingerprint": "18a02654304701b4f76de90c404f117f60bf0e402d8d7d19f10fdd1a0b103911",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/action-metadata/index.mdx": "335f96dc715d986a20ed1f0aa2286c5cb412ab7d1394128ebd4b2a87317bc1f3"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/action-metadata/meta.json": {
+      "fingerprint": "dc5da372a5ff4d838387557c5ab4a08b3ebc8c59bc6f594b978a626f5eb7f492",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/action-metadata/meta.json": "6214f015d5a56991bbd273bbfe07a9fe9133f2dba1229e1da42115f9e77e8bfb"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/action-metadata/quick-start.mdx": {
+      "fingerprint": "2d867d89b9ed6a626e8f71e73c1cd7438a76835cc59a9b8a47e97d8a8f7d407d",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/action-metadata/quick-start.mdx": "a60be57510397fec6650032870f1d6e03cd9077f9edc356e59fc372f97bc9d82"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the self-contained annotation example against the registered tool contract.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/annotations.mdx": {
+      "fingerprint": "2b5858fa2938d39106a6fa15516f9d0243a3ce35c85b81b0197d8a2a283e5738",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/annotations.mdx": "ca5f0275ac34c2da8141f1bef1252da52e51dd9897d2a7e2f7366b5c47eaf9c3"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/events/configuration.mdx": {
+      "fingerprint": "acb119f6f038b54cbf626cd6798eb9e6af7a0ef275d43990cef1daed461ee902",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events/configuration.mdx": "4b70e87f8d1c31b763a3c559a82f9f7379de0b8f86bbcf361362a59acc32b60d"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/events/examples.mdx": {
+      "fingerprint": "451a9db7c6cd383bee0ee0eabe9d5980d3bcdebac27798acd2908130e30c4d2a",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events/examples.mdx": "1e54a72f50db42c9bbe2937db27f6a61251a53917411b817af4f8575cd3997fc"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/events/index.mdx": {
+      "fingerprint": "e40e66892cedd7597186e1812a733348e4bef28d48983795b7a1c92205a80cce",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events/index.mdx": "8364a0a45930b4b3bf3afbccd1f2d16ce93bf9ec7db00747f9896f9dce6c2c01"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/events/meta.json": {
+      "fingerprint": "1284c380ae1de673e31d1cfbe71976c323e82d4a5864a69b884c2da696bcddc9",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events/meta.json": "2d82c6e0628351d414bd0972c9d91ca38573b9f6f5d69c56462df4a30f7cb2a2"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/events/quick-start.mdx": {
+      "fingerprint": "432bef872a01aeed2108b45eccbcaa82c9a8aef865fa496a297c902b3883f73d",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/events/quick-start.mdx": "cbe61495a19cce8307e1ea278d533dbfbf52876f96ad8344e4ae76c202aee90b"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors/configuration.mdx": {
+      "fingerprint": "7e0b83770f28e125d4b5230a58f39c6a11f16530dd9c6bd20c5c9b164dd49509",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors/configuration.mdx": "2e6865dd98f8334bebda5eb62f39b34ec18803f1b83cbf3de7a8f6ceffb82464"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors/examples.mdx": {
+      "fingerprint": "d92886e8ddaf7c53d58f8c32743403006d553ac46d5ccd11a1bfb1c7b66b5f67",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors/examples.mdx": "6e060f806a669124cbd74a26a4a68e2ff51d99b2f046aae97e4a7f694c19cd7f"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors/index.mdx": {
+      "fingerprint": "bf43956d6a6e3c3413364c5675dbd0a311e6ff4b9158accaec9663b6bc989581",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors/index.mdx": "2519722dbac3b41872ef59f7a7939f56127f6ea797120c2237dfffbc170b153b"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors/meta.json": {
+      "fingerprint": "e10c0b814c1649f1d399aaf1d20852c12e591d01769265d7740f4f7a8a1cc116",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors/meta.json": "2adefbcf8ee5fe38d2d4def43526c45c397a9ef694670b5125b012383370ad94"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/interceptors/quick-start.mdx": {
+      "fingerprint": "820b4c7ea2f5616d83ddc73762adc3e47cb4b0ae590ca55aa81ca624427287a6",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/interceptors/quick-start.mdx": "fa7d6743f5ca279b59fc6277bacb1dea5e3231b0942c72cf4adbd0773926d636"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/meta.json": {
+      "fingerprint": "7b294ee7446fb9973ec45ca70e7e2276484c88b7bf0797c00f8b74e9d2c05033",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/meta.json": "64fa689402228765062b62797d139673340ec97f22d4c89b76c4d0d99b76d2db"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants/configuration.mdx": {
+      "fingerprint": "b147219f50d550dd9fa206696604dfbdc281fc614a111ed9f207d17e439f9a86",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants/configuration.mdx": "3db7171651a4669925130e21e9b99afd5ca1aca1b539a918c4984d55aa2927bc"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants/examples.mdx": {
+      "fingerprint": "19db617d9e4f35d81d272657461368cf0b0d2956f57d558248f8eaf736325c9b",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants/examples.mdx": "90e51cee4b66e440fb6dfdf3afe40dd7707963921a1b1f7311b502011174b7e4"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants/index.mdx": {
+      "fingerprint": "fa6f65917d8e13850692d2c9cdabf16042fe8030c87f07761ef5334eef82374d",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants/index.mdx": "dadf076fc605c108be8d85ae0108c5e840c21f3c55246094dcbe421e23b56914"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Clarified that the deprecated Server Variants opt-in requires classic MCP.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants/meta.json": {
+      "fingerprint": "6014b2ced18e00041bdd97900dc1616d0e739e06fb154891eae46481f8238163",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants/meta.json": "e699148926b94a4275eada13ac94a06aeee26865e06999f5951d38a23b457b26"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/server-variants/quick-start.mdx": {
+      "fingerprint": "dadf809ade6a9509b83a066a54729f8220269a03b9f574d2ef4b7cd5a228e19f",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/server-variants/quick-start.mdx": "907eefcfa333fc2c1b08b2c3d1d89ce623a5d7bbe98d4f612c00c4685d8ed5af"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/trust-annotations/configuration.mdx": {
+      "fingerprint": "c82201337265addd24593113993200fe52f49c8564d16cbe3b3e850c7077a70b",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/trust-annotations/configuration.mdx": "06003977c9c13d8dcd83511fa5fe1e63d98fc4e8b811248ae9466bf99ff3fe00"
+      },
+      "head": "c7ec4325a2c220ad4910fed434cfc2266ea7aa78",
+      "outcome": "updated",
+      "reason": "Clarified where clients receive trust metadata and when tool discovery metadata should be refreshed.",
+      "evidence": [
+        "website/content/docs/extensions/experimental/trust-annotations/quick-start.mdx",
+        "test/experimental-wp6a.test.ts"
+      ]
+    },
+    "source:website/content/docs/extensions/experimental/trust-annotations/examples.mdx": {
+      "fingerprint": "38c7c91c619173c4d57eee964ff19024e6510fa5d52ebe85b7a30118ec78f677",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/trust-annotations/examples.mdx": "f60f0b53d2b4ad35d80ab699576d742c257c2cdceb5051d341108a53a46a3c25"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/trust-annotations/index.mdx": {
+      "fingerprint": "448e80cc01f22b379906ea45cd35b7092a3b3d223883cfac949fff4430f54c1a",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/trust-annotations/index.mdx": "ca8ccb85b1a30cf92fd69f049f061fc5fbe09f48a6a1bc546d7402253b622877"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/trust-annotations/meta.json": {
+      "fingerprint": "4a952b51e394e2f7402bbcc66d5a69fb680f6ef60d8dd79d444d7386baae75c4",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/trust-annotations/meta.json": "8bef082acc2b8ecc550e9c3bb0263687b7c8a2eba06a0b8e97b6d7ca9e94a757"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/extensions/experimental/trust-annotations/quick-start.mdx": {
+      "fingerprint": "2ddd3c97911d37c32e37ebafcfe3b16fec6f2d986ea55261a0aba6b947538e48",
+      "snapshot": {
+        "website/content/docs/extensions/experimental/trust-annotations/quick-start.mdx": "d350b2c537812ec4e881d09df17fa4c7afda0b7efbd797394bdf6a54121cf81d"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the self-contained annotation example against the registered tool contract.",
+      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+    },
+    "source:website/content/docs/index.mdx": {
+      "fingerprint": "cbdd0d3aa32d550558aeda3b4cee1f97c7dcde09b7db9144eb0bd7a0b99be22d",
+      "snapshot": {
+        "website/content/docs/index.mdx": "aa9b5ec63e63b53fd9ebeca1c8e2afb4bbbf70a6ad4b6e7ddb54672ffd65b5be"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the classified surface and documentation artifact coverage for both deployment paths.",
+      "evidence": [
+        "website/content/docs/index.mdx",
+        "website/src/lib/extension-docs.test.ts",
+        "website/scripts/verify-build.ts"
+      ]
+    },
+    "source:website/scripts/verify-build.ts": {
+      "fingerprint": "0309966ba3a10ba16c05a21a20956fd379ebca8738ddcee1e814480f61ee4100",
+      "snapshot": {
+        "website/scripts/verify-build.ts": "728ab491e1b67385d65f28951cfdda51a57918b356cb63b89faf725f8ac4d2df"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the classified surface and documentation artifact coverage for both deployment paths.",
+      "evidence": [
+        "website/content/docs/index.mdx",
+        "website/src/lib/extension-docs.test.ts",
+        "website/scripts/verify-build.ts"
+      ]
+    },
+    "source:website/vite.config.ts": {
+      "fingerprint": "b0e36f0d25ef9f2f9355425b094f4d647d80e9b6e3b99a6c399e67c740b211d4",
+      "snapshot": {
+        "website/vite.config.ts": "dd51056d285f25b378c5a62a68642051fd6b22ad6d8e9bfc01998e68e530ab9c"
+      },
+      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "outcome": "updated",
+      "reason": "Reviewed the classified surface and documentation artifact coverage for both deployment paths.",
+      "evidence": [
+        "website/content/docs/index.mdx",
+        "website/src/lib/extension-docs.test.ts",
+        "website/scripts/verify-build.ts"
       ]
     }
   }
