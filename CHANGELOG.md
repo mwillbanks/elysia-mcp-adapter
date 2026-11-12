@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.6.0...elysia-mcp-adapter-v0.6.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **17:** restore classic MCP compatibility ([4c63dc6](https://github.com/mwillbanks/elysia-mcp-adapter/commit/4c63dc64e055d4858c9632a6505a2b3a469a05a2))
+
 ## [0.6.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.5.0...elysia-mcp-adapter-v0.6.0) (2026-11-05)
 
 
