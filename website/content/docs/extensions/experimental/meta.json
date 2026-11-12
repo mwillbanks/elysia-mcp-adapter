@@ -1,4 +1,11 @@
 {
   "title": "Experimental extensions",
-  "pages": ["index", "server-card", "interceptors", "server-variants", "annotations", "events"]
+  "pages": [
+    "index",
+    "events",
+    "interceptors",
+    "server-variants",
+    "action-metadata",
+    "trust-annotations"
+  ]
 }

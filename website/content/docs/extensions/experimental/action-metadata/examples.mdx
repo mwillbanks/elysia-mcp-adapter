@@ -1,0 +1,16 @@
+---
+title: Action Metadata examples
+description: Inspect action annotations in the experimental integration workspace.
+---
+
+The [experimental workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental) registers a `publish-report` tool with action metadata. Its tests inspect the metadata returned to a client through the adapter.
+
+Run its checks from the repository root:
+
+```bash
+bun --bun run --cwd examples/experimental typecheck
+bun --bun run --cwd examples/experimental test
+bun --bun run --cwd examples/experimental smoke
+```
+
+The [example server](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental/server.ts) uses the exported `MCP_ACTION_METADATA_ID` key.

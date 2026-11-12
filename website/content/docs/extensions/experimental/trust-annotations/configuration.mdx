@@ -1,0 +1,12 @@
+---
+title: Trust Annotations configuration
+description: Add experimental source and trust metadata to tool results.
+---
+
+Trust annotations appear in result `_meta` at `io.modelcontextprotocol/trust-annotations`. The optional `sensitive` and `untrusted` booleans distinguish an omitted value from `false`. `evidenceRef` contains bounded `type`, `digest`, and `canonicalization` strings, with optional `schema` and `ref`.
+
+The adapter follows [draft revision `fecace78a9552f70ba735d750fc3c4b190e20429`](https://github.com/modelcontextprotocol/experimental-ext-tool-annotations/blob/fecace78a9552f70ba735d750fc3c4b190e20429/specification/draft/trust-annotations.mdx).
+
+The adapter validates and preserves these records. It never fetches evidence or verifies its canonicalization. Hosts own approval, reference retrieval, consent, and display behavior. Treat unsupported host functionality as unavailable. Trust annotations do not authorize an operation.
+
+When runtime tool metadata changes, publish `notifications/tools/list_changed` through the configured subscription provider. Hosts must refresh the tool list before using the new annotation set.

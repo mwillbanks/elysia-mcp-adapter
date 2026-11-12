@@ -1,0 +1,28 @@
+---
+title: Interceptors quick start
+description: Register a local MCP interceptor and limit the operations it can affect.
+---
+
+Enable the extension and register handlers with an explicit operation and phase:
+
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia()
+  .use(mcp({ allowedRoutes: [], extensions: { interceptors: {} } }))
+  .mcpInterceptor(
+    {
+      name: "require-name",
+      version: "1",
+      type: "validation",
+      hooks: [{ events: ["tools/call"], phase: "request" }],
+    },
+    ({ payload }) => ({
+      valid: Boolean((payload as { name?: unknown }).name),
+      severity: "error",
+    }),
+  );
+```
+
+Clients discover registrations through `interceptors/list`. Review [failure modes, ordering, and validation rules](/docs/extensions/experimental/interceptors/configuration) before enabling mutators or audit hooks.

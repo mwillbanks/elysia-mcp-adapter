@@ -1,6 +1,6 @@
 ---
-title: Interceptors
-description: Register protocol interceptors and run deterministic local chains.
+title: Interceptors configuration
+description: Configure interceptor discovery, execution, validation, and failure handling.
 ---
 
 Enable `extensions.interceptors`, then register handlers with `.mcpInterceptor(definition, handler)`. Clients discover them with `interceptors/list` and invoke one with singular `interceptor/invoke`. The experimental source has used both plural and singular invocation names; this adapter implements the canonical singular method only.

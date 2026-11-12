@@ -4,7 +4,7 @@ description: Use a client language preference to localize MCP display strings fo
 icon: Languages
 ---
 
-The adapter can apply the accepted [SEP-2792](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2792) when you enable `core.language`. The implementation follows the [pinned specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/65f75c48df509f94afc8b039ae641a0fa4856a88/seps/2792-i18n-language-negotiation.md). Clients can send the preference without capability negotiation.
+The adapter can apply the accepted [SEP-2792](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2792) when you enable `core.language`. The implementation follows the [pinned specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/4acafbea1468d2553f861e7d507f57b14fbced19/seps/2792-i18n-language-negotiation.md). Clients can send the preference without capability negotiation.
 
 ## Configure a display catalog
 
@@ -45,4 +45,4 @@ For legacy JSON-RPC batches, the adapter validates all request mirrors before di
 
 Localized results and notifications carry `io.modelcontextprotocol/contentLanguage` in their own `_meta`. With `core.language` enabled, JSON responses mirror a valid canonical value in `Content-Language`, including when the host reports it without a request preference. The adapter omits the HTTP language field on SSE streams, where individual messages can use different languages.
 
-HTTP responses that can vary by language send `Vary: Accept-Language`. If the header is stripped, the adapter keeps that response private for HTTP and MCP caches. MCP client caches must key by the original preference string, including when different strings select the same language.
+HTTP responses that can vary by language send `Vary: Accept-Language`. If the header is stripped, the adapter keeps that response private for HTTP and MCP caches. MCP client caches must key by the original preference string, including when different strings select the same language. Treat an omitted preference as a separate cache key.

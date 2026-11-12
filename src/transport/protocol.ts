@@ -1,16 +1,21 @@
 import type { McpProtocolVersion } from '../extensions/manifest.js'
 import { isRecord } from '../internal.js'
-import type { JsonRpcRequest, McpClientInfo, NormalizedMcpPluginOptions } from '../types.js'
+import type {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  McpClientInfo,
+  NormalizedMcpPluginOptions
+} from '../types.js'
 import { assertClientCapabilities, assertClientInfo } from './capability-validation.js'
 import { type McpRequestLanguage, resolveHttpRequestLanguage } from './language.js'
 import { MCP_LOG_LEVEL_META_KEY, type McpLogLevel, requestLogLevel } from './notifications.js'
 import { McpProtocolError } from './protocol-error.js'
 import { requestTargetName } from './protocol-routing.js'
+import { isRequestId } from './request-id.js'
 
 export { McpProtocolError } from './protocol-error.js'
 
 const MODERN_PROTOCOL_VERSION = '2026-07-28' as const
-const LEGACY_PROTOCOL_VERSION = '2025-11-25' as const
 const PROTOCOL_VERSION_META_KEY = 'io.modelcontextprotocol/protocolVersion'
 const CLIENT_CAPABILITIES_META_KEY = 'io.modelcontextprotocol/clientCapabilities'
 const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo'
@@ -27,19 +32,49 @@ export interface McpRequestProtocolContext {
   meta?: Record<string, unknown>
 }
 
+function requestMeta(payload: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(payload) || !isRecord(payload.params)) return undefined
+  return isRecord(payload.params._meta) ? payload.params._meta : undefined
+}
+
+export function hasModernProtocolVersion(request: Request, payload?: unknown): boolean {
+  return (
+    request.headers.get('mcp-protocol-version') === MODERN_PROTOCOL_VERSION ||
+    requestMeta(payload)?.[PROTOCOL_VERSION_META_KEY] === MODERN_PROTOCOL_VERSION
+  )
+}
+
+export function errorIdForRequest(
+  request: Request,
+  payload?: unknown
+): string | number | null | undefined {
+  if (isRecord(payload) && isRequestId(payload.id)) return payload.id
+  return hasModernProtocolVersion(request, payload) ? undefined : null
+}
+
+export function createErrorResponse(
+  id: string | number | null | undefined,
+  code: number,
+  message: string,
+  data?: unknown
+): JsonRpcResponse {
+  return {
+    jsonrpc: '2.0',
+    ...(id === undefined ? {} : { id }),
+    error: { code, message, ...(data === undefined ? {} : { data }) }
+  }
+}
+
 export function resolveRequestProtocol(
   request: Request,
   payload: JsonRpcRequest,
   options: NormalizedMcpPluginOptions
 ): McpRequestProtocolContext {
-  const meta = isRecord(payload.params?._meta) ? payload.params._meta : undefined
-  const headerVersion = request.headers.get('mcp-protocol-version')
+  const meta = requestMeta(payload)
+  const headerVersion = request.headers.get('mcp-protocol-version') ?? undefined
   const metaVersion = meta?.[PROTOCOL_VERSION_META_KEY]
   assertProtocolVersionEnvelope(headerVersion, metaVersion)
-  const requestedVersion =
-    typeof metaVersion === 'string'
-      ? metaVersion
-      : (headerVersion ?? options.transport.protocolVersions[0] ?? LEGACY_PROTOCOL_VERSION)
+  const requestedVersion = metaVersion ?? headerVersion ?? options.transport.protocolVersion
 
   if (!isSupportedProtocolVersion(requestedVersion, options)) {
     throw new McpProtocolError(-32022, `Unsupported protocol version: ${requestedVersion}`, 400, {
@@ -56,20 +91,12 @@ export function resolveRequestProtocol(
   const modern = requestedVersion === MODERN_PROTOCOL_VERSION
   if (!modern) {
     return {
-      version: LEGACY_PROTOCOL_VERSION,
+      version: requestedVersion,
       modern: false,
       clientCapabilities: {},
       language,
       meta
     }
-  }
-
-  if (headerVersion !== MODERN_PROTOCOL_VERSION || metaVersion !== MODERN_PROTOCOL_VERSION) {
-    throw new McpProtocolError(
-      -32020,
-      'Modern MCP requests require matching protocol versions in the header and request _meta',
-      400
-    )
   }
 
   assertRoutingHeaders(request, payload)
@@ -137,15 +164,15 @@ function assertAcceptHeader(request: Request): void {
   )
 }
 
-function assertProtocolVersionEnvelope(headerVersion: string | null, metaVersion: unknown): void {
-  const modernEnvelope =
-    headerVersion === MODERN_PROTOCOL_VERSION || metaVersion === MODERN_PROTOCOL_VERSION
-  const versionsDiffer =
-    headerVersion !== null && metaVersion !== undefined && headerVersion !== metaVersion
-  const modernVersionMissing =
-    modernEnvelope &&
-    (headerVersion !== MODERN_PROTOCOL_VERSION || metaVersion !== MODERN_PROTOCOL_VERSION)
-  if (!versionsDiffer && !modernVersionMissing) return
+function assertProtocolVersionEnvelope(
+  headerVersion: string | undefined,
+  metaVersion: unknown
+): asserts metaVersion is string | undefined {
+  if (headerVersion === metaVersion) return
+
+  const version = headerVersion ?? metaVersion
+  const singleCarrier = headerVersion === undefined || metaVersion === undefined
+  if (singleCarrier && typeof version === 'string' && version !== MODERN_PROTOCOL_VERSION) return
   throw new McpProtocolError(
     -32020,
     'MCP-Protocol-Version header and request _meta must match',

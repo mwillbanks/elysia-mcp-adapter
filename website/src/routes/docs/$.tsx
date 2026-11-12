@@ -35,7 +35,11 @@ const loadPage = createServerFn({ method: "GET" })
     };
   });
 
-const clientLoader = createClientLoader(browserCollections.docs.raw, {
+type CompiledDoc = Awaited<ReturnType<(typeof browserCollections.docs.raw)[string]>>;
+// Select the named exports so Fumadocs can omit output fields without widening the page type.
+type BrowserDoc = Pick<CompiledDoc, "default" | "frontmatter" | "structuredData" | "toc">;
+
+const clientLoader = createClientLoader<BrowserDoc>(browserCollections.docs.raw, {
   id: "docs",
   component({ default: MDX, frontmatter, toc }) {
     return (

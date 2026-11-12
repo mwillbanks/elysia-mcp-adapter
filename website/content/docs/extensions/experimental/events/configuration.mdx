@@ -1,9 +1,11 @@
 ---
-title: Events
-summary: Poll, stream, and deliver durable experimental events.
+title: Events configuration
+description: Configure experimental event discovery, polling, streams, cursors, and webhooks.
 ---
 
-Events are opt-in and require MCP `2026-07-28`. The adapter follows the [Triggers & Events Working Group draft](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/b08e4f9dd684f39d846d94089487fbeb28e666f5/seps/0000-events-extension.md).
+## Configuration and protocol behavior
+
+Events are opt-in and require MCP `2026-07-28`. The adapter implements the accepted Events proposal, [SEP-3415](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415), as an experimental opt-in extension.
 
 ```ts
 mcp({
@@ -26,7 +28,7 @@ Set `listChanged: true` and configure a core subscriptions provider to advertise
 
 Register events with `.mcpEvent(definition, handler)`. Each definition declares poll, push, or webhook delivery, argument and payload schemas, authorization, and optional subscription lifecycle hooks. `events/list` discovers authorized definitions. `events/poll` treats `cursor: null` as a fresh head and returns no backlog. Clients persist the returned signed cursor and replay from it. Providers do not persist client checkpoints.
 
-POST `events/stream` returns event-only SSE. The stream emits `active`, event, heartbeat, gap or error, and `terminated` messages. Server-initiated closure sends a final complete result with the subscription ID. A heartbeat creates no event, carries the current safe checked cursor, and lets clients persist progress during quiet periods. Apply `maxEvents`, `maxAgeMs`, and handler `truncated` or `hasMore` results to bound backlog. A gap has `truncated: true` and a fresh server cursor. When a truncated replayable batch contains events, return `replayStartCursor` from the provider. This cursor must resume immediately before the first retained event. The adapter sends it with the gap before delivering the batch. Persist that cursor and continue the same delivery; do not reconnect or resubscribe. Applications can optionally use their own recovery tools for missing history. The example uses stable epoch-and-sequence cursors over a bounded in-memory history. It never creates an event merely because a client polls. Its epoch changes on restart, so persistent cross-restart replay requires an application event store.
+POST `events/stream` returns event-only SSE. The stream emits `active`, event, heartbeat, gap or error, and `terminated` messages. Server-initiated closure sends a final complete result with the subscription ID. Clients may suggest `heartbeatMs` in `events/stream`. The server clamps that value between `min(1_000, configured heartbeatMs)` and the configured interval, then reports the granted value in every `notifications/events/active` message. The server sends heartbeat messages after the granted interval passes without other stream activity. A heartbeat creates no event and carries the current safe checked cursor. Apply `maxEvents`, `maxAgeMs`, and handler `truncated` or `hasMore` results to bound backlog. A gap has `truncated: true` and a fresh server cursor. When a truncated replayable batch contains events, return `replayStartCursor` from the provider. This cursor must resume immediately before the first retained event. The adapter sends it with the gap before delivering the batch. Persist that cursor and continue the same delivery; do not reconnect or resubscribe. Applications can optionally use their own recovery tools for missing history. The example uses stable epoch-and-sequence cursors over a bounded in-memory history. It never creates an event merely because a client polls. Its epoch changes on restart, so persistent cross-restart replay requires an application event store.
 
 Webhook subscriptions use `events/subscribe` and `events/unsubscribe`. Refresh the original tuple of principal, event name, arguments, and callback URL by subscribing again. Unsubscribe with that same tuple. There is no subscription-list RPC.
 
@@ -40,7 +42,7 @@ Timer-backed intervals and deadlines—`heartbeatMs`, `pollIntervalMs`, `pollLea
 
 The adapter verifies callbacks through an authenticated HTTPS challenge, signs exact body bytes with Standard Webhooks HMAC headers, supports bounded dual signatures during secret rotation, validates addresses again at delivery time, rejects redirects, bypasses ambient proxies, limits response bytes and retries, and enforces deadlines. DNS resolution has a process-wide limit of 32 outstanding lookups and rejects new work at capacity without queuing. Custom `resolveAddresses(hostname, signal)` callbacks should stop work when the optional signal aborts; existing one-argument callbacks remain supported. Receivers must verify the signature over the prefix bytes plus the original body bytes before parsing the challenge. Valid duplicate retries should receive 2xx while application processing runs once. The example's bounded deduplication cache is process-local; clustered receivers need shared durable deduplication. Production deployments keep private addresses denied. Isolated local fixtures must set both `environment: 'development'` and `allowPrivateAddresses: true`.
 
-Hosts own subscription approval, callback allowlists, secret custody, replay recovery, and presentation of termination errors. The adapter signs with the draft's required HMAC profile.
+Hosts own subscription approval, callback allowlists, secret custody, replay recovery, and presentation of termination errors. The adapter signs with the accepted proposal's required HMAC profile.
 
 Only one adapter instance may actively own a recovered subscription. The example demonstrates sequential process restart. Applications that share a durable provider across processes must supply external single-owner routing or leadership; the provider contract does not define distributed leases or compare-and-swap fencing.
 
@@ -48,7 +50,7 @@ See [`examples/events`](https://github.com/mwillbanks/elysia-mcp-adapter/tree/ma
 
 ## Revision compatibility
 
-`current` selects `b08e4f9dd684f39d846d94089487fbeb28e666f5`. Polling, streams, and webhooks use these codes.
+`current` selects `f77a5fe31b91c052dbfc2a37add98b9e84662b34`. Polling, streams, and webhooks use these codes.
 
 | Meaning                 | Code     |
 | ----------------------- | -------- |
@@ -58,4 +60,4 @@ See [`examples/events`](https://github.com/mwillbanks/elysia-mcp-adapter/tree/ma
 | Unsupported             | `-32026` |
 | Callback endpoint error | `-32027` |
 
-Migrate configurations pinned to `6682596d65eec778fe0b8b1f43b4e89d2fe2c546` or `d5316be214be2e76e51462069c1d67e00a5a7619` to `current`. Use `server/discover` and `subscriptions/listen` for modern capability discovery and list changes. Recreate subscriptions that used legacy Server Variants and supply a fresh cursor for that subscription. Existing durable records without a legacy variant remain eligible for recovery.
+Migrate configurations pinned to `6682596d65eec778fe0b8b1f43b4e89d2fe2c546`, `d5316be214be2e76e51462069c1d67e00a5a7619`, or `b08e4f9dd684f39d846d94089487fbeb28e666f5` to `current`. Use `server/discover` and `subscriptions/listen` for modern capability discovery and list changes. Recreate subscriptions that used legacy Server Variants and supply a fresh cursor for that subscription. Existing durable records without a legacy variant remain eligible for recovery.

@@ -194,6 +194,7 @@ describe('experimental events extension', () => {
         }
       ],
       ['StreamRequest', subscription],
+      ['StreamRequest', { ...subscription, heartbeatMs: 15_000 }],
       ['StreamResult', { resultType: 'complete', _meta: meta }],
       [
         'SubscribeRequest',
@@ -234,7 +235,7 @@ describe('experimental events extension', () => {
         {
           jsonrpc: '2.0',
           method: 'notifications/events/active',
-          params: { cursor: 'cursor-1', truncated: false, _meta: meta }
+          params: { cursor: 'cursor-1', truncated: false, heartbeatMs: 15_000, _meta: meta }
         }
       ],
       [
@@ -307,6 +308,14 @@ describe('experimental events extension', () => {
       ['EventOccurrence', { ...occurrence, timestamp: '10/01/2026' }],
       ['EventOccurrence', { ...occurrence, data: [] }],
       ['PollRequest', { ...subscription, maxEvents: 0 }],
+      [
+        'StreamNotification',
+        {
+          jsonrpc: '2.0',
+          method: 'notifications/events/active',
+          params: { cursor: 'cursor-1', truncated: false, _meta: meta }
+        }
+      ],
       [
         'SubscribeRequest',
         {
@@ -815,6 +824,57 @@ describe('experimental events extension', () => {
     }
   })
 
+  test('grants bounded heartbeat suggestions through the Events HTTP endpoint', async () => {
+    const app = new Elysia().use(mcp({ extensions: { events: { cursor: { signingKey } } } }))
+    app.mcpEvent(
+      {
+        name: 'com.example.heartbeat',
+        description: 'Heartbeat fixture',
+        delivery: ['push'],
+        inputSchema: { type: 'object' },
+        payloadSchema: { type: 'object' }
+      },
+      () => ({ events: [], cursor: null })
+    )
+    const params = { name: 'com.example.heartbeat', arguments: {}, cursor: null }
+    const validates = createEventsSchemaValidator()
+    const timer = 1 as unknown as ReturnType<typeof setTimeout>
+    const setTimer = spyOn(globalThis, 'setTimeout').mockReturnValue(timer)
+    const clearTimer = spyOn(globalThis, 'clearTimeout').mockImplementation(() => {})
+    try {
+      for (const [heartbeatMs, grant] of [
+        [undefined, 15_000],
+        [1, 1_000],
+        [2_000, 2_000],
+        [30_000, 15_000]
+      ] as const) {
+        const request = { ...params, ...(heartbeatMs !== undefined && { heartbeatMs }) }
+        expect(validates('StreamRequest', request)).toBe(true)
+        const response = await app.handle(eventRequest('events/stream', request))
+        expect(response.status).toBe(200)
+        const reader = response.body!.getReader()
+        try {
+          const { value } = await reader.read()
+          const frame = JSON.parse(new TextDecoder().decode(value).slice('data: '.length))
+          expect(frame.params.heartbeatMs).toBe(grant)
+          expect(validates('StreamNotification', frame)).toBe(true)
+        } finally {
+          await reader.cancel()
+        }
+      }
+      expect(clearTimer).toHaveBeenCalledWith(timer)
+      for (const heartbeatMs of [null, 0, -1, 1.5, '1000', Number.MAX_SAFE_INTEGER + 1]) {
+        const request = { ...params, heartbeatMs }
+        expect(validates('StreamRequest', request)).toBe(false)
+        const response = await eventRpc(app, 'events/stream', request)
+        expect(response.body.error).toMatchObject({ code: -32602, message: 'InvalidParams' })
+      }
+    } finally {
+      setTimer.mockRestore()
+      clearTimer.mockRestore()
+    }
+  })
+
   test('removes resolved polling delay listeners from long-lived streams', async () => {
     const repeatedPoll = deferred()
     let polls = 0
@@ -934,22 +994,29 @@ describe('experimental events extension', () => {
       eventConfig.cursor
     )
     const abort = new AbortController()
-    const pollTimer = deferred<() => void>()
-    const heartbeatTimer = deferred<() => void>()
-    const timeoutHandle = 1 as unknown as ReturnType<typeof setTimeout>
-    const intervalHandle = 2 as unknown as ReturnType<typeof setInterval>
-    const setPoll = spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
-      pollTimer.resolve(callback)
-      return timeoutHandle
-    }) as typeof setTimeout)
-    const setHeartbeat = spyOn(globalThis, 'setInterval').mockImplementation(((
-      callback: () => void
-    ) => {
-      heartbeatTimer.resolve(callback)
-      return intervalHandle
-    }) as typeof setInterval)
-    const clearPoll = spyOn(globalThis, 'clearTimeout').mockImplementation(() => {})
-    const clearHeartbeat = spyOn(globalThis, 'clearInterval').mockImplementation(() => {})
+    type Timer = ReturnType<typeof setTimeout>
+    const pollTimer = deferred<Timer>()
+    const timers = new Map<Timer, { callback: () => void; deadline: number }>()
+    let now = 0
+    let nextTimer = 0
+    const schedule = ((callback: () => void, delay: number) => {
+      const timer = ++nextTimer as unknown as Timer
+      timers.set(timer, { callback, deadline: now + delay })
+      if (delay === 0) pollTimer.resolve(timer)
+      return timer
+    }) as typeof setTimeout
+    const setTimer = spyOn(globalThis, 'setTimeout').mockImplementation(schedule)
+    const clearTimer = spyOn(globalThis, 'clearTimeout').mockImplementation((timer) => {
+      timers.delete(timer as Timer)
+    })
+    function advance(milliseconds: number) {
+      now += milliseconds
+      for (const [timer, { callback, deadline }] of [...timers]) {
+        if (deadline > now) continue
+        timers.delete(timer)
+        callback()
+      }
+    }
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     try {
       const response = await streamEvents(
@@ -969,6 +1036,7 @@ describe('experimental events extension', () => {
       const active = JSON.parse(decoder.decode((await reader.read()).value).slice('data: '.length))
       expect(active.method).toBe('notifications/events/active')
       expect(active.params.truncated).toBe(true)
+      expect(active.params.heartbeatMs).toBe(5)
       expect(
         decodeEventCursor(
           active.params.cursor,
@@ -982,25 +1050,26 @@ describe('experimental events extension', () => {
       expect(decoder.decode((await reader.read()).value)).toContain('event-1')
       expect(decoder.decode((await reader.read()).value)).toContain('event-2')
       const poll = await pollTimer.promise
-      const heartbeat = await heartbeatTimer.promise
-      poll()
+      expect(timers.size).toBe(2)
+      expect(clearTimer).toHaveBeenCalledTimes(2)
+      expect(timers.has(poll)).toBe(true)
+      advance(0)
       await pendingPoll.promise
-      heartbeat()
-      expect(decoder.decode((await reader.read()).value)).toContain(
-        'notifications/events/heartbeat'
-      )
+      const heartbeat = reader.read()
+      advance(4)
+      expect(setTimer).toHaveBeenCalledTimes(4)
+      advance(1)
+      expect(decoder.decode((await heartbeat).value)).toContain('notifications/events/heartbeat')
+      expect(timers.size).toBe(1)
     } finally {
       abort.abort()
       releasePoll.resolve()
       try {
         await reader?.cancel()
-        expect(clearPoll).toHaveBeenCalledWith(timeoutHandle)
-        expect(clearHeartbeat).toHaveBeenCalledWith(intervalHandle)
+        expect(timers.size).toBe(0)
       } finally {
-        setPoll.mockRestore()
-        setHeartbeat.mockRestore()
-        clearPoll.mockRestore()
-        clearHeartbeat.mockRestore()
+        setTimer.mockRestore()
+        clearTimer.mockRestore()
       }
     }
   })

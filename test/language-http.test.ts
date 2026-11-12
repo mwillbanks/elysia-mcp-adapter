@@ -177,6 +177,10 @@ describe('MCP request language over HTTP', () => {
     expect(cache.headers.get('content-language')).toBe('fr')
     const mirrored = await modernRpc(app, 'tools/list', prefer('fr'), { 'accept-language': 'fr' })
     expect(mirrored.body.result).toMatchObject({ cacheScope: 'public', ttlMs: 1000 })
+    const omitted = await modernRpc(app, 'tools/list')
+    expect(omitted.headers.get('vary')).toContain('Accept-Language')
+    expect(omitted.headers.get('content-language')).toBeNull()
+    expect(omitted.body.result).toMatchObject({ cacheScope: 'public', ttlMs: 1000 })
     const invoke = { name: 'edition', ...prefer('fr') }
     const fallback = await modernRpc(
       app,

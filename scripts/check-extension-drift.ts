@@ -113,7 +113,7 @@ for (const source of currentPackages.values()) await compareNpmPackage(source)
 for (const dependency of await declaredRegistryDependencies(packageManifestPaths))
   await compareDeclaredPackage(dependency)
 for (const [repository, version] of await declaredActions())
-  await compareGithubRelease(repository, version, githubActionMajor)
+  await compareGithubRelease(repository, version)
 await compareGithubRelease('oven-sh/bun', 'bun-v1.4.4')
 await compareRedisRelease('8.10.3')
 
@@ -316,26 +316,18 @@ async function compareDeclaredPackage(dependency: DeclaredDependency): Promise<v
   }
 }
 
-async function compareGithubRelease(
-  repository: string,
-  expected: string,
-  normalize: (tag: string) => string | undefined = (tag) => tag
-): Promise<void> {
+async function compareGithubRelease(repository: string, expected: string): Promise<void> {
   try {
     const latest = await githubValue(
       `https://api.github.com/repos/${repository}/releases/latest`,
       (value) => value.tag_name
     )
     observations.push(`${repository}: \`${latest}\``)
-    if (normalize(latest) !== expected)
+    if (latest !== expected)
       drift.push(`${repository} advanced beyond reviewed release \`${expected}\` to \`${latest}\`.`)
   } catch (error) {
     drift.push(`Release metadata is unavailable for ${repository}: ${errorMessage(error)}.`)
   }
-}
-
-function githubActionMajor(tag: string): string | undefined {
-  return /^v[0-9]+(?=\.|$)/u.exec(tag)?.[0]
 }
 
 async function declaredActions(): Promise<Map<string, string>> {
@@ -356,8 +348,8 @@ function recordActionVersion(
   repository: string,
   version: string
 ): void {
-  if (!/^v[0-9]+$/u.test(version))
-    drift.push(`GitHub Action ${repository} must use a major tag; found \`${version}\`.`)
+  if (!/^v\d+\.\d+\.\d+$/u.test(version))
+    drift.push(`GitHub Action ${repository} must use a release tag; found \`${version}\`.`)
   const existing = actions.get(repository)
   if (existing && existing !== version)
     drift.push(

@@ -37,21 +37,26 @@ describe('MCP specification authority', () => {
     expect(isMcpServerSpecificationEligible(events)).toBe(true)
     expect(isMcpServerSpecificationEligible(actionMetadata)).toBe(true)
     expect(
-      isMcpServerSpecificationEligible({ ...events, group: { charter: events.group.charter } })
+      isMcpServerSpecificationEligible({
+        ...fileUploads,
+        group: { charter: fileUploads.group.charter }
+      })
     ).toBe(false)
     expect(
       isMcpServerSpecificationEligible({
-        ...events,
+        ...fileUploads,
         group: {
-          charter: events.group.charter,
-          ownership: { source: { ...events.group.charter.source } }
+          charter: fileUploads.group.charter,
+          ownership: { source: { ...fileUploads.group.charter.source } }
         }
       })
     ).toBe(false)
     expect(
       isMcpServerSpecificationEligible(MCP_SPECIFICATION_INVENTORY.structuredAuthorizationDenials)
     ).toBe(true)
-    expect(isMcpServerSpecificationEligible(fileUploads)).toBe(false)
+    expect(isMcpServerSpecificationEligible(fileUploads)).toBe(true)
+    expect(fileUploads.disposition).toBe('planned')
+    expect(events.approval).toBe('accepted')
     expect(isMcpServerSpecificationEligible(workloadIdentity)).toBe(false)
   })
 

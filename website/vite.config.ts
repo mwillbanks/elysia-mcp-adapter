@@ -54,7 +54,12 @@ export default defineConfig({
     mdx(),
     tailwindcss(),
     tanstackStart({
-      pages: [{ path: "/docs" }, { path: "/api/search" }, ...machineReadablePages],
+      pages: [
+        { path: "/docs" },
+        { path: "/docs/extensions/experimental/annotations" },
+        { path: "/api/search" },
+        ...machineReadablePages,
+      ],
       spa: {
         enabled: true,
         prerender: {

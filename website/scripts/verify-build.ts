@@ -11,6 +11,19 @@ const extensionPages = ["tasks", "authorization", "apps", "skills"].flatMap((ext
   children.push(extension === "skills" ? "security" : "examples");
   return [extension, ...children.map((child) => `${extension}/${child}`)];
 });
+const experimentalExtensions = [
+  "events",
+  "interceptors",
+  "server-variants",
+  "action-metadata",
+  "trust-annotations",
+];
+const experimentalPages = experimentalExtensions.flatMap((extension) => [
+  `extensions/experimental/${extension}`,
+  ...["quick-start", "configuration", "examples"].map(
+    (page) => `extensions/experimental/${extension}/${page}`,
+  ),
+]);
 const integrationPages = [
   "core-concepts/modern-core",
   "api-reference/plugin",
@@ -18,11 +31,8 @@ const integrationPages = [
   "extensions/specification-inventory",
   "extensions/server-card",
   "extensions/experimental",
-  "extensions/experimental/server-card",
-  "extensions/experimental/interceptors",
-  "extensions/experimental/server-variants",
   "extensions/experimental/annotations",
-  "extensions/experimental/events",
+  ...experimentalPages,
 ];
 
 function required(path: string): string {
@@ -54,6 +64,10 @@ for (const title of [
   "Modern Core Protocol",
   "Experimental extensions",
   "Events",
+  "Interceptors",
+  "Server Variants",
+  "Action Metadata",
+  "Trust Annotations",
 ]) {
   if (!llms.includes(title) || !llmsFull.includes(title)) {
     throw new Error(`Generated LLM documentation is missing: ${title}`);
@@ -63,6 +77,13 @@ for (const title of [
 const draftHash = MCP_EXTENSION_SUPPORT.apps.versions.draft.source.sha256;
 if (!overviewHtml.includes(draftHash) || !overviewMarkdown.includes(draftHash)) {
   throw new Error("Rendered and machine-readable support tables must include manifest provenance");
+}
+
+if (
+  existsSync(resolve(publicRoot, "docs/extensions/experimental/server-card/index.html")) ||
+  existsSync(resolve(publicRoot, "docs/extensions/experimental/server-card.md"))
+) {
+  throw new Error("The duplicate Server Cards guide must not appear in generated documentation");
 }
 
 if (base) {

@@ -12,4 +12,4 @@ For client availability, always consult the canonical
 
 Experimental selectors pin reviewed Git revisions. They do not track branches, tags, or semver ranges. Upgrading a pin is a compatibility review, not a dependency update. Server variants remain legacy-only; configuring them with modern transport fails during option normalization.
 
-Events is opt-in on MCP `2026-07-28`. `current` selects the immutable Working Group draft `b08e4f9dd684f39d846d94089487fbeb28e666f5`. Earlier draft pins `d5316be214be2e76e51462069c1d67e00a5a7619` and `6682596d65eec778fe0b8b1f43b4e89d2fe2c546` require migration.
+Events is opt-in on MCP `2026-07-28`. `current` selects the accepted SEP-3415 pin `f77a5fe31b91c052dbfc2a37add98b9e84662b34`. Migrate the superseded `b08e4f9`, `d5316be`, and `6682596` revisions to `current`. For push streams, read the server's `heartbeatMs` grant from every active notification.

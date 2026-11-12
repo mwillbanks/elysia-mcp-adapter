@@ -1,0 +1,16 @@
+---
+title: Trust Annotations examples
+description: Inspect trust metadata in the experimental integration workspace.
+---
+
+The [experimental workspace](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental) returns a trust annotation with a tool result and checks that the adapter preserves the metadata.
+
+Run its checks from the repository root:
+
+```bash
+bun --bun run --cwd examples/experimental typecheck
+bun --bun run --cwd examples/experimental test
+bun --bun run --cwd examples/experimental smoke
+```
+
+The [example server](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental/server.ts) uses the exported `MCP_TRUST_ANNOTATIONS_ID` key.

@@ -128,6 +128,8 @@ mcp: {
 
 Route-level overrides win over inferred schemas. Use `mapJsonSchema` for a final, centralized transformation when a client has schema compatibility requirements.
 
+For composition with `oneOf`, define property types at the object root. Use branches to express alternatives with `required`. This keeps type constraints active regardless of which branch matches.
+
 ## Lifecycle behavior
 
 The adapter builds a real internal request and calls `app.handle()`. Route parsing, validation, hooks, guards, authentication, error handling, and response mapping therefore remain authoritative. See [Transportation](/docs/core-concepts/transportation) for the complete request flow and [Security](/docs/core-concepts/security) for authentication examples.

@@ -61,13 +61,13 @@ const expectedLatestKeys = [
 ] as const
 
 const expectedDigests: Record<string, string> = {
-  coreTypeScriptSchema: '742750af0bb8c716e7030c4977c992b55d1adc4407e9e66997db5846baedc2cd',
-  coreDraftTypeScriptSchema: 'b2d3a00d4094e413a48628560fec60652169a3d2b427e8c629238e13f987723f',
-  coreSchema: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203',
+  coreTypeScriptSchema: '637ff938a8066150051562739bd1fa586aba2ba469a642826ab2d32ec49c0099',
+  coreDraftTypeScriptSchema: 'd1c5f24bc13789dd9cfec824397a9b6f2c8bee342626854ee66f443370d6b291',
+  coreSchema: 'edbb197ed0f92e90d658866e23cf76f107df0caac5ce25c2b9e64e1ca9a6314a',
   coreTools: 'ed550806a58eb7744b858fb9f26001aa5e55dac9e2babe88317cc81d9d4c490d',
   coreMrtr: 'a8671eb2a0d292c0dcbae19666ff4fc3d97f294ce8107e9f38259cc5a02a066b',
   coreAuthorization: '99e7eeaecad5381649e6dca98cb5b47f314bdda9f1d8cd989299e5fe143a913e',
-  coreDraftSchema: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203',
+  coreDraftSchema: 'e995a3aca2858f133ba50f58e2b1d2637a70daf1d518058001cdfae69e014a45',
   coreBasic: '03586b10e3214c55478293f1199fffb0bbf95bbef5df3d6a8378e860697bd63f',
   coreVersioning: 'bc02f271700bdecd88034f2d7801eb09110a71d65876487378d94e48dfeb90dc',
   coreStreamableHttp: '22574bf11e004068493787203ce92be1162107cad717bcb805a15780d4fa69c9',
@@ -99,15 +99,15 @@ const expectedDigests: Record<string, string> = {
   variants: 'acb459c128b2b26af772f878919c40d7a7a0c23d364c594c08cf01e733b95d15',
   variantsRepository: 'dca88077d719d5c8d55fa128234a05d013f9bff3775005bdf2478d2752f57af6',
   toolAnnotations: '914c302e762a20754ef1bb5a96fd060b01202f8a397815549c92e85ce59406cb',
-  events: 'ba056d7f8afb9c61dbfff6820ec25f691cd7eefaa1f55fd73c03ba6983bf40fa',
+  events: '03b454b6c877cd93dded5827c6b8bf315cde0e839bd2e51ce1b752bd5f04e87b',
   triggersEvents: '4a3f75a1db48d99f7baa38f4a0129ec5876dcf81935f5ab7bf43715016491f59',
   standardWebhooks: 'c9a80952a2a6a34fb456ae9614483b7d9b8563fe5eb8f328f3d138f1e765ac31',
   ianaIpv4SpecialRegistry: 'cbc4b7653c8bc640ba1e8e5d4ebbf11e7c7a1d867e7f1593aad001d3f8632aac',
   ianaIpv6SpecialRegistry: 'bf56772aef97fbf9b4a27c98b8511f2bb1ba96da4b9ccc12ab203a2496faba66',
   actionMetadata: '985a052969d9b8f67b98e46bb564b62960de47c1e43fdf8f8b9eb157bf50532f',
   trustAnnotations: '3cc0123157d3ea4489729d8498489e12787297dcfe1f09a5bb02a4a6b0f55b7d',
-  fileUploads: '0321ca91f3eddc140c8ab2973549b9b2feecf2b7700dd04722ccf57270d27d24',
-  filesystems: 'feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993'
+  fileUploads: '36702c5b5c3e2cf5466b3d554a7e3728370f7ed09515b04cddc3102efa1ebb20',
+  filesystems: '45fc2751dff41973f696894c929aa78e6e64005d8d9a3a14b6a5eba8a1ac341c'
 }
 
 function assertContractIdentity(record: McpLatestExtensionRecord): void {
@@ -142,7 +142,7 @@ describe('upstream extension inventory', () => {
   test('preserves the established support aliases and immutable pins', () => {
     expect(MCP_EXTENSION_SUPPORT.protocol.current).toBe('2026-07-28')
     expect(MCP_EXTENSION_SUPPORT.protocol.versions['2026-07-28'].source.revision).toBe(
-      '5f5440bb26a62e2cf3440b92da5a667efa03b267'
+      '0b22bfed6e94c0c7751046d2e845fac954cac8a7'
     )
     expect(MCP_EXTENSION_SUPPORT.apps.versions['2026-01-26'].source.packageVersion).toBe('1.7.5')
     expect(
@@ -188,14 +188,13 @@ describe('upstream extension inventory', () => {
     expect(supersededTasksDraft.sourceSha256).toBe(historicalDrafts['draft-5246bc3'].source.sha256)
   })
 
-  test('does not advertise undefined experiment APIs', () => {
-    for (const experiment of [
-      MCP_EXTENSION_LATEST_REVIEWED.filesystems,
-      MCP_EXTENSION_LATEST_REVIEWED.fileUploads
-    ]) {
-      expect(experiment.maturity).toBe('undefined')
-      expect(experiment).not.toHaveProperty('identifier')
-    }
+  test('does not advertise experiment APIs without a shipped implementation', () => {
+    expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems.maturity).toBe('undefined')
+    expect(MCP_EXTENSION_LATEST_REVIEWED.filesystems).not.toHaveProperty('identifier')
+    expect(MCP_EXTENSION_LATEST_REVIEWED.fileUploads).toMatchObject({
+      maturity: 'draft',
+      identifier: 'io.modelcontextprotocol/files'
+    })
     expect(MCP_EXTENSION_SUPPORT).not.toHaveProperty('filesystems')
     expect(MCP_EXTENSION_SUPPORT).not.toHaveProperty('fileUploads')
   })
@@ -256,7 +255,7 @@ describe('upstream extension inventory', () => {
 
   test('records current upstream review state without inventing extension contracts', () => {
     expect(MCP_EXTENSION_LATEST_REVIEWED.coreSchema.source.revision).toBe(
-      '80041ab0a139a8f4fb3adbc99f7ae9113ea59671'
+      '0b22bfed6e94c0c7751046d2e845fac954cac8a7'
     )
     expect(MCP_EXTENSION_LATEST_REVIEWED.tasksStable.source.revision).toBe(
       'b3d28aceaa6d49f5f92258e3d06b61ad6f111e84'

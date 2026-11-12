@@ -34,6 +34,14 @@ export interface McpLatestExtensionRecord {
   reason?: string
 }
 
+const eventsAcceptedSource = {
+  repository: 'https://github.com/pja-ant/modelcontextprotocol',
+  revision: 'f77a5fe31b91c052dbfc2a37add98b9e84662b34',
+  path: 'seps/3415-events-extension.md',
+  sha256: '03b454b6c877cd93dded5827c6b8bf315cde0e839bd2e51ce1b752bd5f04e87b',
+  trackHead: false
+} as const satisfies McpExtensionSource
+
 const eventsDraftSource = {
   repository: 'https://github.com/pja-ant/modelcontextprotocol',
   revision: 'b08e4f9dd684f39d846d94089487fbeb28e666f5',
@@ -52,9 +60,9 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-          revision: '5f5440bb26a62e2cf3440b92da5a667efa03b267',
+          revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
           path: 'schema/2026-07-28/schema.json',
-          sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+          sha256: 'edbb197ed0f92e90d658866e23cf76f107df0caac5ce25c2b9e64e1ca9a6314a'
         }
       },
       '2025-11-25': {
@@ -140,9 +148,9 @@ export const MCP_EXTENSION_SUPPORT = {
         includedAt: '2026-07-30',
         source: {
           repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-          revision: '3c4d91b7e832d9b74338d56eed03403ccc662123',
+          revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
           path: 'docs/specification/draft/basic/authorization/index.mdx',
-          sha256: '7559c591b265ef71549f02775423c8c1ae152028601ee331da12f66bec0baa55'
+          sha256: 'a79398249229adb9af9c9b41cd0c653c11b0df6444700c61b7d6b88106e54bba'
         }
       },
       '2025-11-25': {
@@ -350,15 +358,20 @@ export const MCP_EXTENSION_SUPPORT = {
   },
   events: {
     identifier: 'io.modelcontextprotocol/events',
-    current: eventsDraftSource.revision,
+    current: eventsAcceptedSource.revision,
     versions: {
+      [eventsAcceptedSource.revision]: {
+        status: 'draft',
+        includedAt: '2026-11-11',
+        source: eventsAcceptedSource
+      }
+    },
+    historicalDrafts: {
       [eventsDraftSource.revision]: {
         status: 'draft',
         includedAt: '2026-11-05',
         source: eventsDraftSource
-      }
-    },
-    historicalDrafts: {
+      },
       d5316be214be2e76e51462069c1d67e00a5a7619: {
         status: 'experimental',
         includedAt: '2026-10-22',
@@ -430,9 +443,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '80041ab0a139a8f4fb3adbc99f7ae9113ea59671',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/2026-07-28/schema.ts',
-      sha256: '742750af0bb8c716e7030c4977c992b55d1adc4407e9e66997db5846baedc2cd'
+      sha256: '637ff938a8066150051562739bd1fa586aba2ba469a642826ab2d32ec49c0099'
     }
   },
   coreDraftTypeScriptSchema: {
@@ -442,9 +455,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '80041ab0a139a8f4fb3adbc99f7ae9113ea59671',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/draft/schema.ts',
-      sha256: 'b2d3a00d4094e413a48628560fec60652169a3d2b427e8c629238e13f987723f'
+      sha256: 'd1c5f24bc13789dd9cfec824397a9b6f2c8bee342626854ee66f443370d6b291'
     }
   },
   coreSchema: {
@@ -454,9 +467,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '80041ab0a139a8f4fb3adbc99f7ae9113ea59671',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/2026-07-28/schema.json',
-      sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+      sha256: 'edbb197ed0f92e90d658866e23cf76f107df0caac5ce25c2b9e64e1ca9a6314a'
     }
   },
   coreTools: {
@@ -502,9 +515,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     availability: 'reviewed',
     source: {
       repository: 'https://github.com/modelcontextprotocol/modelcontextprotocol',
-      revision: '80041ab0a139a8f4fb3adbc99f7ae9113ea59671',
+      revision: '0b22bfed6e94c0c7751046d2e845fac954cac8a7',
       path: 'schema/draft/schema.json',
-      sha256: 'ef70b61f99b6d2e5e3b46863822eab08dff6a45bedc7a08914e0e5b133f40203'
+      sha256: 'e995a3aca2858f133ba50f58e2b1d2637a70daf1d518058001cdfae69e014a45'
     }
   },
   coreBasic: {
@@ -883,7 +896,7 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     maturity: 'draft',
     protocolEra: '2026-07-28',
     availability: 'reviewed',
-    source: eventsDraftSource
+    source: eventsAcceptedSource
   },
   triggersEvents: {
     identifier: 'io.modelcontextprotocol/triggers-events',
@@ -958,14 +971,15 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     }
   },
   fileUploads: {
-    maturity: 'undefined',
+    identifier: 'io.modelcontextprotocol/files',
+    maturity: 'draft',
+    protocolEra: '2026-07-28',
     availability: 'reviewed',
-    reason: 'The repository declares an experiment but defines no authoritative MCP wire contract.',
     source: {
       repository: 'https://github.com/modelcontextprotocol/experimental-ext-file-uploads',
-      revision: 'e4b12c99aa01ef16a53c3c99a620c7da38b292fd',
-      path: 'README.md',
-      sha256: '0321ca91f3eddc140c8ab2973549b9b2feecf2b7700dd04722ccf57270d27d24'
+      revision: '8a859b8f268926fe4beb84d78565e7cc6f9fa617',
+      path: 'specification/draft/file-uploads.md',
+      sha256: '36702c5b5c3e2cf5466b3d554a7e3728370f7ed09515b04cddc3102efa1ebb20'
     }
   },
   filesystems: {
@@ -974,9 +988,9 @@ export const MCP_EXTENSION_LATEST_REVIEWED = {
     reason: 'The repository declares an experiment but defines no authoritative MCP wire contract.',
     source: {
       repository: 'https://github.com/modelcontextprotocol/experimental-ext-filesystems',
-      revision: '6a61117ab2a2e21e90546c3a28cc081b9761dc64',
+      revision: '80238acb936513e74cb82359585215fe6299dd59',
       path: 'README.md',
-      sha256: 'feed46abcbaaa9f53c1b70318cb9990343b7410a75dbca2f6c8046de85fb7993'
+      sha256: '45fc2751dff41973f696894c929aa78e6e64005d8d9a3a14b6a5eba8a1ac341c'
     }
   }
 } as const satisfies Record<string, McpLatestExtensionRecord>

@@ -21,6 +21,8 @@ import { modernResultMeta } from './core.js'
 import { invocationContextBase, taskRequestContext } from './invocation-context.js'
 import { localizeTaskInputNotification } from './language-response.js'
 import {
+  createErrorResponse,
+  errorIdForRequest,
   McpProtocolError,
   type McpRequestProtocolContext,
   resolveRequestProtocol
@@ -48,7 +50,7 @@ export async function handleSubscription(
   if (hasTaskFilter) return handleTaskSubscription(app, payload, request, options, authorization)
   if (!isJsonRpcRequest(payload) || !isRequestId(payload.id)) {
     return jsonResponse(
-      createErrorResponse(errorIdForRequest(request, options, payload), -32600, 'Invalid Request'),
+      createErrorResponse(errorIdForRequest(request, payload), -32600, 'Invalid Request'),
       400
     )
   }
@@ -76,7 +78,7 @@ export async function handleSubscription(
     return coreSubscriptionResponse(app, payload.id, options, subscription, authorization)
   } catch (error) {
     return jsonResponse(
-      normalizeDispatchError(errorIdForRequest(request, options, payload), error),
+      normalizeDispatchError(errorIdForRequest(request, payload), error),
       errorStatus(error)
     )
   }
@@ -793,7 +795,7 @@ async function handleMixedSubscription(
   options: NormalizedMcpPluginOptions,
   authorization?: McpAuthorizationContext
 ): Promise<Response> {
-  return subscriptionResponse(request, payload, options, () =>
+  return subscriptionResponse(request, payload, () =>
     createMixedSubscription(app, payload, request, options, authorization)
   )
 }
@@ -1081,11 +1083,11 @@ async function handleTaskSubscription(
 ): Promise<Response> {
   if (!isJsonRpcRequest(payload) || !isRequestId(payload.id)) {
     return jsonResponse(
-      createErrorResponse(errorIdForRequest(request, options, payload), -32600, 'Invalid Request'),
+      createErrorResponse(errorIdForRequest(request, payload), -32600, 'Invalid Request'),
       400
     )
   }
-  return subscriptionResponse(request, payload, options, () =>
+  return subscriptionResponse(request, payload, () =>
     createTaskSubscription(payload, request, options, authorization)
   )
 }
@@ -1097,14 +1099,13 @@ interface StreamSession {
 async function subscriptionResponse(
   request: Request,
   payload: JsonRpcRequest,
-  options: NormalizedMcpPluginOptions,
   create: () => Promise<StreamSession>
 ): Promise<Response> {
   try {
     return sseResponse((await create()).stream())
   } catch (error) {
     return jsonResponse(
-      normalizeDispatchError(errorIdForRequest(request, options, payload), error),
+      normalizeDispatchError(errorIdForRequest(request, payload), error),
       errorStatus(error)
     )
   }
@@ -1219,25 +1220,10 @@ function jsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, { status })
 }
 
-function createErrorResponse(
+function normalizeDispatchError(
   id: string | number | null | undefined,
-  code: number,
-  message: string,
-  data?: unknown
+  error: unknown
 ): JsonRpcResponse {
-  return { jsonrpc: JSON_RPC_VERSION, id: id ?? null, error: { code, message, data } }
-}
-
-function errorIdForRequest(
-  _request: Request,
-  _options: NormalizedMcpPluginOptions,
-  payload?: unknown
-): string | number | null {
-  if (isRecord(payload) && isRequestId(payload.id)) return payload.id
-  return null
-}
-
-function normalizeDispatchError(id: string | number | null, error: unknown): JsonRpcResponse {
   if (
     error instanceof SubscriptionError ||
     error instanceof McpProtocolError ||

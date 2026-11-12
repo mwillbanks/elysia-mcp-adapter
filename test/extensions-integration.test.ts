@@ -85,7 +85,8 @@ describe('modern MCP protocol', () => {
 
   test('rejects modern batches without changing legacy batches', async () => {
     const app = new Elysia().use(mcp())
-    const defaultModern = await app.handle(
+    const modernOnly = new Elysia().use(mcp({ transport: { protocolVersions: ['2026-07-28'] } }))
+    const defaultModern = await modernOnly.handle(
       new Request('http://localhost/mcp', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -167,11 +168,16 @@ describe('modern MCP protocol', () => {
       mcp({ transport: { enableGetSse: true, enableDeleteSession: true } })
     )
     for (const method of ['GET', 'DELETE']) {
-      const defaultModern = await app.handle(new Request('http://localhost/mcp', { method }))
-      const defaultModernBody = (await defaultModern.json()) as any
-      expect(defaultModern.status).toBe(405)
-      expect(defaultModernBody).not.toHaveProperty('id')
-      expect(defaultModernBody.error.code).toBe(-32600)
+      const explicitModern = await app.handle(
+        new Request('http://localhost/mcp', {
+          method,
+          headers: { 'mcp-protocol-version': '2026-07-28' }
+        })
+      )
+      const explicitModernBody = (await explicitModern.json()) as any
+      expect(explicitModern.status).toBe(405)
+      expect(explicitModernBody).not.toHaveProperty('id')
+      expect(explicitModernBody.error.code).toBe(-32600)
     }
 
     const legacyGet = await app.handle(

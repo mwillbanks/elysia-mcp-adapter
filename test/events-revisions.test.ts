@@ -52,7 +52,7 @@ function configuration(version: McpEventsRevision, provider?: McpEventProvider) 
 }
 
 describe('Events revision error boundaries', () => {
-  test('selects the pinned working group draft for current', () => {
+  test('selects the pinned accepted proposal for current', () => {
     expect(
       normalizeOptions({
         ...configuration(MCP_EVENTS_REVISION),
@@ -61,8 +61,9 @@ describe('Events revision error boundaries', () => {
     ).toBe(MCP_EVENTS_LATEST_REVISION)
   })
 
-  test('rejects both superseded exact revisions with migration guidance', () => {
+  test('rejects superseded exact revisions with migration guidance', () => {
     for (const obsolete of [
+      'b08e4f9dd684f39d846d94089487fbeb28e666f5',
       '6682596d65eec778fe0b8b1f43b4e89d2fe2c546',
       'd5316be214be2e76e51462069c1d67e00a5a7619'
     ]) {

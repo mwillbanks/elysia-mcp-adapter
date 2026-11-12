@@ -1,0 +1,44 @@
+---
+title: Server Variants quick start
+description: Review the deprecated legacy configuration and plan endpoint migration.
+---
+
+**Deprecated.** New projects should publish distinct MCP endpoints for distinct tool sets. Existing deployments can use this minimal legacy setup while planning migration:
+
+```ts
+import { Elysia } from "elysia";
+import {
+  LEGACY_PROTOCOL_VERSION,
+  MCP_SERVER_VARIANTS_REVISION,
+  mcp,
+} from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia()
+  .use(
+    mcp({
+      allowedRoutes: [],
+      transport: {
+        protocolVersion: LEGACY_PROTOCOL_VERSION,
+        protocolVersions: [LEGACY_PROTOCOL_VERSION],
+        enableGetSse: true,
+        enableDeleteSession: true,
+      },
+      extensions: {
+        variants: {
+          version: MCP_SERVER_VARIANTS_REVISION,
+          variants: [
+            {
+              id: "reports",
+              description: "Report tools",
+              status: "stable",
+              tools: ["reports.get"],
+            },
+          ],
+        },
+      },
+    }),
+  )
+  .mcpTool("reports.get", () => ({ status: "ready" }));
+```
+
+See [configuration details](/docs/extensions/experimental/server-variants/configuration) before migrating a deployed variant setup.
