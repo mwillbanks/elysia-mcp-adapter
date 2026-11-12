@@ -1048,19 +1048,22 @@ describe('experimental events extension', () => {
         ).cursor
       ).toBe('retained-start')
       expect(decoder.decode((await reader.read()).value)).toContain('event-1')
-      expect(decoder.decode((await reader.read()).value)).toContain('event-2')
       const poll = await pollTimer.promise
       expect(timers.size).toBe(2)
       expect(clearTimer).toHaveBeenCalledTimes(2)
       expect(timers.has(poll)).toBe(true)
       advance(0)
       await pendingPoll.promise
-      const heartbeat = reader.read()
       advance(4)
       expect(setTimer).toHaveBeenCalledTimes(4)
       advance(1)
-      expect(decoder.decode((await heartbeat).value)).toContain('notifications/events/heartbeat')
+      expect(timers.size).toBe(0)
+      expect(decoder.decode((await reader.read()).value)).toContain('event-2')
+      expect(decoder.decode((await reader.read()).value)).toContain(
+        'notifications/events/heartbeat'
+      )
       expect(timers.size).toBe(1)
+      expect([...timers.values()][0]?.deadline).toBe(now + 5)
     } finally {
       abort.abort()
       releasePoll.resolve()

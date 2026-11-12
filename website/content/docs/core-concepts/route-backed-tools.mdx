@@ -128,7 +128,7 @@ mcp: {
 
 Route-level overrides win over inferred schemas. Use `mapJsonSchema` for a final, centralized transformation when a client has schema compatibility requirements.
 
-For composition with `oneOf`, define property types at the object root. Use branches to express alternatives with `required`. This keeps type constraints active regardless of which branch matches.
+For composition with `oneOf`, declare properties and constraints shared by every alternative at the object root. Use `required` inside branches to distinguish alternatives by property presence. For a tagged union, use a branch-specific `const` for the tag and a branch-specific `type` for its value. Those constraints apply only to the branch that contains them.
 
 ## Lifecycle behavior
 

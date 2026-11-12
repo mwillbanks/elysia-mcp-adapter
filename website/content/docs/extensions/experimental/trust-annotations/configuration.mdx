@@ -9,4 +9,4 @@ The adapter follows [draft revision `fecace78a9552f70ba735d750fc3c4b190e20429`](
 
 The adapter validates and preserves these records. It never fetches evidence or verifies its canonicalization. Hosts own approval, reference retrieval, consent, and display behavior. Treat unsupported host functionality as unavailable. Trust annotations do not authorize an operation.
 
-When runtime tool metadata changes, publish `notifications/tools/list_changed` through the configured subscription provider. Hosts must refresh the tool list before using the new annotation set.
+Publish `notifications/tools/list_changed` through the configured subscription provider when metadata exposed by `tools/list` changes. Refresh the tool list to get updated discovery metadata. Read trust annotations from each tool result’s `_meta`.

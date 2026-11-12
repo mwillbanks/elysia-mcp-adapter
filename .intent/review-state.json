@@ -274,14 +274,14 @@
       ]
     },
     "source:website/content/docs/core-concepts/route-backed-tools.mdx": {
-      "fingerprint": "a3cd260a9067242584faf6ede7a5bb3af8820ff72db7409a284ce439491bbc46",
+      "fingerprint": "c740763e2264b9ac356247da60f4901de4bb3f1a887e425ebe2c79a6bffb15ae",
       "snapshot": {
-        "website/content/docs/core-concepts/route-backed-tools.mdx": "32b6ff4ee382599f7284a7b74786341df462f5508bb7bc1f0cf2441259e53ba1"
+        "website/content/docs/core-concepts/route-backed-tools.mdx": "0531cb1a6a8c2462b68cf389c6e734a682939ecc9e7a0f42a9ad3a5e4af3da95"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "c7ec4325a2c220ad4910fed434cfc2266ea7aa78",
       "outcome": "updated",
-      "reason": "Reviewed modern Core schema and route composition guidance against the shipped schema and protocol tests.",
-      "evidence": ["test/core-modern.test.ts", "test/classic-transport.test.ts"]
+      "reason": "Clarified shared constraints and branch-specific constraints while preserving the immutable upstream schema fixture.",
+      "evidence": ["test/fixtures/core-2026-07-28.schema.json", "test/core-modern.test.ts"]
     },
     "source:website/content/docs/extensions/experimental/action-metadata/configuration.mdx": {
       "fingerprint": "ac6a8808fd3078fb9e86ef72f2507408a112691b313170a0f7b2ae7fa471b249",
@@ -504,14 +504,17 @@
       "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/trust-annotations/configuration.mdx": {
-      "fingerprint": "d4ae80541dec5d2e5ea49e2fc2bb56954afd77ec0d52047d4fe89401229e3b67",
+      "fingerprint": "c82201337265addd24593113993200fe52f49c8564d16cbe3b3e850c7077a70b",
       "snapshot": {
-        "website/content/docs/extensions/experimental/trust-annotations/configuration.mdx": "b46443de4a6966131d16ee80945bb3e82e529a2e9408c81df7c2e56123fa2ef8"
+        "website/content/docs/extensions/experimental/trust-annotations/configuration.mdx": "06003977c9c13d8dcd83511fa5fe1e63d98fc4e8b811248ae9466bf99ff3fe00"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "c7ec4325a2c220ad4910fed434cfc2266ea7aa78",
       "outcome": "updated",
-      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
-      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+      "reason": "Clarified where clients receive trust metadata and when tool discovery metadata should be refreshed.",
+      "evidence": [
+        "website/content/docs/extensions/experimental/trust-annotations/quick-start.mdx",
+        "test/experimental-wp6a.test.ts"
+      ]
     },
     "source:website/content/docs/extensions/experimental/trust-annotations/examples.mdx": {
       "fingerprint": "38c7c91c619173c4d57eee964ff19024e6510fa5d52ebe85b7a30118ec78f677",
