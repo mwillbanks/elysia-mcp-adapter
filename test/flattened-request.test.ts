@@ -35,13 +35,13 @@ describe('flattened route invocation', () => {
     })
   })
 
-  it('retains fields declared in both query and body, including allOf properties', () => {
+  it('retains allOf-only body fields inside their advertised value wrapper', () => {
     const input = normalize(
       {
         query: t.Object({ shared: t.String(), page: t.String() }),
         body: { allOf: [t.Object({ shared: t.String() }), t.Object({ title: t.String() })] }
       },
-      { shared: 'both', page: '2', title: 'Report' }
+      { shared: 'both', page: '2', value: { shared: 'both', title: 'Report' } }
     )
     expect(input.query).toEqual({ shared: 'both', page: '2' })
     expect(input.body).toEqual({ shared: 'both', title: 'Report' })
@@ -64,7 +64,7 @@ describe('flattened route invocation', () => {
     expect(overlap.body).toEqual({ id: '42' })
   })
 
-  it('uses mapped schemas only for mixed body and query invocation', () => {
+  it('uses mapped schemas to match flattened body and query slots', () => {
     const querySchema = { '~standard': { version: 1, vendor: 'test-query' } }
     const bodySchema = { '~standard': { version: 1, vendor: 'test-body' } }
     const calls: string[] = []
@@ -91,7 +91,7 @@ describe('flattened route invocation', () => {
     calls.length = 0
     normalize({ body: bodySchema }, { value: 0 }, mappedOptions)
     normalize({ query: querySchema }, { page: '2' }, mappedOptions)
-    expect(calls).toEqual([])
+    expect(calls).toEqual(['body', 'query'])
   })
 
   it('preserves historical body-only object passthrough', () => {
@@ -115,6 +115,24 @@ describe('flattened route invocation', () => {
       params: { id: '42' },
       query: { page: '2' }
     })
+    expect(normalize({}, { id: '42', value: { page: '2' }, extra: 'retained' })).toEqual({
+      params: { id: '42' },
+      query: { value: { page: '2' }, extra: 'retained' }
+    })
+  })
+
+  it('keeps malformed wrapped query values out of unrelated body fields', () => {
+    const query = t.Union([t.Object({ page: t.String() }), t.Object({ cursor: t.String() })])
+    expect(
+      normalize(
+        { query, body: t.Object({ title: t.String() }) },
+        { id: '42', value: 'invalid', title: 'body', secret: 'never query' }
+      )
+    ).toEqual({
+      params: { id: '42' },
+      query: { value: 'invalid' },
+      body: { title: 'body', secret: 'never query' }
+    })
   })
 
   it('invokes mixed query and body through Elysia validation', async () => {
@@ -135,6 +153,152 @@ describe('flattened route invocation', () => {
       params: { id: '42' },
       query: { page: '2' },
       body: { value: 0 }
+    })
+  })
+
+  it('unwraps an object-valued query wrapper without a body schema', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .get('/items/:id', ({ params, query }) => ({ params, query }), {
+        params: t.Object({ id: t.String() }),
+        query: t.Union([t.Object({ page: t.String() }), t.Object({ cursor: t.String() })]),
+        detail: { operationId: 'items.union-query-only' }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.union-query-only',
+      arguments: { id: '42', value: { page: '2' } }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42' },
+      query: { page: '2' }
+    })
+  })
+
+  it('unwraps object-valued union query wrappers alongside an object body', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .post('/items/:id', ({ params, query, body }) => ({ params, query, body }), {
+        params: t.Object({ id: t.String() }),
+        query: t.Union([t.Object({ page: t.String() }), t.Object({ cursor: t.String() })]),
+        body: t.Object({ title: t.String() }),
+        detail: { operationId: 'items.union-query' }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.union-query',
+      arguments: { id: '42', value: { page: '2' }, title: 'ok' }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { title: 'ok' }
+    })
+  })
+
+  it('unwraps mapped allOf body wrappers while preserving query fields', async () => {
+    const app = new Elysia()
+      .use(
+        mcp({
+          inputMode: 'flatten',
+          transport: { validateOrigin: false },
+          mapJsonSchema(schema, context) {
+            if (context.schemaLocation !== 'body') return schema
+            return {
+              allOf: [
+                { type: 'object', properties: { left: { type: 'string' } } },
+                { type: 'object', properties: { right: { type: 'string' } } }
+              ]
+            }
+          }
+        })
+      )
+      .post('/items/:id', ({ params, query, body }) => ({ params, query, body }), {
+        params: t.Object({ id: t.String() }),
+        query: t.Object({ page: t.String() }),
+        body: t.Object({ left: t.String(), right: t.String() }),
+        detail: { operationId: 'items.mapped-all-of' }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.mapped-all-of',
+      arguments: { id: '42', page: '2', value: { left: 'a', right: 'b' } }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { left: 'a', right: 'b' }
+    })
+  })
+
+  it('routes named model bodies with explicit input schemas', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .model('Payload', t.Object({ title: t.String() }))
+      .post('/items', ({ body }) => body, {
+        body: 'Payload',
+        mcp: {
+          name: 'items.named',
+          inputSchema: {
+            type: 'object',
+            properties: { title: { type: 'string' } },
+            required: ['title']
+          }
+        }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.named',
+      arguments: { title: 'hello' }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({ title: 'hello' })
+  })
+
+  it('partitions query fields from a named model body with an explicit input schema', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .model('Payload', t.Object({ title: t.String() }, { additionalProperties: false }))
+      .post('/items', ({ body, query }) => ({ body, query }), {
+        body: 'Payload',
+        query: t.Object({ page: t.String() }),
+        mcp: {
+          name: 'items.named-mixed',
+          inputSchema: {
+            type: 'object',
+            properties: { page: { type: 'string' }, title: { type: 'string' } },
+            required: ['page', 'title']
+          }
+        }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.named-mixed',
+      arguments: { page: '2', title: 'hello' }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      query: { page: '2' },
+      body: { title: 'hello' }
+    })
+  })
+
+  it('keeps a body field named value distinct from query fields', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .post('/items/:id', ({ params, query, body }) => ({ params, query, body }), {
+        params: t.Object({ id: t.String() }),
+        query: t.Object({ page: t.String() }),
+        body: t.Object({ value: t.Object({ title: t.String() }) }),
+        detail: { operationId: 'items.value-body' }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.value-body',
+      arguments: { id: '42', page: '2', value: { title: 'body value' } }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { value: { title: 'body value' } }
     })
   })
 })

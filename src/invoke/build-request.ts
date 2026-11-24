@@ -1,7 +1,8 @@
 import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
 import { routeSchemaSources } from '../route-inspector.js'
-import { normalizeJsonSchema, objectSchemaProperties } from '../schema/normalize.js'
+import { isFlattenedObjectSchema, routeInputSchemaForSlot } from '../schema/compose.js'
+import { objectSchemaProperties } from '../schema/normalize.js'
 import type {
   JsonSchema,
   McpHandlerContext,
@@ -39,61 +40,98 @@ function normalizeFlattenedInput(
   const routeParams = new Set(extractRouteParamNames(operation.path))
   const entries = Object.entries(value)
   const params = nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => routeParams.has(key))))
-  if (routeSchemaSources(operation, 'body').length === 0) {
-    return {
-      params,
-      query: nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => !routeParams.has(key))))
-    }
+  const querySchema = routeInputSchemaForSlot(operation, 'query', options)
+  const bodySchema = routeInputSchemaForSlot(operation, 'body', options)
+
+  if (!bodySchema && routeSchemaSources(operation, 'body').length === 0) {
+    return normalizeQueryOnlyInput(value, entries, routeParams, params, querySchema)
   }
-  if (routeSchemaSources(operation, 'query').length === 0) {
-    return { params, body: 'value' in value ? value.value : value }
+  if (!querySchema && routeSchemaSources(operation, 'query').length === 0) {
+    return normalizeBodyOnlyInput(value, params, bodySchema)
   }
-  const querySchemas = invocationSchemas(operation, 'query', options)
-  const bodySchemas = invocationSchemas(operation, 'body', options)
-  const queryNames = schemaPropertyNames(querySchemas)
+  return normalizeMixedInput(value, entries, routeParams, params, querySchema, bodySchema)
+}
+
+function normalizeQueryOnlyInput(
+  value: Record<string, unknown>,
+  entries: Array<[string, unknown]>,
+  routeParams: Set<string>,
+  params: Record<string, unknown> | undefined,
+  querySchema: JsonSchema | undefined
+): RouteInvocationInput {
+  const query =
+    querySchema && !isFlattenedObjectSchema(querySchema) && isRecord(value.value)
+      ? value.value
+      : Object.fromEntries(entries.filter(([key]) => !routeParams.has(key)))
+  return { params, query: nonEmptyRecord(query) }
+}
+
+function normalizeBodyOnlyInput(
+  value: Record<string, unknown>,
+  params: Record<string, unknown> | undefined,
+  bodySchema: JsonSchema | undefined
+): RouteInvocationInput {
+  const body = isFlattenedObjectSchema(bodySchema)
+    ? value
+    : Object.hasOwn(value, 'value')
+      ? value.value
+      : value
+  return { params, body }
+}
+
+function normalizeMixedInput(
+  value: Record<string, unknown>,
+  entries: Array<[string, unknown]>,
+  routeParams: Set<string>,
+  params: Record<string, unknown> | undefined,
+  querySchema: JsonSchema | undefined,
+  bodySchema: JsonSchema | undefined
+): RouteInvocationInput {
+  const queryIsWrapped = querySchema !== undefined && !isFlattenedObjectSchema(querySchema)
+  const queryNames = queryIsWrapped ? new Set<string>() : schemaPropertyNames(querySchema)
+  const query = queryIsWrapped
+    ? mixedWrappedQuery(value, routeParams)
+    : Object.fromEntries(entries.filter(([key]) => queryNames.has(key)))
+  const otherSlots = new Set([...routeParams, ...queryNames])
+  if (queryIsWrapped) otherSlots.add('value')
   return {
     params,
-    query: nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => queryNames.has(key)))),
-    body: flattenedBody(value, bodySchemas, new Set([...routeParams, ...queryNames]))
+    query: nonEmptyRecord(query),
+    body: normalizeMixedBody(value, bodySchema, otherSlots)
   }
 }
 
-function invocationSchemas(
-  operation: McpRouteOperation,
-  slot: 'query' | 'body',
-  options: NormalizedMcpPluginOptions
-): JsonSchema[] {
-  return routeSchemaSources(operation, slot)
-    .map((schema) =>
-      options.mapJsonSchema
-        ? normalizeJsonSchema(schema, {
-            source: 'route',
-            kind: 'tool',
-            route: operation,
-            schemaLocation: slot,
-            options
-          })
-        : schema
-    )
-    .filter(isRecord)
+function normalizeMixedBody(
+  value: Record<string, unknown>,
+  bodySchema: JsonSchema | undefined,
+  otherSlots: Set<string>
+): unknown {
+  if (bodySchema && !isFlattenedObjectSchema(bodySchema)) {
+    return Object.hasOwn(value, 'value') ? value.value : undefined
+  }
+  // A named model may not normalize here. Leave validation of the remaining fields to Elysia.
+  if (!bodySchema && !otherSlots.has('value') && Object.hasOwn(value, 'value')) return value.value
+  return flattenedBody(value, schemaPropertyNames(bodySchema), otherSlots)
 }
 
-function schemaPropertyNames(schemas: JsonSchema[]): Set<string> {
-  return new Set(schemas.flatMap((schema) => Object.keys(objectSchemaProperties(schema))))
+function mixedWrappedQuery(
+  value: Record<string, unknown>,
+  routeParams: Set<string>
+): Record<string, unknown> {
+  if (isRecord(value.value)) return value.value
+  if (!Object.hasOwn(value, 'value') || routeParams.has('value')) return {}
+  return { value: value.value }
 }
 
-function isObjectBodySchema(schema: JsonSchema): boolean {
-  if (schema.type === 'object' || isRecord(schema.properties)) return true
-  return Array.isArray(schema.allOf) && schema.allOf.filter(isRecord).some(isObjectBodySchema)
+function schemaPropertyNames(schema: JsonSchema | undefined): Set<string> {
+  return new Set(Object.keys(objectSchemaProperties(schema)))
 }
 
 function flattenedBody(
   value: Record<string, unknown>,
-  schemas: JsonSchema[],
+  bodyNames: Set<string>,
   otherSlots: Set<string>
-): unknown {
-  if (!schemas.some(isObjectBodySchema)) return value.value
-  const bodyNames = schemaPropertyNames(schemas)
+): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value).filter(([key]) => !otherSlots.has(key) || bodyNames.has(key))
   )

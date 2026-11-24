@@ -63,6 +63,19 @@ const standard = await request('tools/call', {
 })
 assert.notEqual(standard.isError, true, JSON.stringify(standard))
 assert.match(JSON.stringify(standard), /schema-validated/)
+
+const mixed = new Elysia()
+  .use(mcp({ inputMode: 'flatten' }))
+  .post('/wrapped-query', {
+    query: t.Union([t.Object({ page: t.String() }), t.Object({ cursor: t.String() })]),
+    body: t.Object({ title: t.String() }),
+    mcp: { name: 'wrapped-query' }
+  }, ({ query, body }) => ({ query, body }))
+const mixedResult = await request('tools/call', {
+  name: 'wrapped-query', arguments: { value: { page: '2' }, title: 'report' }
+}, undefined, mixed)
+assert.notEqual(mixedResult.isError, true, JSON.stringify(mixedResult))
+assert.deepEqual(mixedResult.structuredContent, { query: { page: '2' }, body: { title: 'report' } })
 `
 }
 
@@ -156,8 +169,13 @@ const app = new Elysia()
 
 await app.modules
 
-async function request(method: string, params: Record<string, unknown>, token?: string) {
-  const response = await app.handle(new Request('http://localhost/mcp', {
+async function request(
+  method: string,
+  params: Record<string, unknown>,
+  token?: string,
+  target: { handle(request: Request): Response | Promise<Response> } = app
+) {
+  const response = await target.handle(new Request('http://localhost/mcp', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

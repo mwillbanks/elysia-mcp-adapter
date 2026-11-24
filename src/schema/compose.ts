@@ -12,6 +12,33 @@ import {
   schemaRequiredKeys
 } from './normalize.js'
 
+type InputSlot = 'params' | 'query' | 'body'
+const routeInputSchemas = new WeakMap<
+  McpRouteOperation,
+  WeakMap<NormalizedMcpPluginOptions, Map<InputSlot, JsonSchema | undefined>>
+>()
+
+/** Registry operations are snapshots; share their normalized slot layout with invocation. */
+export function routeInputSchemaForSlot(
+  operation: McpRouteOperation,
+  slot: InputSlot,
+  options: NormalizedMcpPluginOptions
+): JsonSchema | undefined {
+  let byOptions = routeInputSchemas.get(operation)
+  if (!byOptions) routeInputSchemas.set(operation, (byOptions = new WeakMap()))
+  let schemas = byOptions.get(options)
+  if (!schemas) byOptions.set(options, (schemas = new Map()))
+  if (!schemas.has(slot)) {
+    schemas.set(slot, normalizeRouteInputSchema(operation, 'tool', slot, options))
+  }
+  return schemas.get(slot)
+}
+
+/** Preserve the advertised flat layout, including legacy properties-only schemas. */
+export function isFlattenedObjectSchema(schema: JsonSchema | undefined): boolean {
+  return schema?.type === 'object' || Boolean(schema?.properties)
+}
+
 export function composeRouteInputSchema(
   operation: McpRouteOperation,
   kind: McpRouteKind,
@@ -52,9 +79,13 @@ export function composeRouteInputSchema(
     return flat ?? emptyObjectSchema()
   }
 
-  const params = normalizeRouteInputSchema(operation, kind, 'params', options)
-  const query = normalizeRouteInputSchema(operation, kind, 'query', options)
-  const body = normalizeRouteInputSchema(operation, kind, 'body', options)
+  const schemaForSlot = (slot: InputSlot) =>
+    kind === 'tool' && options.inputMode === 'flatten'
+      ? routeInputSchemaForSlot(operation, slot, options)
+      : normalizeRouteInputSchema(operation, kind, slot, options)
+  const params = schemaForSlot('params')
+  const query = schemaForSlot('query')
+  const body = schemaForSlot('body')
   if (options.inputMode === 'flatten') return composeFlattenedInputSchema({ params, query, body })
 
   return composeEnvelopeInputSchema({ params, query, body })
@@ -79,23 +110,33 @@ function normalizeRouteInputSchema(
     )
     .filter((schema): schema is JsonSchema => schema !== undefined)
   if (schemas.length < 2) return schemas[0]
-  if (!schemas.some((schema) => schema.type === 'object' || schema.properties)) {
-    return { allOf: schemas }
-  }
-
   // Elysia merges TypeBox object layers before validation. Admit sibling fields
   // in each closed layer while retaining its own constraints and reference scope.
   const properties = Object.fromEntries(
     schemas.flatMap((schema) => Object.keys(objectSchemaProperties(schema)).map((key) => [key, {}]))
   )
   return {
-    type: 'object',
+    ...(schemas.some(requiresObject) ? { type: 'object' } : {}),
     allOf: schemas.map((schema) =>
       schema.additionalProperties === false
         ? { ...schema, properties: { ...properties, ...(schema.properties as object) } }
         : schema
     )
   }
+}
+
+function requiresObject(schema: JsonSchema): boolean {
+  return (
+    schema.type === 'object' ||
+    (Array.isArray(schema.allOf) &&
+      schema.allOf.some(
+        (branch) =>
+          branch !== null &&
+          typeof branch === 'object' &&
+          !Array.isArray(branch) &&
+          requiresObject(branch as JsonSchema)
+      ))
+  )
 }
 
 export function composeRouteOutputSchema(
@@ -222,7 +263,7 @@ function composeFlattenedInputSchema(parts: {
   for (const schema of [parts.params, parts.query, parts.body]) {
     if (!schema) continue
 
-    if (schema.type === 'object' || schema.properties) {
+    if (isFlattenedObjectSchema(schema)) {
       for (const [key, property] of Object.entries(objectSchemaProperties(schema))) {
         Object.defineProperty(properties, key, {
           value: property,

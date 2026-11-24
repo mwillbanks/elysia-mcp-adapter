@@ -792,10 +792,14 @@
       "snapshot": {
         "website/content/docs/api-reference/plugin.mdx": "734b8327fbd2891b924c8ddf9e3dea700497ccec528e5121a3963282dd241294"
       },
-      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
+      "head": "12a89bc8e33dbcf00d02b3ef6303d39a80a0249a",
       "outcome": "updated",
-      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
-      "evidence": ["website/content/docs/api-reference/plugin.mdx"]
+      "reason": "Verified the callback inference contract against the plugin types and the packed consumer assertions.",
+      "evidence": [
+        "website/content/docs/api-reference/plugin.mdx",
+        "src/plugin.ts",
+        "scripts/elysia-compat-consumer.ts"
+      ]
     }
   }
 }

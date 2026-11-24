@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
 import { normalizeOptions } from '../src/options.js'
 import { getMcpRegistry } from '../src/registry.js'
-import { composeRouteInputSchema } from '../src/schema/compose.js'
+import {
+  composeRouteInputSchema,
+  isFlattenedObjectSchema,
+  routeInputSchemaForSlot
+} from '../src/schema/compose.js'
 import { normalizeJsonSchema, objectSchemaProperties } from '../src/schema/normalize.js'
 import { validateJsonSchema } from '../src/schema/validate.js'
 import type { AnyElysiaApp, JsonSchema, McpRouteOperation } from '../src/types.js'
@@ -171,4 +175,63 @@ test('keeps primitive-only layered schemas in the flattened value envelope', () 
   expect(schema.required).toEqual(['value'])
   expect(validateJsonSchema(schema, { value: 'okay' }).ok).toBe(true)
   expect(validateJsonSchema(schema, { value: 'x' }).ok).toBe(false)
+})
+
+test('preserves scalar semantics of properties-only layers without forcing object type', () => {
+  const conditional = {
+    properties: { name: { type: 'string' } },
+    additionalProperties: false
+  }
+  for (const sources of [
+    [conditional, {}],
+    [{}, conditional]
+  ]) {
+    const route = operation({ query: sources[0], schemas: [{ query: sources[1] }] })
+    const options = normalizeOptions({ inputMode: 'flatten' })
+    const slot = routeInputSchemaForSlot(route, 'query', options)
+    expect(slot).not.toHaveProperty('type')
+    expect(isFlattenedObjectSchema(slot)).toBe(false)
+    expect(validateJsonSchema(slot!, 'scalar').ok).toBe(true)
+    expect(validateJsonSchema(slot!, { name: 'okay' }).ok).toBe(true)
+    expect(validateJsonSchema(slot!, { name: 1 }).ok).toBe(false)
+    expect(validateJsonSchema(slot!, { name: 'okay', extra: true }).ok).toBe(false)
+    expect(composeRouteInputSchema(route, 'tool', options).properties).toEqual({
+      value: slot
+    })
+  }
+})
+
+test('shares cached mapped slot schemas and their advertised wrapping with invocation', () => {
+  const route = operation({ body: { native: true } })
+  let mappings = 0
+  const mapped = {
+    allOf: [
+      {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name']
+      }
+    ]
+  }
+  const options = normalizeOptions({
+    inputMode: 'flatten',
+    mapJsonSchema: (schema, context) => {
+      expect(schema).toEqual({ native: true })
+      expect(context.kind).toBe('tool')
+      expect(context.schemaLocation).toBe('body')
+      mappings++
+      return mapped
+    }
+  })
+  const advertised = composeRouteInputSchema(route, 'tool', options)
+  const slot = routeInputSchemaForSlot(route, 'body', options)
+  expect(advertised.properties).toEqual({ value: mapped })
+  expect(isFlattenedObjectSchema(slot)).toBe(false)
+  expect(routeInputSchemaForSlot(route, 'body', options)).toBe(slot)
+  expect(mappings).toBe(1)
+  expect(validateJsonSchema(advertised, { value: { name: 'okay' } }).ok).toBe(true)
+  expect(validateJsonSchema(advertised, { name: 'okay' }).ok).toBe(false)
+  const otherOptions = normalizeOptions({ inputMode: 'flatten' })
+  expect(routeInputSchemaForSlot(route, 'body', otherOptions)).toEqual({ native: true })
+  expect(isFlattenedObjectSchema({ properties: { name: { type: 'string' } } })).toBe(true)
 })
