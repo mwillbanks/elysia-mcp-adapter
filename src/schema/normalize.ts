@@ -1,4 +1,5 @@
 import { JSON_SCHEMA_EMPTY_OBJECT } from '../constants.js'
+import { isRecord } from '../internal.js'
 import type {
   JsonSchema,
   McpRouteKind,
@@ -90,7 +91,9 @@ export function objectSchemaProperties(
     const childPath = referencePath && `${referencePath}/allOf/${index}`
     for (const [key, property] of Object.entries(objectSchemaProperties(child, childPath))) {
       Object.defineProperty(result, key, {
-        value: Object.hasOwn(result, key) ? { allOf: [result[key], property] } : property,
+        value: Object.hasOwn(result, key)
+          ? mergeProjectedProperty(result[key], property)
+          : property,
         enumerable: true,
         configurable: true,
         writable: true
@@ -98,6 +101,30 @@ export function objectSchemaProperties(
     }
   }
   return result
+}
+
+function mergeProjectedProperty(earlier: unknown, later: unknown): JsonSchema {
+  const merged: JsonSchema = { allOf: [earlier, later] }
+  // Direct route declarations precede inherited layers. Fill each annotation independently.
+  for (const key of ['title', 'description'] as const) {
+    const annotation =
+      schemaPropertyAnnotation(earlier, key) ?? schemaPropertyAnnotation(later, key)
+    if (annotation !== undefined) merged[key] = annotation
+  }
+  return merged
+}
+
+export function schemaPropertyAnnotation(
+  schema: unknown,
+  key: 'title' | 'description'
+): string | undefined {
+  if (!isRecord(schema)) return undefined
+  if (typeof schema[key] === 'string') return schema[key]
+  for (const [, layer] of allOfSchemas(schema)) {
+    const annotation = schemaPropertyAnnotation(layer, key)
+    if (annotation !== undefined) return annotation
+  }
+  return undefined
 }
 
 function ownSchemaProperties(

@@ -143,7 +143,9 @@ The default `envelope` mode preserves the origin of every value:
 }
 ```
 
-`inputMode: 'flatten'` merges compatible route inputs into one object. It is convenient for small APIs but can collide when params, query, and body reuse property names.
+`inputMode: 'flatten'` merges compatible route inputs into one object. Params, query, and body can share field names, so check the advertised input schema.
+
+Slots that require whole-object validation, such as `maxProperties`, stay wrapped. A single wrapped slot uses `value` when available. Multiple wrapped slots use their slot names, with a `$` prefix when needed to avoid a collision.
 
 ## Override inferred schemas
 

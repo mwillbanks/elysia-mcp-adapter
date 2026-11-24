@@ -231,6 +231,7 @@ async function stageDocSnippets(directory: string, version: '1' | '2'): Promise<
 }
 
 const peerFloorSource = String.raw`
+const floorShared = { mcp: false as const, afterHandle() {} }
 const floor = new Elysia()
   .use(mcp())
   .get('/visible', () => 'yes')
@@ -241,13 +242,38 @@ const floor = new Elysia()
   .guard({ mcp: false }, (group) => group.get('/guarded', () => 'no', {
     mcp: { name: 'guard-opt-in' }
   }))
+  .get('/floor-copy-source', () => 'no', floorShared)
+  .get('/floor-copy-visible', () => 'yes', {
+    ...floorShared, mcp: { name: 'floor-copy-visible' }
+  })
+  .get('/floor-copy-inherited', () => 'no', { ...floorShared })
+const floorPrototype = Object.create(floorShared, {
+  mcp: {
+    value: { name: 'floor-prototype-visible' },
+    enumerable: true, writable: true, configurable: true
+  }
+})
+floor.get('/floor-prototype-visible', () => 'yes', floorPrototype)
+floor.get('/floor-prototype-inherited', () => 'no', Object.create(floorShared))
+const floorPlugin = new Elysia().use(mcp({ path: '/floor-plugin-mcp' }))
+const floorPluginShared = { mcp: false as const }
+floorPlugin.get('/floor-plugin-source', () => 'no', floorPluginShared)
+floorPlugin.get('/floor-plugin-hidden', () => 'no', { ...floorPluginShared })
+floorPlugin.get('/floor-plugin-visible', () => 'yes', {
+  ...floorPluginShared, mcp: { name: 'floor-plugin-visible' }
+})
+floor.use(Promise.resolve(floorPlugin))
+await floor.modules
 const floorList = await floor.handle(new Request('http://localhost/mcp', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
 }))
 const floorTools = (await floorList.json()).result.tools
-if (floorTools.length !== 1 || floorTools[0].name !== 'get.visible')
+const floorNames = floorTools.map((tool: { name: string }) => tool.name).sort()
+if (JSON.stringify(floorNames) !== JSON.stringify([
+  'floor-copy-visible', 'floor-plugin-visible', 'floor-prototype-visible', 'get.visible'
+]))
   throw new Error('Elysia 1.4.0 route visibility mismatch: ' + JSON.stringify(floorTools))
 `
 

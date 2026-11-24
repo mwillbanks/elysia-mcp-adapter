@@ -284,16 +284,17 @@
       ]
     },
     "source:website/content/docs/core-concepts/route-backed-tools.mdx": {
-      "fingerprint": "5e2e72452b75d870bf2bd91e97c81a32bef2d27d1d57bca051f38272b9ccd8a9",
+      "fingerprint": "ca669f87ab2815c6b7ab50ccb98ce4ab591d4d9aa7bbf0b207d6aa3552c1ffc8",
       "snapshot": {
-        "website/content/docs/core-concepts/route-backed-tools.mdx": "5c9d44bc1ac9daddfac40c413ea75b8162e114e56fc9175abbb86a68c8aa3a20"
+        "website/content/docs/core-concepts/route-backed-tools.mdx": "ca5168759e570f1c60d13f65218541d869a6347d93afeaa462969060fcae524f"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
-      "outcome": "updated",
-      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "head": "a4e9eedd60972a5ff5b34833809e0295e3181aaa",
+      "outcome": "no-change",
+      "reason": "The route exposure skill already directs agents to follow the advertised schema. The guide explains how wrapped slot keys are assigned.",
       "evidence": [
         "website/content/docs/core-concepts/route-backed-tools.mdx",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+        "src/schema/compose.ts",
+        "test/schema-layers.test.ts"
       ]
     },
     "source:website/content/docs/extensions/experimental/action-metadata/configuration.mdx": {
