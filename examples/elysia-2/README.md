@@ -2,7 +2,7 @@
 
 The existing example projects remain the Elysia 1.4.32 sources. The Elysia 2 runner stages those projects
 in an isolated temporary workspace, applies the source overlays here, and installs Elysia `2.0.0-rc.5`
-with a packed adapter. Clients, providers, workers, UI assets, and tests remain shared.
+with a packed adapter. Clients, providers, UI assets, and tests remain shared. The Tasks subprocess worker is replaced by its Elysia 2 overlay.
 
 Use Bun `>=1.4.4` and Node.js `>=22.18` when running Node consumers. The authorization examples require
 OpenSSL. The Tasks smoke checks require Redis; configure the Redis connection as described in the

@@ -23,9 +23,11 @@ npm install @mwillbanks/elysia-mcp-adapter elysia@2.0.0-rc.5
 </ElysiaVersion>
 </ElysiaVersions>
 
-Use Node.js >=22.18. Save your default with the navigation’s **Elysia version** selector.
+Use Node.js >=22.18 with either version. The Elysia 2 Bun examples were qualified with Bun 1.4.4; use that version or later. Save your default with the navigation’s **Elysia version** selector.
 
 The `npm` code-block language automatically presents equivalent npm, pnpm, Yarn, and Bun commands.
+
+The `.listen(3000)` examples below use Bun's native server. For Node.js, install the version-matched Elysia adapter and use `new Elysia({ adapter: node() })`; see the [Node adapter setup](/docs/getting-started/migration-elysia-2#node-adapter).
 
 ## Create a route-backed tool
 

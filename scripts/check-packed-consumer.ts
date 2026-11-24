@@ -220,12 +220,18 @@ async function stageDocSnippets(directory: string, version: '1' | '2'): Promise<
   for (const [page, section] of Object.entries(verifiedPages)) {
     const markdown = await Bun.file(join(docs, section, `${page}.mdx`)).text()
     const panes = markdown.matchAll(/<ElysiaVersion value="([12])">([\s\S]*?)<\/ElysiaVersion>/gu)
-    const snippet = Array.from(panes)
+    const snippets = Array.from(panes)
       .filter((pane) => pane[1] === version)
-      .map((pane) => pane[2]?.match(/\x60\x60\x60ts\n([\s\S]*?)\n\x60\x60\x60/u)?.[1])
-      .find((code) => code?.startsWith('import '))
-    if (!snippet) throw new Error(`Missing Elysia ${version} TypeScript example in ${page}`)
-    await Bun.write(join(directory, `docs-${page}.ts`), snippet)
+      .flatMap((pane) =>
+        Array.from(pane[2]!.matchAll(/\x60\x60\x60ts\n([\s\S]*?)\n\x60\x60\x60/gu))
+      )
+      .map((match) => match[1]!)
+      .filter((code) => code.startsWith('import '))
+    if (snippets.length === 0)
+      throw new Error(`Missing Elysia ${version} TypeScript example in ${page}`)
+    for (const [index, snippet] of snippets.entries()) {
+      await Bun.write(join(directory, `docs-${page}-${index}.ts`), snippet)
+    }
   }
 }
 

@@ -29,7 +29,8 @@
 bun add @mwillbanks/elysia-mcp-adapter elysia
 ```
 
-Node.js `>=22.18`, Bun `>=1.1`, Elysia `^1.4.0 || ^2.0.0-rc.5`, and TypeScript `>=5.8` are supported.
+Node.js `>=22.18` is required for both versions. The package declares Bun `>=1.1`; Bun `1.4.4` is the tested baseline for the Elysia 2 examples. TypeScript `>=5.8` is supported.
+Elysia peer versions are `^1.4.0 || ^2.0.0-rc.5`.
 The Node.js floor increases from 20.11 for both Elysia versions.
 One package and import preserve all existing MCP APIs and extension options.
 
@@ -78,7 +79,9 @@ to locate the files. Editor hooks are optional convenience. Keep the trust polic
 
 See the [Intent trust model](https://tanstack.com/intent/latest/docs/concepts/trust-model).
 
-## Quick start
+## Quick start (Elysia 1)
+
+This example uses Elysia 1 route argument order and Bun's native listener. For the Elysia 2 hooks-first route variant, see the [Elysia 2 Core server](./examples/elysia-2/core/server.ts). For Node.js, use the [version-matched Node adapter setup](https://mwillbanks.github.io/elysia-mcp-adapter/docs/getting-started/migration-elysia-2/#node-adapter).
 
 ```ts
 import { mcp } from '@mwillbanks/elysia-mcp-adapter'
@@ -223,7 +226,7 @@ The exported `MCP_EXTENSION_LATEST_REVIEWED` manifest records reviewed upstream 
 Run the existing projects for Elysia 1. Run `bun run examples:elysia2` for every Elysia 2 project,
 or `bun run examples:elysia2 -- core` for one project. The runner stages an isolated workspace,
 applies [version-specific sources](./examples/elysia-2/), and uses the packed adapter with Elysia `2.0.0-rc.5`.
-Clients, providers, workers, UI assets, and tests remain shared.
+Clients, providers, UI assets, and tests remain shared. The Tasks subprocess worker is version-specific and uses the Elysia 2 overlay.
 
 The repository includes tested, package-root examples for every extension:
 

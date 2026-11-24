@@ -5,17 +5,34 @@ icon: ArrowRightLeft
 ---
 
 The adapter supports Elysia `^1.4.0` and `^2.0.0-rc.5` through the same package and import path.
-Use Node.js `>=22.18` or a compatible Bun runtime.
+Use Node.js `>=22.18` with either version. The Elysia 2 Bun examples were qualified with Bun `1.4.4`; use that version or later for those examples.
 The Node.js requirement applies to both Elysia versions and raises the previous `20.11` minimum.
 
 Choose **Elysia version** in the navigation to save your default.
 Example tabs can show another version without changing that preference.
 Markdown exports contain both labeled versions.
 
-## Update dependencies
+## Migrate the installed Elysia version
 
 Record the current lockfile and passing tests before upgrading.
-Pin the RC during migration so the dependency graph stays reproducible.
+Keep the project on Elysia 1 while running the codemod; it detects the installed version before applying Elysia 2 changes.
+
+## Preview and apply the codemod
+
+Install the pinned migration tool and preview its changes before applying them.
+
+```bash
+bun add --dev --exact @elysia/codemod@2.0.0-rc.0
+bunx @elysia/codemod@2.0.0-rc.0 --check
+```
+
+Review route argument changes, guards, authentication hooks, errors, and warnings.
+After review, run `bunx @elysia/codemod@2.0.0-rc.0` to apply the migration.
+Inspect the full application diff before upgrading Elysia.
+
+## Update dependencies
+
+Pin Elysia `2.0.0-rc.5` after codemod migration so the dependency graph stays reproducible.
 
 <ElysiaVersions>
 <ElysiaVersion value="1">
@@ -51,27 +68,49 @@ bun add @elysia/openapi@2.0.0-rc.1 typebox@1.4.7
 bun install --linker hoisted
 ```
 
-Live-socket packed consumers passed on Node.js `22.18` with `@elysiajs/node@1.4.5` for Elysia 1 and `@elysia/node@2.0.0-beta.3` for Elysia 2.
-Use the matching adapter when calling `listen()` on Node.
-Check its actual published peer range before choosing a newer release.
+Packed consumers passed on Node.js `22.18` with `@elysiajs/node@1.4.5` for Elysia 1 and `@elysia/node@2.0.0-beta.3` for Elysia 2.
+Use the version-matched adapter when calling `listen()` on Node; check its published peer range before choosing a newer release.
 
 See the upstream [Node integration](https://next.elysiajs.com/integrations/node/),
 [OpenAPI plugin](https://next.elysiajs.com/plugins/openapi/), and
 [RC release notes](https://next.elysiajs.com/blog/elysia-20-rc/).
 
-## Preview the Elysia codemod
+## Node adapter
 
-Install the upstream migration tool explicitly before running it.
+The quick-start `.listen()` examples use Bun's native server. For Node.js, install and configure the matching adapter:
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
 
 ```bash
-bun add --dev --exact @elysia/codemod@2.0.0-rc.0
-./node_modules/.bin/elysia-codemod --check
+bun add @elysiajs/node@1.4.5
 ```
 
-The installed `elysia-codemod` executable uses `--check` to preview changes.
-Review route arguments, guards, authentication hooks, and error handlers.
-Apply the reviewed migration with the installed executable.
-Compare the resulting diff and lockfile with the recorded baseline.
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { node } from "@elysiajs/node";
+
+const app = new Elysia({ adapter: node() }).use(mcp()).listen(3000);
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```bash
+bun add @elysia/node@2.0.0-beta.3
+```
+
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { node } from "@elysia/node";
+
+const app = new Elysia({ adapter: node() }).use(mcp()).listen(3000);
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 ## Move route options before handlers
 
@@ -119,7 +158,7 @@ Verify the backing route's HTTP response and MCP result after migration.
 ## Review lifecycle and schema behavior
 
 Elysia 2 changes schema precedence for guards and groups.
-Use `schema: "standalone"` where multiple schemas must apply together.
+Use `schema: "merge"` on guards or groups when inherited and route schemas must both apply.
 Inspect advertised MCP inputs and outputs, including schemas introduced by macros.
 Explicit `mcp.inputSchema`, `mcp.outputSchema`, and `mapJsonSchema` remain available.
 
@@ -154,7 +193,9 @@ Use the [extension inventory](/docs/extensions/specification-inventory) to retai
 
 The Elysia 1 projects run through their existing commands.
 The Elysia 2 runner stages the projects in an isolated workspace with the packed adapter and pinned RC.
-Clients, providers, UI assets, and assertions are shared across versions.
+Clients, providers, UI assets, and assertions are shared across versions. The Tasks subprocess worker is replaced by its Elysia 2 overlay.
+
+The Tasks smoke check requires a reachable Redis service at `redis://127.0.0.1:6379`; set `REDIS_URL` when using another address. Tasks tests can use `TASKS_TEST_REDIS_URL` for an existing service. Otherwise, they start a local `redis-server` when available, or on Linux use a locally present Docker image selected by `TASKS_TEST_REDIS_IMAGE`.
 
 ```bash
 bun run examples:elysia2

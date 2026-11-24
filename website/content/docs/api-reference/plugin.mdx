@@ -10,7 +10,7 @@ The package exposes two Elysia plugins. Use `mcp()` for the normal application s
 
 `mcp(options?: McpPluginOptions)` returns an Elysia plugin callback.
 Pass it to `.use()` on Elysia 1 or Elysia 2.
-The callback preserves the consuming application's handler inference.
+On Elysia 2, the callback preserves the consuming application's handler inference. The Elysia 1 compatibility callback widens the plugin type, so `.use(mcp())` can widen the application's inferred type.
 
 ```ts
 import { mcp } from "@mwillbanks/elysia-mcp-adapter";

@@ -15,7 +15,7 @@ import { humanizeOperationName, sanitizeMcpName } from './naming.js'
 import { normalizeOptions } from './options.js'
 import { isUriTemplate, matchUriTemplate, templateName } from './resource-template.js'
 import { shouldExposeRoute } from './route-filters.js'
-import { listRouteOperations, routeFingerprint } from './route-inspector.js'
+import { listRouteOperations, routeFingerprint, routeSchemaSources } from './route-inspector.js'
 import {
   composeExplicitInputSchema,
   composeExplicitOutputSchema,
@@ -605,7 +605,9 @@ function stringDetail(operation: McpRouteOperation, key: string): string | undef
 }
 
 function hasRouteInputSchema(operation: McpRouteOperation): boolean {
-  return Boolean(operation.hooks.params || operation.hooks.query || operation.hooks.body)
+  return ['params', 'query', 'body'].some((slot) =>
+    routeSchemaSources(operation, slot).some(Boolean)
+  )
 }
 
 function defaultAnnotationsForMethod(method: string) {

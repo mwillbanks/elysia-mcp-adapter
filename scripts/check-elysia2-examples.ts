@@ -113,13 +113,21 @@ async function stageWorkspace(
   await run(['install', '--ignore-scripts'], directory)
 }
 
+function projectGates(manifest: Manifest, project: string): string[] {
+  const scripts = manifest.scripts ?? {}
+  const gates = ['build', 'typecheck', 'test', 'smoke']
+  for (const gate of gates) {
+    if (!scripts[gate]) throw new Error(`Missing ${gate} script in ${project}`)
+  }
+  // Only exact unconditional smoke commands cover a separate gate.
+  const smokeCommands = new Set(scripts.smoke.split('&&').map((command) => command.trim()))
+  return gates.filter((gate) => gate === 'smoke' || !smokeCommands.has(`bun --bun run ${gate}`))
+}
+
 async function verifyProject(project: string, directory: string): Promise<void> {
   const cwd = join(directory, 'examples', project)
   const manifest = (await Bun.file(join(cwd, 'package.json')).json()) as Manifest
-  for (const gate of ['build', 'typecheck', 'test', 'smoke']) {
-    if (!manifest.scripts?.[gate]) throw new Error(`Missing ${gate} script in ${project}`)
-    await run(['run', gate], cwd)
-  }
+  for (const gate of projectGates(manifest, project)) await run(['run', gate], cwd)
   console.log(`Elysia ${elysiaVersion}: ${relative(directory, cwd)} passed`)
 }
 

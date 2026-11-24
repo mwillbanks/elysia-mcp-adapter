@@ -79,9 +79,23 @@ function normalizeRouteInputSchema(
     )
     .filter((schema): schema is JsonSchema => schema !== undefined)
   if (schemas.length < 2) return schemas[0]
-  return schemas.every((schema) => schema.type === 'object' || schema.properties)
-    ? { type: 'object', allOf: schemas }
-    : { allOf: schemas }
+  if (!schemas.some((schema) => schema.type === 'object' || schema.properties)) {
+    return { allOf: schemas }
+  }
+
+  // Elysia merges TypeBox object layers before validation. Admit sibling fields
+  // in each closed layer while retaining its own constraints and reference scope.
+  const properties = Object.fromEntries(
+    schemas.flatMap((schema) => Object.keys(objectSchemaProperties(schema)).map((key) => [key, {}]))
+  )
+  return {
+    type: 'object',
+    allOf: schemas.map((schema) =>
+      schema.additionalProperties === false
+        ? { ...schema, properties: { ...properties, ...(schema.properties as object) } }
+        : schema
+    )
+  }
 }
 
 export function composeRouteOutputSchema(
@@ -209,7 +223,14 @@ function composeFlattenedInputSchema(parts: {
     if (!schema) continue
 
     if (schema.type === 'object' || schema.properties) {
-      Object.assign(properties, objectSchemaProperties(schema))
+      for (const [key, property] of Object.entries(objectSchemaProperties(schema))) {
+        Object.defineProperty(properties, key, {
+          value: property,
+          enumerable: true,
+          configurable: true,
+          writable: true
+        })
+      }
       for (const key of schemaRequiredKeys(schema)) required.add(key)
     } else {
       properties.value = schema

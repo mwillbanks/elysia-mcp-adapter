@@ -3,7 +3,7 @@
 Resolve the consuming application's installed Elysia version from its package manager before selecting syntax.
 Use the lockfile and resolved dependency, including its prerelease identifier.
 This adapter supports Elysia `^1.4.0` and `^2.0.0-rc.5`.
-Require Node.js `>=22.18` for either version.
+Use Node.js `>=22.18` with either version. The Elysia 2 Bun examples were qualified with Bun `1.4.4`; use that version or later for those examples.
 
 Use the same adapter import and MCP fluent methods on both versions.
 For Elysia 1, register a route with `app.get(path, handler, options)`.
@@ -13,15 +13,16 @@ Keep two-argument routes in their existing form.
 ## Migration checklist
 
 1. Record passing application tests and the existing lockfile.
-2. Pin Elysia `2.0.0-rc.5` and resolve companion plugins with Elysia 2 peer support.
-3. Preview the installed `@elysia/codemod@2.0.0-rc.0` executable with `--check`.
-4. Review the preview, apply it, and inspect the complete application diff.
-5. Review guard and group schema precedence. Use `schema: 'standalone'` where schemas must apply together.
-6. Review `resolve` to `derive`, `scoped` to `plugin`, and typed `onError` changes. The RC keeps `on` lifecycle names.
-7. Verify macros, named models, schema overrides, problem JSON, and required file-type detection.
-8. Compare MCP discovery and schemas, then invoke accepted, invalid, unauthorized, and forbidden requests.
-9. Exercise each enabled extension and its provider through the mounted MCP endpoint.
-10. Repeat these checks against the generated artifact when enabling AOT.
+2. Keep the project on Elysia 1 and install the pinned migration tool with `bun add --dev --exact @elysia/codemod@2.0.0-rc.0`.
+3. Preview changes with `bunx @elysia/codemod@2.0.0-rc.0 --check`.
+4. Review warnings and the preview. Apply only after review with `bunx @elysia/codemod@2.0.0-rc.0`, then inspect the full application diff.
+5. Update to Elysia `2.0.0-rc.5` and resolve companion plugins with Elysia 2 peer support.
+6. Review guard and group schema precedence. Use `schema: 'merge'` when inherited and route schemas must both apply.
+7. Review `resolve` to `derive`, `scoped` to `plugin`, and typed `onError` changes. The RC keeps `on` lifecycle names.
+8. Verify macros, named models, schema overrides, problem JSON, and required file-type detection.
+9. Compare MCP discovery and schemas, then invoke accepted, invalid, unauthorized, and forbidden requests.
+10. Exercise each enabled extension and its provider through the mounted MCP endpoint.
+11. Repeat these checks against the generated artifact when enabling AOT.
 
 Use `@elysiajs/openapi@1.4.17`, `@elysiajs/bearer@1.4.4`, and `@elysiajs/opentelemetry@1.4.11` with Elysia 1.
 Use `@elysia/openapi@2.0.0-rc.1`, `@elysia/bearer@2.0.0-rc.0`, and `@elysia/opentelemetry@2.0.0-rc.0` with Elysia 2.

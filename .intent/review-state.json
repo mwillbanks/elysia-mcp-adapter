@@ -3,11 +3,11 @@
   "baseline": "32721f89f69c642946a6ec0e37f57f95dd8e8351",
   "items": {
     "skill:skills/elysia-mcp-adapter/SKILL.md": {
-      "fingerprint": "78033fd6ea59e004c0c4ad94db20bfb8dfe86b1c003497c70ee603c22d719c7f",
+      "fingerprint": "46c04f4973ed9fda9c43ab71e884f6e8aa0fcb079069ee05d9eefaa23bcf75b5",
       "snapshot": {
-        "README.md": "be6f80c83e1113345f8716b1bee9f0c916895365197a084c4ba5daf789bed098",
+        "README.md": "fe77f2339141ee44612f5b9719d034e60ab00a2669525fe4786d89c6c848e0a3",
         "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md": "f6ca6a91140fe1b6a6bff6da209516c01977055bc70118c859197f80893834ea",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "484dc1ba8abafb9de177a5f76ebdb248e3fad5961fbb6b17d2393372acb42f36",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
@@ -21,26 +21,26 @@
         "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
         "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
         "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6",
-        "website/content/docs/getting-started/migration-elysia-2.mdx": "c3403a9592fdb42bd5cb7cd39b72cff72314552053227844309868cf5db0db4a"
+        "website/content/docs/getting-started/migration-elysia-2.mdx": "8c8c94fb6a640f9e9d2bc0153ff986cbbf5afd6bf5d15b646d4957f1f1aeb35d"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "updated",
-      "reason": "Added the exact version-matched Node adapter options qualified through live packed consumers on actual Node 22.18.",
+      "reason": "Updated the bundled migration guidance for codemod order, guard schema merging, and the qualified runtimes.",
       "evidence": [
-        "website/content/docs/getting-started/migration-elysia-2.mdx",
+        "README.md",
         "skills/elysia-mcp-adapter/references/elysia-migration.md",
-        "scripts/check-packed-consumer.ts"
+        "website/content/docs/getting-started/migration-elysia-2.mdx"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "5bdae1763626b99feb9850ec814e261f3ca17ba6a4101bf598d6114ce277afae",
+      "fingerprint": "cad2d4540c260893d4febc767cdb772ccb6dc378b604fc5ab3a14a83d7745da8",
       "snapshot": {
-        "README.md": "be6f80c83e1113345f8716b1bee9f0c916895365197a084c4ba5daf789bed098",
+        "README.md": "fe77f2339141ee44612f5b9719d034e60ab00a2669525fe4786d89c6c848e0a3",
         "_artifacts/domain_map.yaml": "dbb5cdc3591471f1173fc450bedeafb9eea1970c2a23c6b868506b5ad41bfb8a",
         "_artifacts/skill_spec.md": "f1327a2223272e832fdfe658f08ff5aedd9002031f079ab995b6924ea939791b",
         "_artifacts/skill_tree.yaml": "2ebe6442fb00754e6c8957457befa0f9a6bcd4314c9ebb50fe58570ffc4bc90e",
         "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md": "f6ca6a91140fe1b6a6bff6da209516c01977055bc70118c859197f80893834ea",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "484dc1ba8abafb9de177a5f76ebdb248e3fad5961fbb6b17d2393372acb42f36",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
@@ -54,15 +54,15 @@
         "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
         "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
         "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6",
-        "website/content/docs/getting-started/migration-elysia-2.mdx": "c3403a9592fdb42bd5cb7cd39b72cff72314552053227844309868cf5db0db4a"
+        "website/content/docs/getting-started/migration-elysia-2.mdx": "8c8c94fb6a640f9e9d2bc0153ff986cbbf5afd6bf5d15b646d4957f1f1aeb35d"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
-      "outcome": "updated",
-      "reason": "Added the exact version-matched Node adapter options qualified through live packed consumers on actual Node 22.18.",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
+      "outcome": "no-change",
+      "reason": "Reviewed migration and examples changes against the skill plan. Existing planning records continue to describe the same scope.",
       "evidence": [
-        "website/content/docs/getting-started/migration-elysia-2.mdx",
+        "README.md",
         "skills/elysia-mcp-adapter/references/elysia-migration.md",
-        "scripts/check-packed-consumer.ts"
+        "website/content/docs/getting-started/migration-elysia-2.mdx"
       ]
     },
     "source:examples/events/README.md": {
@@ -653,17 +653,14 @@
       ]
     },
     "source:examples/elysia-2/README.md": {
-      "fingerprint": "55445db53e116b2b0bc4d68060abbbe11e27470f4b897047d8411caa8a0e8380",
+      "fingerprint": "a37323f0d09d8c814e1c1f30c92a26519b73e74421ad2d6a41b3fca799e843b8",
       "snapshot": {
-        "examples/elysia-2/README.md": "fe7c63b431a228a063d2b53b57839e9ff47cf6a5ff4fc033627d334b95c73777"
+        "examples/elysia-2/README.md": "dd117bf65da386a44b3eedb245de10284ac9dfe61ecbf854d8dddda5fa4e64f4"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "updated",
-      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
-      "evidence": [
-        "examples/elysia-2/README.md",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md"
-      ]
+      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
+      "evidence": ["examples/elysia-2/README.md"]
     },
     "source:examples/experimental/README.md": {
       "fingerprint": "527a895cc8463047211bd9057ccbb3451467bea5e08dbd888f3debc7f2cf341a",
@@ -781,27 +778,24 @@
       ]
     },
     "source:website/content/docs/getting-started/quick-start.mdx": {
-      "fingerprint": "77b4539e0eb281564b81c5af354708f62a70848cc4b2c62c209438e090387f19",
+      "fingerprint": "bfb7495f8674f4062aa82b9004f236f25bd41df7e48b51941b1a6b61e1cd924e",
       "snapshot": {
-        "website/content/docs/getting-started/quick-start.mdx": "d4ab4c3ecfdf46c68eba15569137ecfce33fffbd009c069344be4537e3d54b86"
+        "website/content/docs/getting-started/quick-start.mdx": "c786faa8fc7b26a7a62fff1fb83bdd85ac42bab9c808d3c907bf3dcdb31fabfc"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "updated",
-      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
-      "evidence": [
-        "website/content/docs/getting-started/quick-start.mdx",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md"
-      ]
+      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
+      "evidence": ["website/content/docs/getting-started/quick-start.mdx"]
     },
     "source:website/content/docs/api-reference/plugin.mdx": {
-      "fingerprint": "5fa0820ecbf93a6fa3c9109d38d204a0aa8905047321f1315bf6d6ae6bfe1881",
+      "fingerprint": "11161c7dfbbc3ca28a5b9d14ec5cbb8eab9ec99785ee3ab8da4ea7229622928d",
       "snapshot": {
-        "website/content/docs/api-reference/plugin.mdx": "eff7f73aa41c1b6a0f61435ff5d7f4b10f58cc174097db2cc312bade3990aec8"
+        "website/content/docs/api-reference/plugin.mdx": "734b8327fbd2891b924c8ddf9e3dea700497ccec528e5121a3963282dd241294"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "updated",
-      "reason": "Corrected plugin callback return descriptions for both Elysia versions after checking implementation signatures; route and fluent-method guidance remains applicable.",
-      "evidence": ["website/content/docs/api-reference/plugin.mdx", "src/plugin.ts"]
+      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
+      "evidence": ["website/content/docs/api-reference/plugin.mdx"]
     }
   }
 }

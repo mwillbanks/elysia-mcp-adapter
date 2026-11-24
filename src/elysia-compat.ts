@@ -24,12 +24,12 @@ export function registerAdapterRoute(
 }
 
 const elysia1McpMacro = (options: McpRouteOptions) => ({
-  introspect(hooks: Record<string, unknown>) {
+  introspect(hooks: Record<PropertyKey, unknown>) {
     const detail = hooks.detail as Record<string, unknown> | undefined
-    // Elysia reapplies guard macros after local macros. Preserve the local choice.
-    if (detail && MCP_ROUTE_DETAIL in detail) return
-    // Lifecycle merges retain detail fields but discard custom hook keys.
-    // A function survives those merges without entering JSON/OpenAPI output.
+    // The hook merge gives child routes precedence over groups.
+    // Guards without a callback copy only detail, so keep a JSON-invisible fallback.
+    if (MCP_ROUTE_OPTIONS in hooks || (detail && MCP_ROUTE_DETAIL in detail)) return
+    hooks[MCP_ROUTE_OPTIONS] = options
     const carrier = Object.assign(() => undefined, { [MCP_ROUTE_OPTIONS]: options })
     hooks.detail = { ...detail, [MCP_ROUTE_DETAIL]: carrier }
   }

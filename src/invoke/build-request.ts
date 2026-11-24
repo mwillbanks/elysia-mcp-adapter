@@ -1,7 +1,9 @@
 import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
 import { routeSchemaSources } from '../route-inspector.js'
+import { normalizeJsonSchema, objectSchemaProperties } from '../schema/normalize.js'
 import type {
+  JsonSchema,
   McpHandlerContext,
   McpInvocationContext,
   McpRouteOperation,
@@ -16,7 +18,7 @@ export function normalizeRouteToolInput(
   options: NormalizedMcpPluginOptions
 ): RouteInvocationInput {
   const value = isRecord(args) ? args : {}
-  if (options.inputMode === 'flatten') return normalizeFlattenedInput(value, operation)
+  if (options.inputMode === 'flatten') return normalizeFlattenedInput(value, operation, options)
   return normalizeStructuredInput(value)
 }
 
@@ -31,19 +33,70 @@ function normalizeStructuredInput(value: Record<string, unknown>): RouteInvocati
 
 function normalizeFlattenedInput(
   value: Record<string, unknown>,
-  operation: McpRouteOperation
+  operation: McpRouteOperation,
+  options: NormalizedMcpPluginOptions
 ): RouteInvocationInput {
   const routeParams = new Set(extractRouteParamNames(operation.path))
-  const params: Record<string, unknown> = {}
-  const query: Record<string, unknown> = {}
-  for (const [key, item] of Object.entries(value)) {
-    ;(routeParams.has(key) ? params : query)[key] = item
+  const entries = Object.entries(value)
+  const params = nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => routeParams.has(key))))
+  if (routeSchemaSources(operation, 'body').length === 0) {
+    return {
+      params,
+      query: nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => !routeParams.has(key))))
+    }
   }
-  const normalizedParams = nonEmptyRecord(params)
-  if (routeSchemaSources(operation, 'body').length > 0) {
-    return { params: normalizedParams, body: 'value' in value ? value.value : value }
+  if (routeSchemaSources(operation, 'query').length === 0) {
+    return { params, body: 'value' in value ? value.value : value }
   }
-  return { params: normalizedParams, query: nonEmptyRecord(query) }
+  const querySchemas = invocationSchemas(operation, 'query', options)
+  const bodySchemas = invocationSchemas(operation, 'body', options)
+  const queryNames = schemaPropertyNames(querySchemas)
+  return {
+    params,
+    query: nonEmptyRecord(Object.fromEntries(entries.filter(([key]) => queryNames.has(key)))),
+    body: flattenedBody(value, bodySchemas, new Set([...routeParams, ...queryNames]))
+  }
+}
+
+function invocationSchemas(
+  operation: McpRouteOperation,
+  slot: 'query' | 'body',
+  options: NormalizedMcpPluginOptions
+): JsonSchema[] {
+  return routeSchemaSources(operation, slot)
+    .map((schema) =>
+      options.mapJsonSchema
+        ? normalizeJsonSchema(schema, {
+            source: 'route',
+            kind: 'tool',
+            route: operation,
+            schemaLocation: slot,
+            options
+          })
+        : schema
+    )
+    .filter(isRecord)
+}
+
+function schemaPropertyNames(schemas: JsonSchema[]): Set<string> {
+  return new Set(schemas.flatMap((schema) => Object.keys(objectSchemaProperties(schema))))
+}
+
+function isObjectBodySchema(schema: JsonSchema): boolean {
+  if (schema.type === 'object' || isRecord(schema.properties)) return true
+  return Array.isArray(schema.allOf) && schema.allOf.filter(isRecord).some(isObjectBodySchema)
+}
+
+function flattenedBody(
+  value: Record<string, unknown>,
+  schemas: JsonSchema[],
+  otherSlots: Set<string>
+): unknown {
+  if (!schemas.some(isObjectBodySchema)) return value.value
+  const bodyNames = schemaPropertyNames(schemas)
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !otherSlots.has(key) || bodyNames.has(key))
+  )
 }
 
 function nonEmptyRecord(value: Record<string, unknown>): Record<string, unknown> | undefined {

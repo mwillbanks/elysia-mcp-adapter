@@ -27,10 +27,12 @@ const v2Syntax = {
     }
   }`,
   layered: `
-  .macro({ layer: { query: t.Object({ inherited: t.String() }) } })
+  .macro({ layer: {
+    query: t.Object({ inherited: t.String({ minLength: 2 }) }, { additionalProperties: false })
+  } })
   .get('/layered', {
     layer: true,
-    query: t.Object({ direct: t.String() }),
+    query: t.Object({ direct: t.String() }, { additionalProperties: false }),
     mcp: { name: 'layered' }
   }, ({ query }: { query: { direct: string; inherited: string } }) => query)
   .post('/standard', {
@@ -40,11 +42,22 @@ const v2Syntax = {
   `,
   extraTools: "'layered', 'standard', ",
   extraAssertions: `
+const nativeLayered = await app.handle(new Request('http://localhost/layered?direct=one&inherited=two'))
+assert.equal(nativeLayered.status, 200)
 const layered = await request('tools/call', {
   name: 'layered', arguments: { query: { direct: 'one', inherited: 'two' } }
 })
 assert.notEqual(layered.isError, true, JSON.stringify(layered))
 assert.match(JSON.stringify(layered), /two/)
+for (const query of [{ direct: 'one' }, { direct: 'one', inherited: 'x' }, { direct: 'one', inherited: 'two', extra: 'no' }]) {
+  const rejected = await request('tools/call', { name: 'layered', arguments: { query } })
+  assert.equal(rejected.isError, true, JSON.stringify(rejected))
+}
+const layerOnly = new Elysia()
+  .use(mcp({ diagnostics: { failOnMissingSchema: true } }))
+  .macro({ layer: { query: t.Object({ value: t.String() }) } })
+  .get('/layer-only', { layer: true, mcp: { name: 'layer-only' } }, ({ query }) => query)
+assert.ok(getMcpRegistry(layerOnly).tools.has('layer-only'))
 const standard = await request('tools/call', {
   name: 'standard', arguments: { body: { value: 'schema-validated' } }
 })
@@ -84,6 +97,7 @@ export function buildCompatibilitySource(v2: boolean, scope: string): string {
   )
   const guardOverride = get('/opt-in', `() => 'visible'`, `{ mcp: { name: 'guard-opt-in' } }`)
   const hiddenRoute = get('/hidden', `() => 'hidden'`, `{ mcp: false }`)
+  const groupOverride = get('/override', `() => 'visible'`, `{ mcp: { name: 'group-override' } }`)
   const hiddenDocRoute = get('/hidden-doc', `() => 'hidden'`, `{ detail: { hide: true } }`)
   const resourceRoute = get(
     '/summary',
@@ -114,6 +128,15 @@ assert.ok(getMcpRegistry(typed).tools.has('typed'))
 const guarded = new Elysia().use(mcp())
   .guard({ mcp: false }, (group) => group.get('/inherited', () => 'hidden')${guardOverride})
 assert.deepEqual([...getMcpRegistry(guarded).tools.keys()], ['guard-opt-in'])
+
+const grouped = new Elysia().use(mcp())
+  .group('/group', { mcp: { description: 'group description' } }, (group) => group
+    ${hiddenRoute}
+    ${groupOverride}
+    .get('/inherits', () => 'visible'))
+const groupTools = [...getMcpRegistry(grouped).tools.values()]
+assert.deepEqual(groupTools.map((tool) => tool.name), ['group-override', 'get.group.inherits'])
+assert.equal(groupTools[1].description, 'group description')
 
 const standalone = new Elysia().use(withMcpMethods()).mcpTool('only', () => 'ok')
 assert.ok(getMcpRegistry(standalone).tools.has('only'))

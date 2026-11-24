@@ -1,0 +1,140 @@
+import { describe, expect, it } from 'bun:test'
+import { Elysia, t } from 'elysia'
+import { mcp } from '../src/index.js'
+import { normalizeRouteToolInput } from '../src/invoke/build-request.js'
+import { normalizeOptions } from '../src/options.js'
+import { listRouteOperations } from '../src/route-inspector.js'
+import { rpc } from './helpers.js'
+
+const options = normalizeOptions({ inputMode: 'flatten' })
+
+function normalize(
+  hooks: Record<string, unknown>,
+  input: Record<string, unknown>,
+  invocationOptions = options
+) {
+  const [operation] = listRouteOperations(new Elysia().post('/items/:id', () => null))
+  return normalizeRouteToolInput(input, { ...operation!, hooks }, invocationOptions)
+}
+
+describe('flattened route invocation', () => {
+  it('partitions query and body fields across additive schema layers', () => {
+    const input = normalize(
+      {
+        schemas: [
+          { query: t.Object({ page: t.String() }), body: t.Object({ title: t.String() }) },
+          { query: t.Object({ locale: t.String() }), body: t.Object({ active: t.Boolean() }) }
+        ]
+      },
+      { id: '42', page: '2', locale: 'en', title: 'Report', active: true }
+    )
+    expect(input).toEqual({
+      params: { id: '42' },
+      query: { page: '2', locale: 'en' },
+      body: { title: 'Report', active: true }
+    })
+  })
+
+  it('retains fields declared in both query and body, including allOf properties', () => {
+    const input = normalize(
+      {
+        query: t.Object({ shared: t.String(), page: t.String() }),
+        body: { allOf: [t.Object({ shared: t.String() }), t.Object({ title: t.String() })] }
+      },
+      { shared: 'both', page: '2', title: 'Report' }
+    )
+    expect(input.query).toEqual({ shared: 'both', page: '2' })
+    expect(input.body).toEqual({ shared: 'both', title: 'Report' })
+  })
+
+  it('partitions mixed object value fields, path parameters, and additional body fields', () => {
+    const input = normalize(
+      { query: t.Object({ page: t.String() }), body: t.Object({ value: t.Number() }) },
+      { id: '42', page: '2', value: 0, extra: 'retained' }
+    )
+    expect(input).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { value: 0, extra: 'retained' }
+    })
+    const overlap = normalize(
+      { query: t.Object({ page: t.String() }), body: t.Object({ id: t.String() }) },
+      { id: '42', page: '2' }
+    )
+    expect(overlap.body).toEqual({ id: '42' })
+  })
+
+  it('uses mapped schemas only for mixed body and query invocation', () => {
+    const querySchema = { '~standard': { version: 1, vendor: 'test-query' } }
+    const bodySchema = { '~standard': { version: 1, vendor: 'test-body' } }
+    const calls: string[] = []
+    const mappedOptions = normalizeOptions({
+      inputMode: 'flatten',
+      mapJsonSchema: (schema, context) => {
+        calls.push(context.schemaLocation)
+        return schema === querySchema
+          ? t.Object({ page: t.String() })
+          : t.Object({ value: t.Number() })
+      }
+    })
+    const input = normalize(
+      { query: querySchema, schemas: [{ body: bodySchema }] },
+      { id: '42', page: '2', value: 0 },
+      mappedOptions
+    )
+    expect(input).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { value: 0 }
+    })
+    expect(calls).toEqual(['query', 'body'])
+    calls.length = 0
+    normalize({ body: bodySchema }, { value: 0 }, mappedOptions)
+    normalize({ query: querySchema }, { page: '2' }, mappedOptions)
+    expect(calls).toEqual([])
+  })
+
+  it('preserves historical body-only object passthrough', () => {
+    const args = { id: '42', title: 'Report', extra: { retained: true } }
+    const input = normalize({ body: t.Object({ title: t.String() }) }, args)
+    expect(input.body).toBe(args)
+    expect(input.params).toEqual({ id: '42' })
+    expect(input.query).toBeUndefined()
+  })
+
+  it('preserves primitive body unwrapping alongside query fields', () => {
+    const input = normalize(
+      { query: t.Object({ page: t.String() }), schemas: [{ body: t.Number() }] },
+      { id: '42', page: '2', value: 0 }
+    )
+    expect(input).toEqual({ params: { id: '42' }, query: { page: '2' }, body: 0 })
+  })
+
+  it('preserves query-only routing for undeclared fields', () => {
+    expect(normalize({}, { id: '42', page: '2' })).toEqual({
+      params: { id: '42' },
+      query: { page: '2' }
+    })
+  })
+
+  it('invokes mixed query and body through Elysia validation', async () => {
+    const app = new Elysia()
+      .use(mcp({ inputMode: 'flatten', transport: { validateOrigin: false } }))
+      .post('/items/:id', ({ params, query, body }) => ({ params, query, body }), {
+        params: t.Object({ id: t.String() }),
+        query: t.Object({ page: t.String() }),
+        body: t.Object({ value: t.Number() }, { additionalProperties: false }),
+        detail: { operationId: 'items.create' }
+      })
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.create',
+      arguments: { id: '42', page: '2', value: 0 }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42' },
+      query: { page: '2' },
+      body: { value: 0 }
+    })
+  })
+})

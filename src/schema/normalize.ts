@@ -62,12 +62,11 @@ function cloneArray(value: readonly unknown[]): unknown[] {
 }
 
 function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const key of Object.keys(value)) {
-    const cloned = cloneJsonSchema(value[key])
-    if (cloned !== undefined) result[key] = cloned
-  }
-  return result
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [key, cloneJsonSchema(item)])
+      .filter(([, item]) => item !== undefined)
+  )
 }
 
 export function emptyObjectSchema(): JsonSchema {
@@ -90,7 +89,12 @@ export function objectSchemaProperties(schema: JsonSchema | undefined): Record<s
       : {}
   for (const child of allOfSchemas(schema)) {
     for (const [key, property] of Object.entries(objectSchemaProperties(child))) {
-      result[key] = key in result ? { allOf: [result[key], property] } : property
+      Object.defineProperty(result, key, {
+        value: Object.hasOwn(result, key) ? { allOf: [result[key], property] } : property,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      })
     }
   }
   return result
