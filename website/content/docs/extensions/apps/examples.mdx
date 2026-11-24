@@ -39,3 +39,15 @@ linked in-memory transports.
 
 Client availability changes independently of this package. Consult the canonical
 [MCP Extension Support Matrix](https://modelcontextprotocol.io/extensions/client-matrix).
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- apps-vanilla
+bun run examples:elysia2 -- apps-react
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+The runner shares this project's source, clients, and providers across both Elysia versions.

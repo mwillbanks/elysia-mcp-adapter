@@ -1,3 +1,4 @@
+import { ElysiaVersion, ElysiaVersions } from "./elysia-version";
 import { TypeTable } from "fumadocs-ui/components/type-table";
 import { Mermaid } from "./mermaid";
 import { ExtensionSupportTable } from "./extension-support-table";
@@ -8,6 +9,8 @@ export function getMDXComponents(components?: MDXComponents) {
   return {
     ...defaultMdxComponents,
     ExtensionSupportTable,
+    ElysiaVersion,
+    ElysiaVersions,
     Mermaid,
     TypeTable,
     ...components,

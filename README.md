@@ -29,7 +29,13 @@
 bun add @mwillbanks/elysia-mcp-adapter elysia
 ```
 
-Node.js `>=20.11`, Bun `>=1.1`, Elysia `>=1.4`, and TypeScript `>=5.8` are supported.
+Node.js `>=22.18`, Bun `>=1.1`, Elysia `^1.4.0 || ^2.0.0-rc.5`, and TypeScript `>=5.8` are supported.
+The Node.js floor increases from 20.11 for both Elysia versions.
+One package and import preserve all existing MCP APIs and extension options.
+
+Pin `elysia@1.4.32` for Elysia 1, or `elysia@2.0.0-rc.5` for the qualified Elysia 2 RC.
+Elysia 2 routes use `.get(path, options, handler)`; Elysia 1 uses `.get(path, handler, options)`.
+See the [migration guide](https://mwillbanks.github.io/elysia-mcp-adapter/docs/getting-started/migration-elysia-2/) for versioned examples, companion plugin pins, and verification.
 
 ## Agent guidance
 
@@ -213,6 +219,11 @@ does not accept `resultType: 'task'`. Use the minimal Tasks clients for creation
 Requests without a version header or version metadata use classic `2025-11-25` when enabled. Modern clients send the full `2026-07-28` envelope. Classic clients should send the negotiated `MCP-Protocol-Version` on requests after initialization. Hosts approve and fulfill elicitation, sampling, and roots requests before retrying the original operation.
 
 The exported `MCP_EXTENSION_LATEST_REVIEWED` manifest records reviewed upstream sources for planning. It does not advertise adapter support.
+
+Run the existing projects for Elysia 1. Run `bun run examples:elysia2` for every Elysia 2 project,
+or `bun run examples:elysia2 -- core` for one project. The runner stages an isolated workspace,
+applies [version-specific sources](./examples/elysia-2/), and uses the packed adapter with Elysia `2.0.0-rc.5`.
+Clients, providers, workers, UI assets, and tests remain shared.
 
 The repository includes tested, package-root examples for every extension:
 

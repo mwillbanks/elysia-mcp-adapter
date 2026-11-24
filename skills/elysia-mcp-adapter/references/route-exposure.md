@@ -1,5 +1,7 @@
 # Expose existing routes as MCP tools
 
+Resolve the installed Elysia major before selecting syntax. The following example uses Elysia 1; Elysia 2 places route options before the handler. See [both route forms and the migration checklist](elysia-migration.md).
+
 Mount the adapter with an explicit list of routes the MCP client should see. Use the route's declared HTTP method and path template in the filter.
 
 ```ts

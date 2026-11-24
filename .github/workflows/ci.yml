@@ -45,7 +45,16 @@ jobs:
       - run: bun --bun run build
       - name: Check Agent Skill and source reviews
         run: bun run intent:check --github-summary
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22.18.0
+          package-manager-cache: false
       - run: bun --bun run pack:check
+      - run: bun --bun run examples:elysia2
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.13.1
+          package-manager-cache: false
       - run: bun --bun run examples:build
       - run: bun --bun run examples:typecheck
       - run: bun --bun run examples:test

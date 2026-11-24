@@ -1,5 +1,6 @@
 import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
+import { routeSchemaSources } from '../route-inspector.js'
 import type {
   McpHandlerContext,
   McpInvocationContext,
@@ -39,7 +40,7 @@ function normalizeFlattenedInput(
     ;(routeParams.has(key) ? params : query)[key] = item
   }
   const normalizedParams = nonEmptyRecord(params)
-  if (operation.hooks.body) {
+  if (routeSchemaSources(operation, 'body').length > 0) {
     return { params: normalizedParams, body: 'value' in value ? value.value : value }
   }
   return { params: normalizedParams, query: nonEmptyRecord(query) }

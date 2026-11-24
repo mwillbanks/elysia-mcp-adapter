@@ -23,10 +23,11 @@
     "examples/skills/server.test.ts",
     "examples/skills/smoke.ts",
     "scripts/check-extension-drift.ts",
+    "scripts/check-elysia2-examples.ts",
     "scripts/check-packed-consumer.ts",
     "scripts/verify-app-build.ts"
   ],
-  "ignorePatterns": ["website/**"],
+  "ignorePatterns": ["website/**", "examples/elysia-2/**"],
   "ignoreDependencies": ["@mwillbanks/elysia-mcp-adapter", "collections", "elysia"],
   "ignoreUnresolvedImports": ["./dist/index.html"],
   "rules": {

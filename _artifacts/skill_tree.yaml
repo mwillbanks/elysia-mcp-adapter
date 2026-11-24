@@ -12,6 +12,7 @@ skills:
     description: Use when integrating @mwillbanks/elysia-mcp-adapter into an Elysia application, exposing HTTP routes or standalone MCP primitives, configuring MCP HTTP transport or authorization, or choosing compatible MCP extension revisions.
     sources:
       - README.md
+      - website/content/docs/getting-started/migration-elysia-2.mdx
       - website/content/docs/api-reference/route-backed-tools.mdx
       - website/content/docs/api-reference/standalone-primitives.mdx
       - website/content/docs/core-concepts/security.mdx
@@ -23,6 +24,7 @@ skills:
       - website/content/docs/extensions/versioning.mdx
     requires: []
     references:
+      - references/elysia-migration.md
       - references/extensions.md
       - references/route-exposure.md
       - references/standalone-primitives.md

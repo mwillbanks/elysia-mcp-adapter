@@ -42,8 +42,8 @@ Commits are validated by husky: `commit-msg` runs commitlint (Conventional Commi
 
 ## Compatibility targets
 
-- Node.js `>=20.11`.
-- Elysia `>=1.4.0`.
+- Node.js `>=22.18`.
+- Elysia `^1.4.0` or `^2.0.0-rc.5`.
 - TypeScript `>=5.8`.
 - Native ESM package output.
 

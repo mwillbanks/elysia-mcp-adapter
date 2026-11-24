@@ -1,5 +1,7 @@
 import type { Elysia } from 'elysia'
 
+type RequestHandler = Pick<Elysia, 'handle'>
+
 const PROTOCOL_VERSION = '2026-07-28'
 
 function eventRequest(
@@ -35,7 +37,7 @@ function eventRequest(
 }
 
 export async function rpc(
-  app: Elysia,
+  app: RequestHandler,
   method: string,
   params: Record<string, unknown> = {},
   authorization?: string
@@ -44,7 +46,7 @@ export async function rpc(
   return { response, body: (await response.json()) as any }
 }
 
-export function stream(app: Elysia, params: Record<string, unknown>, signal: AbortSignal) {
+export function stream(app: RequestHandler, params: Record<string, unknown>, signal: AbortSignal) {
   return app.handle(eventRequest(2, 'events/stream', params, { signal }))
 }
 
@@ -69,7 +71,7 @@ export interface WebhookTuple {
 }
 
 export function subscribeWebhook(
-  app: Elysia,
+  app: RequestHandler,
   tuple: WebhookTuple,
   secret: string,
   cursor: string | null,
@@ -93,7 +95,7 @@ export function subscribeWebhook(
 }
 
 export function refreshWebhook(
-  app: Elysia,
+  app: RequestHandler,
   tuple: WebhookTuple,
   secret: string,
   cursor: string | null,
@@ -104,7 +106,11 @@ export function refreshWebhook(
   return subscribeWebhook(app, tuple, secret, cursor, ttlMs, authorization, options)
 }
 
-export function unsubscribeWebhook(app: Elysia, tuple: WebhookTuple, authorization?: string) {
+export function unsubscribeWebhook(
+  app: RequestHandler,
+  tuple: WebhookTuple,
+  authorization?: string
+) {
   return rpc(
     app,
     'events/unsubscribe',

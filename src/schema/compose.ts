@@ -1,3 +1,4 @@
+import { routeSchemaSources } from '../route-inspector.js'
 import type {
   JsonSchema,
   McpRouteKind,
@@ -41,43 +42,46 @@ export function composeRouteInputSchema(
 
     // Prompt arguments are flat key/value pairs mapped onto query (GET) or body
     // (otherwise) by invokeRoutePrompt, so the args schema mirrors that source.
-    const source = operation.method === 'GET' ? operation.hooks.query : operation.hooks.body
-    const flat = normalizeJsonSchema(source, {
-      source: 'route',
+    const flat = normalizeRouteInputSchema(
+      operation,
       kind,
-      route: operation,
-      schemaLocation: 'promptArgs',
-      options
-    })
-
+      operation.method === 'GET' ? 'query' : 'body',
+      options,
+      'promptArgs'
+    )
     return flat ?? emptyObjectSchema()
   }
 
-  const params = normalizeJsonSchema(operation.hooks.params, {
-    source: 'route',
-    kind,
-    route: operation,
-    schemaLocation: 'params',
-    options
-  })
-  const query = normalizeJsonSchema(operation.hooks.query, {
-    source: 'route',
-    kind,
-    route: operation,
-    schemaLocation: 'query',
-    options
-  })
-  const body = normalizeJsonSchema(operation.hooks.body, {
-    source: 'route',
-    kind,
-    route: operation,
-    schemaLocation: 'body',
-    options
-  })
-
+  const params = normalizeRouteInputSchema(operation, kind, 'params', options)
+  const query = normalizeRouteInputSchema(operation, kind, 'query', options)
+  const body = normalizeRouteInputSchema(operation, kind, 'body', options)
   if (options.inputMode === 'flatten') return composeFlattenedInputSchema({ params, query, body })
 
   return composeEnvelopeInputSchema({ params, query, body })
+}
+
+function normalizeRouteInputSchema(
+  operation: McpRouteOperation,
+  kind: McpRouteKind,
+  slot: 'params' | 'query' | 'body',
+  options: NormalizedMcpPluginOptions,
+  schemaLocation: 'params' | 'query' | 'body' | 'promptArgs' = slot
+): JsonSchema | undefined {
+  const schemas = routeSchemaSources(operation, slot)
+    .map((schema) =>
+      normalizeJsonSchema(schema, {
+        source: 'route',
+        kind,
+        route: operation,
+        schemaLocation,
+        options
+      })
+    )
+    .filter((schema): schema is JsonSchema => schema !== undefined)
+  if (schemas.length < 2) return schemas[0]
+  return schemas.every((schema) => schema.type === 'object' || schema.properties)
+    ? { type: 'object', allOf: schemas }
+    : { allOf: schemas }
 }
 
 export function composeRouteOutputSchema(
@@ -97,6 +101,8 @@ export function composeRouteOutputSchema(
 
   if (override) return override
 
+  // Elysia 2's public routes getter already merges schemas[].response in native order.
+  // Reapplying those layers would change response-map override semantics.
   return normalizeResponseSchema(operation.hooks.response, operation, kind, options)
 }
 

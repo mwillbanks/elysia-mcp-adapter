@@ -8,9 +8,9 @@ The package exposes two Elysia plugins. Use `mcp()` for the normal application s
 
 ## `mcp`
 
-```ts
-function mcp(options?: McpPluginOptions): Elysia;
-```
+`mcp(options?: McpPluginOptions)` returns an Elysia plugin callback.
+Pass it to `.use()` on Elysia 1 or Elysia 2.
+The callback preserves the consuming application's handler inference.
 
 ```ts
 import { mcp } from "@mwillbanks/elysia-mcp-adapter";
@@ -88,9 +88,8 @@ Annotations tell MCP clients about behavioral properties. They do not replace ap
 
 ## `withMcpMethods`
 
-```ts
-function withMcpMethods(): Elysia;
-```
+`withMcpMethods()` returns a plugin callback that augments and returns the consuming Elysia instance.
+Pass it to `.use()` on either supported Elysia version.
 
 ```ts
 new Elysia()

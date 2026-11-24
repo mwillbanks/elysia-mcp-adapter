@@ -104,6 +104,9 @@ Keep Better Auth's authorization-server routes mounted according to its Elysia i
 
 Elysia's bearer plugin extracts the bearer value into route context. It does **not** validate the credential, so validate it in a hook or guard before protected handlers execute.
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 import { bearer } from "@elysiajs/bearer";
 import { Elysia } from "elysia";
@@ -121,6 +124,34 @@ const app = new Elysia()
     detail: { operationId: "account.me" },
   });
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+import { bearer } from "@elysia/bearer";
+import { Elysia } from "elysia";
+
+const app = new Elysia()
+  .use(bearer())
+  .use(mcp())
+  .onBeforeHandle(async ({ bearer, status }) => {
+    if (!bearer) return status(401);
+
+    const principal = await verifyAccessToken(bearer);
+    if (!principal) return status(401);
+  })
+  .get(
+    "/me",
+    {
+      detail: { operationId: "account.me" },
+    },
+    ({ bearer }) => loadProfile(bearer),
+  );
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 The default `authorization` pass-through is sufficient for route-backed tools. If you replace the defaults, retain it explicitly:
 

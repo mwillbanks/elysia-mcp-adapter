@@ -12,6 +12,7 @@ const excluded = 'intent-fixture-excluded#sample'
 const unlisted = 'intent-fixture-unlisted#sample'
 const skillDirectory = `skills/${skill}`
 const referenceFiles = [
+  'references/elysia-migration.md',
   'references/extensions.md',
   'references/route-exposure.md',
   'references/standalone-primitives.md',

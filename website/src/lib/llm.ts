@@ -1,3 +1,5 @@
+import { versionedExamplesMarkdown } from "./elysia-version";
+
 export interface LLMPage {
   data: {
     getText(type: "processed"): Promise<string>;
@@ -25,7 +27,7 @@ export function withBasePathInMarkdown(markdown: string, basePath: string): stri
 }
 
 export async function getLLMText(page: LLMPage, basePath: string): Promise<string> {
-  const processed = (await page.data.getText("processed")).replace(
+  const processed = versionedExamplesMarkdown(await page.data.getText("processed")).replace(
     "<ExtensionSupportTable />",
     getExtensionSupportMarkdown(),
   );

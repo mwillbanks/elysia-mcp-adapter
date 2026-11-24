@@ -1,4 +1,5 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
+import { ElysiaVersionSelector } from "@/components/elysia-version";
 import { Brand } from "@/components/brand";
 import { GithubRepositoryInfo } from "@/components/github-repository-info";
 import { gitConfig } from "./shared";
@@ -8,6 +9,7 @@ export function baseOptions(): BaseLayoutProps {
   return {
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
     links: [
+      { type: "custom", children: <ElysiaVersionSelector /> },
       {
         type: "custom",
         children: (

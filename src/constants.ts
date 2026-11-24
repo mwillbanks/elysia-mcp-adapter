@@ -1,5 +1,4 @@
-import type { HTTPMethod } from 'elysia'
-import type { NormalizedMcpPluginOptions } from './types.js'
+import type { McpRouteOperation, NormalizedMcpPluginOptions } from './types.js'
 
 export const MCP_STATE_SYMBOL = Symbol.for('@mwillbanks/elysia-mcp-adapter.state')
 
@@ -31,7 +30,13 @@ export const INTERNAL_EXCLUDED_ROUTES = [
   '/scalar/*'
 ] as const
 
-export const DEFAULT_HTTP_METHODS: HTTPMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+export const DEFAULT_HTTP_METHODS: McpRouteOperation['method'][] = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE'
+]
 
 export const DEFAULT_PASS_THROUGH_HEADERS = ['authorization', 'cookie', 'x-api-key']
 export const DEFAULT_ALLOW_TOOL_INPUT_HEADERS: string[] = []

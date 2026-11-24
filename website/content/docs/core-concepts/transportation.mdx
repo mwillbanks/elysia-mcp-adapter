@@ -64,6 +64,9 @@ The internal route still sees an ordinary `Request`; existing Elysia authenticat
 
 Install Elysia's OpenTelemetry plugin and register it before the routes you want to observe:
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 import { opentelemetry } from "@elysiajs/opentelemetry";
 import { mcp } from "@mwillbanks/elysia-mcp-adapter";
@@ -76,6 +79,29 @@ const app = new Elysia()
     detail: { operationId: "reports.get" },
   });
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+import { opentelemetry } from "@elysia/opentelemetry";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { Elysia } from "elysia";
+
+const app = new Elysia()
+  .use(opentelemetry())
+  .use(mcp())
+  .get(
+    "/reports/:id",
+    {
+      detail: { operationId: "reports.get" },
+    },
+    ({ params }) => ({ id: params.id }),
+  );
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 No adapter-specific telemetry setup is required. Because route-backed tools call `app.handle()`, Elysia's OpenTelemetry plugin observes the internal request and groups its lifecycle spans just like an HTTP request. Name important hooks so trace waterfalls are readable, and use Elysia's `record`, `getCurrentSpan`, or `setAttributes` APIs when a route needs custom spans or attributes.
 

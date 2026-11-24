@@ -1,4 +1,4 @@
-import type { Elysia, HTTPMethod, InternalRoute } from 'elysia'
+import type { Elysia } from 'elysia'
 import type { McpActionMetadata, McpTrustAnnotations } from './extensions/annotations/index.js'
 import type {
   McpAppsProtocolVersionSelector,
@@ -46,7 +46,10 @@ import type { McpInvocationInput } from './transport/input.js'
 import type { McpLanguageOptions, NormalizedMcpLanguageOptions } from './transport/language.js'
 import type { McpInvocationNotify } from './transport/notifications.js'
 
-export type AnyElysiaApp = Elysia<any, any, any, any, any, any, any>
+export type AnyElysiaApp = typeof Elysia.prototype
+
+type ElysiaRoute = AnyElysiaApp['routes'][number]
+type HTTPMethod = ElysiaRoute['method']
 
 export type JsonSchema = Record<string, unknown>
 
@@ -500,7 +503,7 @@ export interface McpSchemaMapContext {
 
 export interface McpRouteOperation {
   app: AnyElysiaApp
-  route: InternalRoute
+  route: ElysiaRoute
   method: HTTPMethod
   path: string
   hooks: Record<string, unknown>

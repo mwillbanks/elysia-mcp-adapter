@@ -1,5 +1,31 @@
 # Events extension example
 
+## Elysia versions
+
+The existing project runs with Elysia `1.4.32`. Both versions use the shared [server](./server.ts) and [webhook server](./webhook-server.ts).
+
+Run the Elysia 1 project from the repository root:
+
+```sh
+bun run examples:setup
+bun run build
+bun run --cwd examples/events build
+bun run --cwd examples/events typecheck
+bun run --cwd examples/events test
+bun run --cwd examples/events smoke
+```
+
+Run the same project with Elysia `2.0.0-rc.5`:
+
+```sh
+bun run examples:elysia2 -- events
+```
+
+The runner packs the adapter, stages shared sources with the Elysia 2 overlays in a temporary workspace,
+and runs build, type checks, tests, and smoke checks. It removes the workspace after completion.
+Use `--archive /absolute/path/adapter.tgz` to reuse an existing adapter archive.
+See the [Elysia 2 examples guide](../elysia-2/README.md) for requirements and migration details.
+
 This Bun workspace demonstrates the pinned experimental Events revision with `events/list`, replay polling, event-only POST SSE, and the adapter's complete webhook lifecycle. Its authenticated integration subscribes through JSON-RPC, completes a signed HTTPS challenge, receives signed events, refreshes with dual-secret rotation, restarts the adapter in another Bun process, recovers delivery from SQLite, and unsubscribes with the original tuple.
 
 The event source uses an explicit bounded in-memory history. Producers publish stable occurrences; handlers replay retained occurrences from epoch-and-sequence cursors without creating events during polling. Fresh `null` starts at the current head. Evicted or prior-process epochs return a truncated gap. Applications needing replay across server restarts must persist event history separately from webhook subscription records.

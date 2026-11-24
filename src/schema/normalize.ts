@@ -75,17 +75,32 @@ export function emptyObjectSchema(): JsonSchema {
 }
 
 export function schemaRequiredKeys(schema: JsonSchema | undefined): string[] {
-  const required = schema?.required
-  return Array.isArray(required)
-    ? required.filter((value): value is string => typeof value === 'string')
+  const required = Array.isArray(schema?.required)
+    ? schema.required.filter((value): value is string => typeof value === 'string')
     : []
+  for (const child of allOfSchemas(schema)) required.push(...schemaRequiredKeys(child))
+  return [...new Set(required)]
 }
 
 export function objectSchemaProperties(schema: JsonSchema | undefined): Record<string, unknown> {
   const properties = schema?.properties
-  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
-    return properties as Record<string, unknown>
+  const result: Record<string, unknown> =
+    properties && typeof properties === 'object' && !Array.isArray(properties)
+      ? { ...(properties as Record<string, unknown>) }
+      : {}
+  for (const child of allOfSchemas(schema)) {
+    for (const [key, property] of Object.entries(objectSchemaProperties(child))) {
+      result[key] = key in result ? { allOf: [result[key], property] } : property
+    }
   }
+  return result
+}
 
-  return {}
+function allOfSchemas(schema: JsonSchema | undefined): JsonSchema[] {
+  return Array.isArray(schema?.allOf)
+    ? schema.allOf.filter(
+        (child): child is JsonSchema =>
+          child !== null && typeof child === 'object' && !Array.isArray(child)
+      )
+    : []
 }

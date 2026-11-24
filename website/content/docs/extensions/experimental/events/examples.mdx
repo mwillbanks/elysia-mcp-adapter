@@ -15,3 +15,14 @@ bun --bun run --cwd examples/events smoke
 ```
 
 The [server](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events/server.ts) registers the extension and an event source. The [README](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events/README.md) explains cursor recovery, webhook ownership, callback verification, and the fixture's limits.
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- events
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+The runner shares this project's source, clients, and providers across both Elysia versions.

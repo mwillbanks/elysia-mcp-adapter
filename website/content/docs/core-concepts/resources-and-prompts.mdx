@@ -30,6 +30,9 @@ Use URI templates for parameterized data:
 
 ## Route-backed resources
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 .get('/users/:id/profile', getProfile, {
   params: t.Object({ id: t.String() }),
@@ -42,6 +45,25 @@ Use URI templates for parameterized data:
   }
 })
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+.get('/users/:id/profile', {
+  params: t.Object({ id: t.String() }),
+  mcp: {
+    kind: 'resource',
+    resource: {
+      uriTemplate: 'users://{id}/profile',
+      mimeType: 'application/json'
+    }
+  }
+}, getProfile)
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 Template variables map to route params by default. Supply `mapUriToInput` when the route expects query or body values instead.
 
