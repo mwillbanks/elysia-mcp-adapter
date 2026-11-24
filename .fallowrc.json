@@ -25,6 +25,8 @@
     "scripts/check-extension-drift.ts",
     "scripts/check-elysia2-examples.ts",
     "scripts/check-packed-consumer.ts",
+    "scripts/check-run-bun-timeout.ts",
+    "scripts/run-bun-windows.ts",
     "scripts/verify-app-build.ts"
   ],
   "ignorePatterns": ["website/**", "examples/elysia-2/**"],

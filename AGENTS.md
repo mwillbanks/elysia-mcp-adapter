@@ -25,6 +25,11 @@ bun run fallow     # dead code + duplication gate
 bun run build      # TypeScript 7 ESM + d.ts output
 ```
 
+Keep CI on one Ubuntu runner with the default Bun toolchain. Do not add OS, runtime,
+compiler, or Elysia-version matrices. Run the Elysia 2 examples and alternate packed
+peer checks on demand. The process timeout regression is local-only
+(`bun scripts/check-run-bun-timeout.ts`).
+
 Commits are validated by husky: `commit-msg` runs commitlint (Conventional Commits) and
 `pre-commit` runs bun fmt on staged files. Releases are automated by release-please
 (`.github/workflows/release.yml`) from Conventional Commit history.

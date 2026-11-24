@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 async function readOutput(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder()
   let output = ''
@@ -24,6 +26,15 @@ function terminateProcess(
   }
 }
 
+function commandForPlatform(command: string[], processGroup: boolean): string[] {
+  if (processGroup) return command
+  return [
+    process.execPath,
+    fileURLToPath(new URL('./run-bun-windows.ts', import.meta.url)),
+    ...command
+  ]
+}
+
 export async function runBun(
   arguments_: string[],
   cwd: string,
@@ -31,7 +42,7 @@ export async function runBun(
   timeoutMs = 180_000
 ): Promise<string> {
   const processGroup = process.platform !== 'win32'
-  const child = Bun.spawn([executable, ...arguments_], {
+  const child = Bun.spawn(commandForPlatform([executable, ...arguments_], processGroup), {
     cwd,
     detached: processGroup,
     stdout: 'pipe',
@@ -48,10 +59,6 @@ export async function runBun(
       timedOut = true
       try {
         terminateProcess(child, processGroup)
-        // Windows cannot terminate a process group; descendants may retain these pipes.
-        if (!processGroup) {
-          void Promise.allSettled([stdoutReader.cancel(), stderrReader.cancel()])
-        }
       } catch (error) {
         let cause = error
         try {

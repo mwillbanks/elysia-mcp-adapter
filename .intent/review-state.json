@@ -617,14 +617,19 @@
       ]
     },
     "source:.fallowrc.json": {
-      "fingerprint": "0b6e42f2dae7f9ec0bbf5115f2b75cb7bb871680df841ddd2264b909132462b3",
+      "fingerprint": "0bc550fb253a39b26a1bd848f2152ba9a135506b5f2d44e5f49b6bb4f6b55e6f",
       "snapshot": {
-        ".fallowrc.json": "d22de15b5268bd56590527e00cc0f453de49d1a204fabe851f25ea2e2cc86842"
+        ".fallowrc.json": "d881ff0f32572cf485f631f6e5b9683bb4cf41c6c99d1bd47ba7ca123fc3f3a4"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "head": "136b075475debe40091e04e128696eb983e84409",
       "outcome": "no-change",
-      "reason": "Runner entrypoint and overlay exclusions affect repository analysis, not consumer guidance; migration reference already links runnable projects.",
-      "evidence": [".fallowrc.json", "skills/elysia-mcp-adapter/references/elysia-migration.md"]
+      "reason": "The analysis entries identify the local timeout regression and Windows process launcher.",
+      "evidence": [
+        ".fallowrc.json",
+        "AGENTS.md",
+        "scripts/check-run-bun-timeout.ts",
+        "scripts/run-bun-windows.ts"
+      ]
     },
     "source:examples/apps-react/README.md": {
       "fingerprint": "b0a77368d9b524d37dbb3a40bd5210b3537189a4452fa41596e9b862d0435912",

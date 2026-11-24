@@ -1,14 +1,14 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { verifyPackedIntent } from './check-packed-intent'
+import { verifyPackedIntent } from './check-packed-intent.js'
 import {
   aotBuildSource,
   aotConsumerSource,
   benchmarkSource,
   buildCompatibilitySource
-} from './elysia-compat-consumer'
-import { runBun as run } from './run-bun'
+} from './elysia-compat-consumer.js'
+import { runBun as run } from './run-bun.js'
 
 const workspace = resolve(import.meta.dir, '..')
 const qualifiedPeers = ['1.4.0', '1.4.32', '2.0.0-rc.5'] as const
@@ -17,6 +17,7 @@ const temporary = mkdtempSync(join(tmpdir(), 'elysia-mcp-packed-'))
 
 async function main(): Promise<void> {
   try {
+    const elysia = selectedPeer(process.argv.slice(2).filter((entry) => entry !== '--'))
     await verifyNoGitPrepare()
     await run(['pm', 'pack', '--destination', temporary], workspace)
     await verifyStaticNodeCompatibility()
@@ -24,20 +25,18 @@ async function main(): Promise<void> {
     if (!archive) throw new Error('Bun pack did not create an archive')
     const packageArchive = join(temporary, archive)
     await verifyPackedIntent(packageArchive)
-    for (const elysia of selectedPeers(process.argv.slice(2).filter((entry) => entry !== '--'))) {
-      await verifyConsumer(packageArchive, elysia)
-    }
+    await verifyConsumer(packageArchive, elysia)
   } finally {
     rmSync(temporary, { recursive: true, force: true })
   }
 }
 
-function selectedPeers(requested: string[]): readonly QualifiedPeer[] {
-  if (requested.length === 0) return qualifiedPeers
-  const selection = qualifiedPeers.filter((peer) => requested.includes(peer))
-  if (selection.length !== requested.length)
-    throw new Error(`Choose distinct Elysia versions from ${qualifiedPeers.join(', ')}`)
-  return selection
+function selectedPeer(requested: string[]): QualifiedPeer {
+  if (requested.length === 0) return '1.4.32'
+  const peer = qualifiedPeers.find((version) => version === requested[0])
+  if (!peer || requested.length !== 1)
+    throw new Error(`Choose one Elysia version from ${qualifiedPeers.join(', ')}`)
+  return peer
 }
 
 async function verifyNoGitPrepare(): Promise<void> {
@@ -119,9 +118,7 @@ async function verifyConsumer(archive: string, elysia: QualifiedPeer): Promise<v
   await run(['install', '--ignore-scripts', '--linker', 'hoisted'], directory)
   await run(['--bun', 'node_modules/typescript/bin/tsc', '--noEmit'], directory)
   await run(['consumer.ts'], directory)
-  await run(['consumer.ts'], directory, 'node')
   if (peerFloor) return
-  await run(['--bun', 'node_modules/ts5/bin/tsc', '--noEmit'], directory)
   if (version === '2') await verifyReleaseCandidate(directory)
   await verifyIntegrations(directory)
 }
@@ -148,7 +145,6 @@ async function stageConsumer(
           '@types/bun': '1.4.3',
           '@types/node': '24.13.2',
           '@sinclair/typebox': '0.34.52',
-          ts5: 'npm:typescript@5.8.3',
           typescript: '7.0.2'
         }
       },
@@ -174,7 +170,6 @@ async function stageConsumer(
 
 async function verifyIntegrations(directory: string): Promise<void> {
   await run(['compatibility.ts'], directory)
-  await run(['compatibility.ts'], directory, 'node')
   if (process.env.NODE_ENV === 'production' && process.env.ELYSIA_COMPAT_BENCHMARK) {
     await Bun.write(join(directory, 'benchmark.ts'), benchmarkSource)
     console.log(await run(['benchmark.ts'], directory))
