@@ -3,11 +3,11 @@
   "baseline": "32721f89f69c642946a6ec0e37f57f95dd8e8351",
   "items": {
     "skill:skills/elysia-mcp-adapter/SKILL.md": {
-      "fingerprint": "39e2761350f7bc82c7150d43f5faa76a0aa08a0ba2b61e1e4a01e953dfbe3914",
+      "fingerprint": "78033fd6ea59e004c0c4ad94db20bfb8dfe86b1c003497c70ee603c22d719c7f",
       "snapshot": {
         "README.md": "be6f80c83e1113345f8716b1bee9f0c916895365197a084c4ba5daf789bed098",
         "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md": "b3df49ca1391cda94d51c17fb858f59afff9062c85868c8cc69837a722676bab",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "f6ca6a91140fe1b6a6bff6da209516c01977055bc70118c859197f80893834ea",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
@@ -33,14 +33,14 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "a5deb2fc4f59ec3239b33d2e90e57e127e4696e32f6c9d657d9eea6c2fa3d741",
+      "fingerprint": "5bdae1763626b99feb9850ec814e261f3ca17ba6a4101bf598d6114ce277afae",
       "snapshot": {
         "README.md": "be6f80c83e1113345f8716b1bee9f0c916895365197a084c4ba5daf789bed098",
         "_artifacts/domain_map.yaml": "dbb5cdc3591471f1173fc450bedeafb9eea1970c2a23c6b868506b5ad41bfb8a",
         "_artifacts/skill_spec.md": "f1327a2223272e832fdfe658f08ff5aedd9002031f079ab995b6924ea939791b",
         "_artifacts/skill_tree.yaml": "2ebe6442fb00754e6c8957457befa0f9a6bcd4314c9ebb50fe58570ffc4bc90e",
         "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md": "b3df49ca1391cda94d51c17fb858f59afff9062c85868c8cc69837a722676bab",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "f6ca6a91140fe1b6a6bff6da209516c01977055bc70118c859197f80893834ea",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
         "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
