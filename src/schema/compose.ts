@@ -1,3 +1,4 @@
+import { isRecord } from '../internal.js'
 import { routeSchemaSources } from '../route-inspector.js'
 import type {
   JsonSchema,
@@ -7,6 +8,7 @@ import type {
 } from '../types.js'
 import {
   emptyObjectSchema,
+  needsSchemaReferenceScope,
   normalizeJsonSchema,
   objectSchemaProperties,
   schemaRequiredKeys
@@ -116,27 +118,13 @@ function normalizeRouteInputSchema(
     schemas.flatMap((schema) => Object.keys(objectSchemaProperties(schema)).map((key) => [key, {}]))
   )
   return {
-    ...(schemas.some(requiresObject) ? { type: 'object' } : {}),
+    ...(schemas.some((schema) => schema.type === 'object') ? { type: 'object' } : {}),
     allOf: schemas.map((schema) =>
       schema.additionalProperties === false
         ? { ...schema, properties: { ...properties, ...(schema.properties as object) } }
         : schema
     )
   }
-}
-
-function requiresObject(schema: JsonSchema): boolean {
-  return (
-    schema.type === 'object' ||
-    (Array.isArray(schema.allOf) &&
-      schema.allOf.some(
-        (branch) =>
-          branch !== null &&
-          typeof branch === 'object' &&
-          !Array.isArray(branch) &&
-          requiresObject(branch as JsonSchema)
-      ))
-  )
 }
 
 export function composeRouteOutputSchema(
@@ -259,34 +247,157 @@ function composeFlattenedInputSchema(parts: {
 }): JsonSchema {
   const properties: Record<string, unknown> = {}
   const required = new Set<string>()
+  const definitions: Record<string, JsonSchema> = {}
 
-  for (const schema of [parts.params, parts.query, parts.body]) {
+  for (const [slot, schema] of Object.entries(parts)) {
     if (!schema) continue
 
     if (isFlattenedObjectSchema(schema)) {
-      for (const [key, property] of Object.entries(objectSchemaProperties(schema))) {
-        Object.defineProperty(properties, key, {
-          value: property,
-          enumerable: true,
-          configurable: true,
-          writable: true
-        })
-      }
+      const referencePath = preserveFlatSchemaScope(schema, slot, definitions)
+      addFlatProperties(properties, objectSchemaProperties(schema, referencePath))
       for (const key of schemaRequiredKeys(schema)) required.add(key)
     } else {
-      properties.value = schema
+      properties.value = needsSchemaReferenceScope(schema) ? scopeFlatSchema(schema, slot) : schema
       required.add('value')
     }
   }
 
+  return finalizeFlatSchema(properties, required, definitions)
+}
+
+function finalizeFlatSchema(
+  properties: Record<string, unknown>,
+  required: Set<string>,
+  definitions: Record<string, JsonSchema>
+): JsonSchema {
   if (Object.keys(properties).length === 0) return emptyObjectSchema()
 
-  return {
+  const hasDefinitions = Object.keys(definitions).length > 0
+  const result: JsonSchema = {
     type: 'object',
+    ...(hasDefinitions ? { $defs: definitions } : {}),
     properties,
     required: required.size > 0 ? Array.from(required) : undefined,
     additionalProperties: false
   }
+  return hasDefinitions || needsSchemaReferenceScope(properties.value)
+    ? isolateFlatSchemaResources(result)
+    : result
+}
+
+function addFlatProperties(target: Record<string, unknown>, source: Record<string, unknown>): void {
+  for (const [key, property] of Object.entries(source)) {
+    Object.defineProperty(target, key, {
+      value: property,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    })
+  }
+}
+
+const flatSchemaBase = 'https://elysia.internal/mcp/flat-input/'
+
+function preserveFlatSchemaScope(
+  schema: JsonSchema,
+  slot: string,
+  definitions: Record<string, JsonSchema>
+): string | undefined {
+  if (!needsSchemaReferenceScope(schema)) return undefined
+  // Keep property references in the original resource, including layer-local definitions.
+  definitions[slot] = scopeFlatSchema(schema, slot)
+  return `#/$defs/${slot}`
+}
+
+function scopeFlatSchema(schema: JsonSchema, slot: string): JsonSchema {
+  return typeof schema.$id === 'string' ? schema : { ...schema, $id: `${flatSchemaBase}${slot}/` }
+}
+
+const schemaMaps = new Set([
+  '$defs',
+  'definitions',
+  'properties',
+  'patternProperties',
+  'dependentSchemas',
+  'dependencies'
+])
+const schemaArrays = new Set(['allOf', 'anyOf', 'oneOf', 'prefixItems', 'items'])
+const schemaValues = new Set([
+  'items',
+  'additionalItems',
+  'unevaluatedItems',
+  'contains',
+  'additionalProperties',
+  'unevaluatedProperties',
+  'propertyNames',
+  'not',
+  'if',
+  'then',
+  'else',
+  'contentSchema'
+])
+
+type VisitSchemaId = (declared: string, resolved: URL) => string | undefined
+
+function isolateFlatSchemaResources(schema: JsonSchema): JsonSchema {
+  const reserved = new Set<string>()
+  let hasCopies = false
+  mapFlatSchemaResources(schema, flatSchemaBase, (_declared, id) => {
+    if (reserved.has(id.href)) hasCopies = true
+    reserved.add(id.href)
+    return undefined
+  })
+  if (!hasCopies) return schema
+
+  const seen = new Set<string>()
+  return mapFlatSchemaResources(schema, flatSchemaBase, (declared, id) =>
+    renameFlatSchemaResourceCopy(declared, id, seen, reserved)
+  )
+}
+
+function mapFlatSchemaResources(value: JsonSchema, base: string, visit: VisitSchemaId): JsonSchema {
+  const declared = typeof value.$id === 'string' ? value.$id : undefined
+  const id = declared === undefined ? null : URL.parse(declared, base)
+  const replacement = declared !== undefined && id ? visit(declared, id) : undefined
+  const resource = replacement === undefined ? value : { ...value, $id: replacement }
+  const embed = (child: unknown): unknown =>
+    isRecord(child) ? mapFlatSchemaResources(child, id?.href ?? base, visit) : child
+  return Object.fromEntries(
+    Object.entries(resource).map(([key, child]) => [key, embedFlatSchemaChild(key, child, embed)])
+  )
+}
+
+function embedFlatSchemaChild(
+  key: string,
+  child: unknown,
+  embed: (value: unknown) => unknown
+): unknown {
+  if (schemaArrays.has(key) && Array.isArray(child)) return child.map(embed)
+  if (schemaMaps.has(key) && isRecord(child)) {
+    return Object.fromEntries(Object.entries(child).map(([name, value]) => [name, embed(value)]))
+  }
+  return schemaValues.has(key) ? embed(child) : child
+}
+
+function renameFlatSchemaResourceCopy(
+  declared: string,
+  id: URL,
+  seen: Set<string>,
+  reserved: Set<string>
+): string | undefined {
+  if (!seen.has(id.href)) {
+    seen.add(id.href)
+    return undefined
+  }
+
+  // Preserve relative reference paths and leave the copy at its original JSON Pointer.
+  // The first resource keeps the declared identifier for references from other slots.
+  let index = seen.size
+  do {
+    id.searchParams.set('elysia-mcp-copy', String(index++))
+  } while (reserved.has(id.href))
+  reserved.add(id.href)
+  return `${declared.split(/[?#]/, 1)[0]}${id.search}${id.hash}`
 }
 
 function normalizeResponseSchema(

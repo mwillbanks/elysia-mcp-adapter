@@ -52,32 +52,210 @@ test('composes closed object layers without rejecting sibling properties', () =>
 })
 
 test('retains overlapping constraints and layer reference scopes', () => {
-  const schema = layeredSchema(
-    {
-      $id: 'https://example.test/direct-layer',
-      $defs: { value: { type: 'string', minLength: 3 } },
-      type: 'object',
-      properties: { value: { $ref: '#/$defs/value' }, direct: { type: 'boolean' } },
-      required: ['value', 'direct'],
-      additionalProperties: false
-    },
-    {
-      $id: 'https://example.test/inherited-layer',
-      $defs: { value: { type: 'string', pattern: '^a' } },
-      type: 'object',
-      properties: { value: { $ref: '#/$defs/value' }, inherited: { type: 'boolean' } },
-      required: ['value', 'inherited'],
-      additionalProperties: false
-    }
-  )
-  expect(
-    validateJsonSchema(schema, { query: { value: 'abc', direct: true, inherited: true } }).ok
-  ).toBe(true)
-  for (const value of ['ab', 'xyz']) {
-    expect(validateJsonSchema(schema, { query: { value, direct: true, inherited: true } }).ok).toBe(
-      false
-    )
+  const direct = {
+    $id: 'https://example.test/direct-layer',
+    $defs: { value: { type: 'string', minLength: 3 } },
+    type: 'object',
+    properties: { value: { $ref: '#/$defs/value' }, direct: { type: 'boolean' } },
+    required: ['value', 'direct'],
+    additionalProperties: false
   }
+  const inherited = {
+    $id: 'https://example.test/inherited-layer',
+    $defs: { value: { type: 'string', pattern: '^a' } },
+    type: 'object',
+    properties: { value: { $ref: '#/$defs/value' }, inherited: { type: 'boolean' } },
+    required: ['value', 'inherited'],
+    additionalProperties: false
+  }
+  const envelope = layeredSchema(direct, inherited)
+  const flat = composeRouteInputSchema(
+    operation({ query: direct, schemas: [{ query: inherited }] }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  const fields = { value: 'abc', direct: true, inherited: true }
+  expect(validateJsonSchema(envelope, { query: fields }).ok).toBe(true)
+  expect(validateJsonSchema(flat, fields).ok).toBe(true)
+  for (const value of ['ab', 'xyz']) {
+    const invalid = { ...fields, value }
+    expect(validateJsonSchema(envelope, { query: invalid }).ok).toBe(false)
+    expect(validateJsonSchema(flat, invalid).ok).toBe(false)
+  }
+})
+
+test('preserves local references without an explicit id and encodes projected property pointers', () => {
+  const key = 'path/item ~ label'
+  const body = {
+    type: 'object',
+    $defs: { value: { type: 'string', minLength: 3 } },
+    properties: { [key]: { $ref: '#/$defs/value' } },
+    required: [key]
+  }
+  const schema = composeRouteInputSchema(
+    operation({ body }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { [key]: 'okay' }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { [key]: 'no' }).ok).toBe(false)
+})
+
+test('shares identical named reference resources across flattened slots', () => {
+  const shared = {
+    type: 'object',
+    $id: 'https://example.test/shared-slot',
+    $defs: { value: { type: 'string', minLength: 3 } },
+    properties: { value: { $ref: '#/$defs/value' } },
+    required: ['value']
+  }
+  const extra = { type: 'object', properties: { page: { type: 'string' } } }
+  for (const hooks of [
+    { query: shared, body: shared },
+    { query: shared, body: shared, schemas: [{ query: extra }] },
+    { query: shared, body: shared, schemas: [{ body: extra }] },
+    { query: shared, body: shared, schemas: [{ query: extra, body: extra }] }
+  ]) {
+    const schema = composeRouteInputSchema(
+      operation(hooks),
+      'tool',
+      normalizeOptions({ inputMode: 'flatten' })
+    )
+    expect(validateJsonSchema(schema, { value: 'okay' }).ok).toBe(true)
+    expect(validateJsonSchema(schema, { value: 'no' }).ok).toBe(false)
+  }
+})
+
+test('reserves declared identifiers before allocating repeated resource IDs', () => {
+  const id = 'https://example.test/duplicate'
+  const named = { $id: id, type: 'string', minLength: 3 }
+  const target = { $id: `${id}?elysia-mcp-copy=2`, type: 'number', minimum: 3 }
+  const query = {
+    $id: 'https://example.test/query',
+    type: 'object',
+    $defs: { first: named, second: named, target },
+    properties: { count: { $ref: target.$id } },
+    required: ['count']
+  }
+  const schema = composeRouteInputSchema(
+    operation({ query }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { count: 3 }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { count: 'okay' }).ok).toBe(false)
+})
+
+test('isolates resources shared by object and value slots in the same input', () => {
+  const shared = { $id: 'https://example.test/shared-value', type: 'string', minLength: 3 }
+  const query = {
+    type: 'object',
+    $defs: { name: shared },
+    properties: { name: { $ref: shared.$id } },
+    required: ['name']
+  }
+  const body = { anyOf: [shared, { type: 'number' }] }
+  const schema = composeRouteInputSchema(
+    operation({ query, body }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { name: 'okay', value: 'okay' }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', value: 3 }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', value: 'no' }).ok).toBe(false)
+})
+
+test('retains separate local scopes for repeated relative resource IDs', () => {
+  const query = {
+    $id: 'shared.json',
+    type: 'object',
+    $defs: { value: { type: 'string', minLength: 3 } },
+    properties: { name: { $ref: '#/$defs/value' } },
+    required: ['name']
+  }
+  const body = {
+    $id: 'shared.json',
+    type: 'object',
+    $defs: { value: { type: 'number', minimum: 3 } },
+    properties: { count: { $ref: '#/$defs/value' } },
+    required: ['count']
+  }
+  const schema = composeRouteInputSchema(
+    operation({ query, body }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { name: 'okay', count: 3 }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', count: 2 }).ok).toBe(false)
+  expect(validateJsonSchema(schema, { name: 'no', count: 3 }).ok).toBe(false)
+})
+
+test('preserves local pointers through multiple nested shared resources', () => {
+  const leaf = {
+    $id: 'https://example.test/leaf',
+    type: 'object',
+    $defs: { name: { type: 'string', minLength: 3 } },
+    properties: { name: { $ref: '#/$defs/name' } },
+    required: ['name']
+  }
+  const parent = { $id: 'https://example.test/parent', type: 'object', allOf: [leaf] }
+  const query = {
+    type: 'object',
+    $defs: { leaf },
+    allOf: [parent],
+    properties: { copy: { $ref: '#/allOf/0/allOf/0/properties/name' } },
+    required: ['copy']
+  }
+  const schema = composeRouteInputSchema(
+    operation({ query, body: parent }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { name: 'okay', copy: 'okay' }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', copy: 'no' }).ok).toBe(false)
+})
+
+test('preserves named resources referenced from a different flattened slot', () => {
+  const id = 'https://example.test/shared-target'
+  const query = {
+    $id: id,
+    type: 'object',
+    properties: { name: { type: 'string', minLength: 3 } },
+    required: ['name']
+  }
+  const body = {
+    type: 'object',
+    properties: { copy: { $ref: `${id}#/properties/name` } },
+    required: ['copy']
+  }
+  const schema = composeRouteInputSchema(
+    operation({ query, body }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { name: 'okay', copy: 'okay' }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', copy: 'no' }).ok).toBe(false)
+})
+
+test('keeps application values with schema-like keys intact while embedding resources', () => {
+  const data = { $id: 'https://example.test/data', kind: 'value' }
+  const body = {
+    type: 'object',
+    $defs: { name: { type: 'string' } },
+    properties: {
+      name: { $ref: '#/$defs/name' },
+      left: { const: data },
+      right: { enum: [data] }
+    },
+    required: ['name', 'left', 'right']
+  }
+  const schema = composeRouteInputSchema(
+    operation({ body }),
+    'tool',
+    normalizeOptions({ inputMode: 'flatten' })
+  )
+  expect(validateJsonSchema(schema, { name: 'okay', left: data, right: data }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { name: 'okay', left: data, right: {} }).ok).toBe(false)
 })
 
 test('preserves constructor and prototype-named schema properties as own data', () => {
@@ -199,6 +377,24 @@ test('preserves scalar semantics of properties-only layers without forcing objec
       value: slot
     })
   }
+})
+
+test('keeps nested object constraints in a layered value wrapper', () => {
+  const nested = {
+    allOf: [
+      {
+        type: 'object',
+        properties: { name: { type: 'string' }, alias: { type: 'string' } },
+        maxProperties: 1
+      }
+    ]
+  }
+  const route = operation({ body: nested, schemas: [{ body: {} }] })
+  const options = normalizeOptions({ inputMode: 'flatten' })
+  const schema = composeRouteInputSchema(route, 'tool', options)
+  expect(validateJsonSchema(schema, { value: { name: 'okay' } }).ok).toBe(true)
+  expect(validateJsonSchema(schema, { value: { name: 'okay', alias: 'other' } }).ok).toBe(false)
+  expect(validateJsonSchema(schema, { name: 'okay', alias: 'other' }).ok).toBe(false)
 })
 
 test('shares cached mapped slot schemas and their advertised wrapping with invocation', () => {

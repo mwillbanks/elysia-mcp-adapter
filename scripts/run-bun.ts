@@ -48,6 +48,10 @@ export async function runBun(
       timedOut = true
       try {
         terminateProcess(child, processGroup)
+        // Windows cannot terminate a process group; descendants may retain these pipes.
+        if (!processGroup) {
+          void Promise.allSettled([stdoutReader.cancel(), stderrReader.cancel()])
+        }
       } catch (error) {
         let cause = error
         try {

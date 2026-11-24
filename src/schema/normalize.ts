@@ -77,18 +77,18 @@ export function schemaRequiredKeys(schema: JsonSchema | undefined): string[] {
   const required = Array.isArray(schema?.required)
     ? schema.required.filter((value): value is string => typeof value === 'string')
     : []
-  for (const child of allOfSchemas(schema)) required.push(...schemaRequiredKeys(child))
+  for (const [, child] of allOfSchemas(schema)) required.push(...schemaRequiredKeys(child))
   return [...new Set(required)]
 }
 
-export function objectSchemaProperties(schema: JsonSchema | undefined): Record<string, unknown> {
-  const properties = schema?.properties
-  const result: Record<string, unknown> =
-    properties && typeof properties === 'object' && !Array.isArray(properties)
-      ? { ...(properties as Record<string, unknown>) }
-      : {}
-  for (const child of allOfSchemas(schema)) {
-    for (const [key, property] of Object.entries(objectSchemaProperties(child))) {
+export function objectSchemaProperties(
+  schema: JsonSchema | undefined,
+  referencePath?: string
+): Record<string, unknown> {
+  const result = ownSchemaProperties(schema, referencePath)
+  for (const [index, child] of allOfSchemas(schema)) {
+    const childPath = referencePath && `${referencePath}/allOf/${index}`
+    for (const [key, property] of Object.entries(objectSchemaProperties(child, childPath))) {
       Object.defineProperty(result, key, {
         value: Object.hasOwn(result, key) ? { allOf: [result[key], property] } : property,
         enumerable: true,
@@ -100,11 +100,35 @@ export function objectSchemaProperties(schema: JsonSchema | undefined): Record<s
   return result
 }
 
-function allOfSchemas(schema: JsonSchema | undefined): JsonSchema[] {
-  return Array.isArray(schema?.allOf)
-    ? schema.allOf.filter(
-        (child): child is JsonSchema =>
-          child !== null && typeof child === 'object' && !Array.isArray(child)
-      )
-    : []
+function ownSchemaProperties(
+  schema: JsonSchema | undefined,
+  referencePath: string | undefined
+): Record<string, unknown> {
+  const properties = schema?.properties
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
+  if (!referencePath) return { ...(properties as Record<string, unknown>) }
+  return Object.fromEntries(
+    Object.keys(properties).map((key) => {
+      const pointer = encodeURIComponent(key.replaceAll('~', '~0').replaceAll('/', '~1'))
+      return [key, { $ref: `${referencePath}/properties/${pointer}` }]
+    })
+  )
+}
+
+function allOfSchemas(schema: JsonSchema | undefined): Array<[number, JsonSchema]> {
+  if (!Array.isArray(schema?.allOf)) return []
+  return Array.from(schema.allOf.entries()).filter(
+    (entry): entry is [number, JsonSchema] =>
+      entry[1] !== null && typeof entry[1] === 'object' && !Array.isArray(entry[1])
+  )
+}
+
+export function needsSchemaReferenceScope(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false
+  return (
+    ('$id' in value && typeof value.$id === 'string') ||
+    ('$ref' in value && typeof value.$ref === 'string') ||
+    ('$dynamicRef' in value && typeof value.$dynamicRef === 'string') ||
+    Object.values(value).some(needsSchemaReferenceScope)
+  )
 }

@@ -11,6 +11,7 @@ import {
   withMcpMethods
 } from '../src/index.js'
 import { normalizeOptions } from '../src/options.js'
+import { listRouteOperations } from '../src/route-inspector.js'
 
 const request = new Request('http://localhost/mcp')
 const resourceUri = 'test://document'
@@ -81,6 +82,123 @@ test('public registry uses the applied plugin options and accepts an explicit ov
   })
   expect([...getMcpRegistry(app, override).tools.keys()]).toEqual(['override'])
   expect([...getMcpRegistry(app).tools.keys()]).toEqual(['configured'])
+})
+
+test('explicit route metadata replaces captures copied from previously registered hooks', () => {
+  const app = new Elysia().use(mcp())
+  const shared = { mcp: { name: 'first' } }
+  app.get('/capture-source', () => 'first', shared)
+  app.get('/capture-renamed', () => 'second', { ...shared, mcp: { name: 'second' } })
+  app.get('/capture-hidden', () => 'hidden', { ...shared, mcp: false })
+  app.get('/capture-auto', () => 'automatic')
+
+  const registry = getMcpRegistry(app)
+  expect([...registry.tools.keys()]).toEqual(['first', 'second', 'get.capture-auto'])
+  expect(getMcpRegistry(app)).toBe(registry)
+})
+
+test('copied exclusions can be replaced through route and scoped registrations', () => {
+  const app = new Elysia().use(mcp()).onAfterHandle(() => undefined)
+  const hidden = { mcp: false as const }
+  app.get('/route-hidden-source', () => 'hidden', hidden)
+  app.route('GET', '/route-visible', () => 'visible', { ...hidden, mcp: { name: 'route-visible' } })
+  app.guard({ mcp: false }, (guard) =>
+    guard.get('/guard-visible', () => 'visible', { mcp: { name: 'guard-visible' } })
+  )
+  app.group('/group', { mcp: false }, (group) =>
+    group.get('/visible', () => 'visible', { mcp: { name: 'group-visible' } })
+  )
+  app.use((parent) =>
+    parent.group('/outer', (group) => {
+      const shared = { mcp: { name: 'nested-first' } }
+      return group
+        .get('/first', () => 'first', shared)
+        .guard({ mcp: false }, (guard) =>
+          guard
+            .get('/second', () => 'second', { ...shared, mcp: { name: 'nested-second' } })
+            .get('/hidden', () => 'hidden', { ...shared, mcp: false })
+        )
+    })
+  )
+  const plugin = new Elysia().use(mcp())
+  const shared = { mcp: { name: 'plugin-first' } }
+  plugin.get('/plugin-first', () => 'first', shared)
+  plugin.get('/plugin-second', () => 'second', { ...shared, mcp: { name: 'plugin-second' } })
+  app.use(plugin)
+  app.guard({ mcp: false }).get('/global-visible', () => 'visible', {
+    mcp: { name: 'global-visible' }
+  })
+
+  const registry = getMcpRegistry(app)
+  expect([...registry.tools.keys()].sort()).toEqual([
+    'global-visible',
+    'group-visible',
+    'guard-visible',
+    'nested-first',
+    'nested-second',
+    'plugin-first',
+    'plugin-second',
+    'route-visible'
+  ])
+  expect(getMcpRegistry(app)).toBe(registry)
+})
+
+test('all native route entrypoints distinguish copied declarations from replay', () => {
+  const app = new Elysia().use(mcp())
+  const shared = { mcp: { name: 'entry-source' } }
+  app.get('/entry-source', () => 'source', shared)
+  for (const method of [
+    'get',
+    'post',
+    'put',
+    'patch',
+    'delete',
+    'options',
+    'all',
+    'head',
+    'connect'
+  ] as const) {
+    const register = app[method] as (
+      path: string,
+      handler: () => string,
+      hooks: { mcp: { name: string } }
+    ) => typeof app
+    expect(
+      register.call(app, '/entry-' + method, () => method, {
+        ...shared,
+        mcp: { name: 'entry-' + method }
+      })
+    ).toBe(app)
+  }
+  expect(
+    app.route('TRACE', '/entry-route', () => 'route', {
+      ...shared,
+      mcp: { name: 'entry-route' }
+    })
+  ).toBe(app)
+  expect(
+    app.ws('/entry-ws', {
+      ...shared,
+      mcp: { name: 'entry-ws' },
+      message() {}
+    })
+  ).toBe(app)
+
+  const operations = listRouteOperations(app).filter(({ path }) => path.startsWith('/entry-'))
+  expect(operations.map(({ mcp }) => mcp && mcp.name).sort()).toEqual([
+    'entry-all',
+    'entry-connect',
+    'entry-delete',
+    'entry-get',
+    'entry-head',
+    'entry-options',
+    'entry-patch',
+    'entry-post',
+    'entry-put',
+    'entry-route',
+    'entry-source',
+    'entry-ws'
+  ])
 })
 
 const routeCases = [
