@@ -5,7 +5,7 @@ license: MIT
 metadata:
   type: core
   library: '@mwillbanks/elysia-mcp-adapter'
-  library_version: '0.6.1' # x-release-please-version
+  library_version: '0.7.0' # x-release-please-version
 sources:
   - README.md
   - website/content/docs/getting-started/migration-elysia-2.mdx
