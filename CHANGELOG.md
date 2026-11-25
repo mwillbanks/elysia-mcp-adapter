@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.6.1...elysia-mcp-adapter-v0.7.0) (2026-11-25)
+
+
+### Features
+
+* **compatibility:** support Elysia 2 alongside Elysia 1 ([#20](https://github.com/mwillbanks/elysia-mcp-adapter/issues/20)) ([c4c5539](https://github.com/mwillbanks/elysia-mcp-adapter/commit/c4c55392af08d6adf300a25479e7fa502be74abf))
+
 ## [0.6.1](https://github.com/mwillbanks/elysia-mcp-adapter/compare/elysia-mcp-adapter-v0.6.0...elysia-mcp-adapter-v0.6.1) (2026-11-12)
 
 
