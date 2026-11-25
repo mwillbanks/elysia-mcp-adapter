@@ -1,8 +1,8 @@
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, onTestFinished, spyOn, test, vi } from 'bun:test'
 import { createHmac } from 'node:crypto'
 import Ajv2020Import from 'ajv/dist/2020.js'
 import addFormatsImport from 'ajv-formats'
-import { Elysia } from 'elysia'
+import { Elysia, t } from 'elysia'
 import {
   pollEvents,
   streamEvents,
@@ -28,6 +28,7 @@ import {
   deriveWebhookSubscriptionIdentity,
   encodeEventCursor,
   eventPrincipalKey,
+  getMcpRegistry,
   isGloballyRoutableAddress,
   MCP_EVENTS_CAPABILITY,
   MCP_EVENTS_REVISION,
@@ -149,6 +150,46 @@ describe('experimental events extension', () => {
       scheduledDelays: [2_147_483_647, 2_500],
       allowlistCalls: 2
     })
+  })
+
+  test('lists and polls registered events without discovering HTTP routes', async () => {
+    const name = 'com.example.independent'
+    let routeSchemaReads = 0
+    let polls = 0
+    const app = new Elysia()
+      .use(
+        mcp({
+          extensions: { events: { version: MCP_EVENTS_REVISION, cursor: { signingKey } } },
+          mapJsonSchema(schema, context) {
+            if (context.source === 'route' && context.schemaLocation === 'query') routeSchemaReads++
+            return schema
+          }
+        })
+      )
+      .get('/other-route', () => 'ok', { query: t.Object({ value: t.String() }) })
+      .mcpEvent(
+        {
+          name,
+          description: 'An independent event',
+          delivery: ['poll'],
+          inputSchema: { type: 'object' },
+          payloadSchema: { type: 'object' }
+        },
+        () => {
+          polls++
+          return { events: [], cursor: null }
+        }
+      )
+
+    const list = await eventRpc(app, 'events/list')
+    expect(list.body.result.events).toMatchObject([{ name }])
+    const poll = await eventRpc(app, 'events/poll', { name, arguments: {}, cursor: null })
+    expect(poll.body.result).toMatchObject({ resultType: 'complete', events: [] })
+    expect(polls).toBe(1)
+    expect(routeSchemaReads).toBe(0)
+
+    expect(getMcpRegistry(app).events.has(name)).toBe(true)
+    expect(routeSchemaReads).toBe(1)
   })
 
   test('validates every defined event wire contract against the pinned proposal fixture', () => {
@@ -1137,40 +1178,43 @@ describe('experimental events extension', () => {
   })
 
   test('bounds DNS resolution for pre-aborted and stalled webhook requests', async () => {
+    const createdAt = '2026-10-01T12:00:00Z'
+    onTestFinished(() => {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    })
+    vi.useFakeTimers({ now: new Date(createdAt) })
+
+    let resolutionStarted = deferred()
+    const resolveAddresses: typeof abortableWebhookResolver = (hostname, signal) => {
+      resolutionStarted.resolve()
+      return abortableWebhookResolver(hostname, signal)
+    }
+    const reachDeadline = async (milliseconds: number) => {
+      await resolutionStarted.promise
+      resolutionStarted = deferred()
+      vi.advanceTimersByTime(milliseconds - 1)
+      expect(vi.getTimerCount()).toBe(1)
+      vi.advanceTimersByTime(1)
+    }
+
     const endpoint = new URL('https://example.test/hook')
+    const requestTimeoutMs = 10
+    const networkOptions = {
+      requestTimeoutMs,
+      maxResponseBytes: 16,
+      allowPrivateAddresses: false,
+      resolveAddresses
+    }
     const preAborted = new AbortController()
     preAborted.abort()
     await expect(
-      postWebhook(
-        endpoint,
-        new Uint8Array(),
-        {},
-        {
-          requestTimeoutMs: 10,
-          maxResponseBytes: 16,
-          allowPrivateAddresses: false,
-          resolveAddresses: abortableWebhookResolver
-        },
-        preAborted.signal
-      )
-    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
+      postWebhook(endpoint, new Uint8Array(), {}, networkOptions, preAborted.signal)
+    ).rejects.toMatchObject({ reason: 'timeout' })
 
-    await expect(
-      within(
-        postWebhook(
-          endpoint,
-          new Uint8Array(),
-          {},
-          {
-            requestTimeoutMs: 10,
-            maxResponseBytes: 16,
-            allowPrivateAddresses: false,
-            resolveAddresses: abortableWebhookResolver
-          }
-        ),
-        'stalled webhook DNS timeout'
-      )
-    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
+    const request = postWebhook(endpoint, new Uint8Array(), {}, networkOptions)
+    await reachDeadline(requestTimeoutMs)
+    await expect(request).rejects.toMatchObject({ reason: 'timeout' })
 
     const normalizedVerification = normalizeOptions({
       transport: { protocolVersions: ['2026-07-28'] },
@@ -1180,68 +1224,57 @@ describe('experimental events extension', () => {
           webhook: {
             provider: {} as never,
             allowlist: () => true,
-            requestTimeoutMs: 10,
-            resolveAddresses: abortableWebhookResolver
+            requestTimeoutMs,
+            resolveAddresses
           }
         }
       }
     })
     const verificationOptions = normalizedVerification.extensions.events?.webhook
     if (!verificationOptions) throw new Error('Webhook options were not normalized')
-    await expect(
-      within(
-        verifyWebhookEndpoint(
-          {
-            key: 'key',
-            id: 'sub_id',
-            principal: 'principal',
-            name: 'event',
-            arguments: {},
-            url: 'https://example.test/hook',
-            secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
-            refreshBefore: new Date(Date.now() + 60_000).toISOString(),
-            verified: false,
-            active: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          { request: new Request('http://localhost/mcp'), protocolVersion: '2026-07-28' },
-          verificationOptions
-        ),
-        'webhook verification DNS timeout'
-      )
-    ).rejects.toBeInstanceOf(McpWebhookNetworkError)
-
-    const delivery = await within(
-      deliverWebhook(
-        {
-          key: 'key',
-          id: 'sub_id',
-          principal: 'principal',
-          name: 'event',
-          arguments: {},
-          url: 'https://example.test/hook',
-          secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
-          refreshBefore: new Date(Date.now() + 60_000).toISOString(),
-          verified: true,
-          active: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        { eventId: 'event', name: 'event', timestamp: new Date().toISOString(), data: {} },
-        'event',
-        {
-          ...verificationOptions,
-          maxAttempts: 5,
-          maxRetryElapsedMs: 25,
-          retryBaseMs: 1,
-          requestTimeoutMs: 1_000
-        }
-      ),
-      'bounded webhook delivery retries'
+    const record: McpWebhookSubscriptionRecord = {
+      key: 'key',
+      id: 'sub_id',
+      principal: 'principal',
+      name: 'event',
+      arguments: {},
+      url: 'https://example.test/hook',
+      secret: `whsec_${Buffer.alloc(24).toString('base64')}`,
+      refreshBefore: '2026-10-01T12:01:00Z',
+      verified: false,
+      active: true,
+      createdAt,
+      updatedAt: createdAt
+    }
+    const verification = verifyWebhookEndpoint(
+      record,
+      { request: new Request('http://localhost/mcp'), protocolVersion: '2026-07-28' },
+      verificationOptions
     )
-    expect(delivery.acknowledged).toBe(false)
-    expect(delivery).toMatchObject({ abandoned: true })
+    await reachDeadline(requestTimeoutMs)
+    await expect(verification).rejects.toMatchObject({ reason: 'timeout' })
+
+    const maxRetryElapsedMs = 25
+    const delivery = deliverWebhook(
+      { ...record, verified: true },
+      { eventId: 'event', name: 'event', timestamp: createdAt, data: {} },
+      'event',
+      {
+        ...verificationOptions,
+        maxAttempts: 5,
+        maxRetryElapsedMs,
+        retryBaseMs: 1,
+        requestTimeoutMs: 1_000
+      }
+    )
+    await reachDeadline(maxRetryElapsedMs)
+    await expect(delivery).resolves.toMatchObject({
+      acknowledged: false,
+      abandoned: true,
+      attempts: 1,
+      lastError: 'timeout'
+    })
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   test('isolates webhook verification consent and challenge throttles by app and options', async () => {

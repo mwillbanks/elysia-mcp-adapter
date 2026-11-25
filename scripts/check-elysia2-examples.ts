@@ -2,47 +2,31 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSy
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { exampleGates, exampleProjects, repository } from './example-workspaces'
 import { runBun as run } from './run-bun'
 
-const repository = resolve(import.meta.dir, '..')
-const projects = [
-  'core',
-  'apps-vanilla',
-  'apps-react',
-  'auth',
-  'tasks',
-  'skills',
-  'events',
-  'experimental'
-] as const
 const adapter = '@mwillbanks/elysia-mcp-adapter'
 const elysiaVersion = '2.0.0-rc.5'
 
 interface Manifest {
-  name?: string
-  scripts?: Record<string, string>
   dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
   [key: string]: unknown
 }
 
-function parseArguments(): { projects: string[]; archive?: string } {
+function parseArguments(projects: string[]): { projects: string[]; archive?: string } {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2).filter((argument) => argument !== '--'),
     options: { archive: { type: 'string' } },
     allowPositionals: true
   })
-  const selected = [...new Set(positionals.map(validateProject))]
+  const unknownProject = positionals.find((project) => !projects.includes(project))
+  if (unknownProject !== undefined)
+    throw new Error(`Unknown example project: ${unknownProject}. Choose ${projects.join(', ')}`)
+  const selected = [...new Set(positionals)]
   return {
     projects: selected.length > 0 ? selected : [...projects],
     archive: values.archive ? resolveArchive(values.archive) : undefined
   }
-}
-
-function validateProject(project: string): string {
-  if (!projects.includes(project as (typeof projects)[number]))
-    throw new Error(`Unknown example project: ${project}. Choose ${projects.join(', ')}`)
-  return project
 }
 
 function resolveArchive(path: string): string {
@@ -113,26 +97,14 @@ async function stageWorkspace(
   await run(['install', '--ignore-scripts'], directory)
 }
 
-function projectGates(manifest: Manifest, project: string): string[] {
-  const scripts = manifest.scripts ?? {}
-  const gates = ['build', 'typecheck', 'test', 'smoke']
-  for (const gate of gates) {
-    if (!scripts[gate]) throw new Error(`Missing ${gate} script in ${project}`)
-  }
-  // Only exact unconditional smoke commands cover a separate gate.
-  const smokeCommands = new Set(scripts.smoke.split('&&').map((command) => command.trim()))
-  return gates.filter((gate) => gate === 'smoke' || !smokeCommands.has(`bun --bun run ${gate}`))
-}
-
 async function verifyProject(project: string, directory: string): Promise<void> {
   const cwd = join(directory, 'examples', project)
-  const manifest = (await Bun.file(join(cwd, 'package.json')).json()) as Manifest
-  for (const gate of projectGates(manifest, project)) await run(['run', gate], cwd)
+  for (const gate of await exampleGates(cwd)) await run(['run', gate], cwd)
   console.log(`Elysia ${elysiaVersion}: ${relative(directory, cwd)} passed`)
 }
 
 async function main(): Promise<void> {
-  const options = parseArguments()
+  const options = parseArguments(await exampleProjects())
   const directory = mkdtempSync(join(tmpdir(), 'elysia2-examples-'))
   try {
     const archive = options.archive ?? (await packAdapter(directory))
