@@ -102,6 +102,27 @@ describe('flattened route invocation', () => {
     expect(input.query).toBeUndefined()
   })
 
+  it('partitions closed body layers without dropping fields shared with the path', () => {
+    const args = { id: '42', title: 'Report' }
+    const closedBody = t.Object({ title: t.String() }, { additionalProperties: false })
+    expect(normalize({ body: closedBody }, args)).toEqual({
+      params: { id: '42' },
+      body: { title: 'Report' }
+    })
+    expect(normalize({ schemas: [{ body: closedBody }, { body: t.Object({}) }] }, args)).toEqual({
+      params: { id: '42' },
+      body: { title: 'Report' }
+    })
+    const sharedBody = t.Object(
+      { id: t.String(), title: t.String() },
+      { additionalProperties: false }
+    )
+    expect(normalize({ body: sharedBody }, args)).toEqual({
+      params: { id: '42' },
+      body: args
+    })
+  })
+
   it('preserves primitive body unwrapping alongside query fields', () => {
     const input = normalize(
       { query: t.Object({ page: t.String() }), schemas: [{ body: t.Number() }] },
@@ -132,6 +153,51 @@ describe('flattened route invocation', () => {
       params: { id: '42' },
       query: { value: 'invalid' },
       body: { title: 'body', secret: 'never query' }
+    })
+  })
+
+  it('separates path-only fields from a constrained body with a flat input override', async () => {
+    const app = new Elysia({ normalize: false })
+      .use(mcp({ inputMode: 'flatten' }))
+      .post('/items/:id', ({ params, body }) => ({ params, body }), {
+        params: t.Object({ id: t.String() }),
+        body: t.Object({ count: t.Number() }, { maxProperties: 1 }),
+        mcp: {
+          name: 'items.constrained',
+          inputSchema: t.Object({ id: t.String(), count: t.Number() })
+        }
+      })
+
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.constrained',
+      arguments: { id: '42', count: 3 }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({ params: { id: '42' }, body: { count: 3 } })
+  })
+
+  it('retains path fields declared by a body pattern under a flat input override', async () => {
+    const app = new Elysia({ normalize: false })
+      .use(mcp({ inputMode: 'flatten' }))
+      .post('/items/:id/:label', ({ params, body }) => ({ params, body }), {
+        params: t.Object({ id: t.String(), label: t.String() }),
+        body: t.Record(t.String({ pattern: '^label$' }), t.String(), {
+          additionalProperties: false
+        }),
+        mcp: {
+          name: 'items.pattern',
+          inputSchema: t.Object({ id: t.String(), label: t.String() })
+        }
+      })
+
+    const { body } = await rpc(app, 'tools/call', {
+      name: 'items.pattern',
+      arguments: { id: '42', label: 'Report' }
+    })
+    expect(body.result.isError).not.toBe(true)
+    expect(body.result.structuredContent).toEqual({
+      params: { id: '42', label: 'Report' },
+      body: { label: 'Report' }
     })
   })
 

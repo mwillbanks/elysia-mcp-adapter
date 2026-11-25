@@ -222,17 +222,14 @@
       ]
     },
     "source:examples/auth/README.md": {
-      "fingerprint": "2066eff3c23402577c5add9ac37022ffb22c46e3e4880f04f343e9735a229a9c",
+      "fingerprint": "dd4c2cffed0d71fd1d8d0162e109fee865c749649a7b15a23844b07a2c124cc9",
       "snapshot": {
-        "examples/auth/README.md": "8618fe7d9af5af4e55730570ef211670c11332c2b30d1e5ead7054e67d1bc5a9"
+        "examples/auth/README.md": "3c5d054017fe6cfad7d43dff3d9e4461e14ee103ab577e22231ecd5f4a3aad86"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
-      "outcome": "updated",
-      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
-      "evidence": [
-        "examples/auth/README.md",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md"
-      ]
+      "head": "01b8181413c3aa27e3ce2b389b3cbd73d2f1e998",
+      "outcome": "no-change",
+      "reason": "Reviewed the authorization fixture and corrected the documented Better Auth pin to match the examples. Issuer, audience, token verification, MCP behavior, and the Intent integration guidance are unchanged.",
+      "evidence": ["Changed: examples/auth/README.md at 01b8181413c3aa27e3ce2b389b3cbd73d2f1e998"]
     },
     "source:website/content/docs/extensions/experimental/server-card.mdx": {
       "fingerprint": "195bf967efa0cd1219ef03eaa28b49eb97a08fcbc16bb6bc356a80504bddca49",
@@ -731,16 +728,15 @@
       ]
     },
     "source:website/content/docs/extensions/authorization/examples.mdx": {
-      "fingerprint": "f7023bf8a6af7f508c1d169c949383d380a4b10409c9808fa9ccb5942c83c1a6",
+      "fingerprint": "03bd0037673f85451dfc06ec73b892dd1a24535eea0e448069c573813dcd957c",
       "snapshot": {
-        "website/content/docs/extensions/authorization/examples.mdx": "e3340f5d12205445ddc981e91226e19df4f32411fdee4d472792eccd227f80e0"
+        "website/content/docs/extensions/authorization/examples.mdx": "7cceee73c8d3a252772b444d893ab74e85953ee2193e41a6cd5ce3245a140e58"
       },
-      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
-      "outcome": "updated",
-      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "head": "01b8181413c3aa27e3ce2b389b3cbd73d2f1e998",
+      "outcome": "no-change",
+      "reason": "Reviewed the authorization fixture and corrected the documented Better Auth pin to match the examples. Issuer, audience, token verification, MCP behavior, and the Intent integration guidance are unchanged.",
       "evidence": [
-        "website/content/docs/extensions/authorization/examples.mdx",
-        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+        "Changed: website/content/docs/extensions/authorization/examples.mdx at 01b8181413c3aa27e3ce2b389b3cbd73d2f1e998"
       ]
     },
     "source:website/content/docs/extensions/skills/quick-start.mdx": {

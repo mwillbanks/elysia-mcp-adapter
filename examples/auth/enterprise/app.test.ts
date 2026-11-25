@@ -16,11 +16,9 @@ describe('Better Auth enterprise SAML boundary to OAuth MCP token', () => {
       secret: crypto.randomUUID().repeat(2),
       samlCertificate: await createEphemeralIdpCertificate()
     })
-    example.app.listen(43102)
   })
 
   afterAll(() => {
-    example.app.stop()
     example.database.close()
   })
 

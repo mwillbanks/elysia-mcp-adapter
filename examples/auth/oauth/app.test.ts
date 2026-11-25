@@ -7,11 +7,9 @@ describe('Better Auth OAuth to MCP', () => {
 
   beforeAll(async () => {
     example = await createOAuthExample({ secret: crypto.randomUUID().repeat(2) })
-    example.app.listen(43101)
   })
 
   afterAll(() => {
-    example.app.stop()
     example.database.close()
   })
 
@@ -50,6 +48,10 @@ describe('Better Auth OAuth to MCP', () => {
     expect(principal).toMatchObject({ tokenType: 'access_token', audience: MCP_RESOURCE })
     expect(principal.clientId).toBeString()
     expect(principal.scopes).toContain('mcp:read')
+
+    const jwks = await example.app.handle(new Request(`${OAUTH_BASE_URL}/jwks`))
+    expect(jwks.status).toBe(200)
+    expect(await jwks.json()).toEqual(await example.auth.api.getJwks())
 
     const response = await mcpCall(example.app, token.access_token)
     expect(response.status).toBe(200)

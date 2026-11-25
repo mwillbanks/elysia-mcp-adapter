@@ -54,7 +54,7 @@ function normalizeFlattenedInput(
     return normalizeQueryOnlyInput(value, entries, excluded, params, wrappers.query)
   }
   if (!parts.query && routeSchemaSources(operation, 'query').length === 0) {
-    return normalizeBodyOnlyInput(value, params, parts.body, wrappers)
+    return normalizeBodyOnlyInput(value, params, parts.body, wrappers, routeParams, hasOverride)
   }
   return normalizeMixedInput(value, excluded, params, parts, wrappers)
 }
@@ -89,15 +89,62 @@ function normalizeBodyOnlyInput(
   value: Record<string, unknown>,
   params: Record<string, unknown> | undefined,
   bodySchema: JsonSchema | undefined,
-  wrappers: ReturnType<typeof flatInputWrapperKeys>
+  wrappers: ReturnType<typeof flatInputWrapperKeys>,
+  routeParams: Set<string>,
+  hasOverride: boolean
 ): RouteInvocationInput {
-  const body = wrappers.params
-    ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== wrappers.params))
-    : value
   if (wrappers.body && Object.hasOwn(value, wrappers.body)) {
     return { params, body: value[wrappers.body] }
   }
+
+  let body = value
+  if (wrappers.params) {
+    body = Object.fromEntries(Object.entries(value).filter(([key]) => key !== wrappers.params))
+  } else if (shouldPartitionBodyOnlyInput(bodySchema, routeParams, hasOverride)) {
+    const bodyNames = schemaPropertyNames(bodySchema)
+    for (const key of routeParams) {
+      if (matchesBodyPattern(bodySchema, key)) bodyNames.add(key)
+    }
+    body = flattenedBody(value, bodyNames, routeParams)
+  }
   return { params, body: !bodySchema && Object.hasOwn(body, 'value') ? body.value : body }
+}
+
+function shouldPartitionBodyOnlyInput(
+  schema: JsonSchema | undefined,
+  routeParams: Set<string>,
+  hasOverride: boolean
+): boolean {
+  // Preserve legacy passthrough when the inferred schema does not explicitly close the body.
+  return (
+    schema !== undefined && routeParams.size > 0 && (hasOverride || hasClosedObjectLayer(schema))
+  )
+}
+
+function hasClosedObjectLayer(schema: JsonSchema): boolean {
+  return (
+    schema.additionalProperties === false ||
+    (Array.isArray(schema.allOf) &&
+      schema.allOf.some((layer) => isRecord(layer) && hasClosedObjectLayer(layer)))
+  )
+}
+
+function matchesBodyPattern(schema: JsonSchema | undefined, key: string): boolean {
+  if (!schema) return false
+  const patterns = isRecord(schema.patternProperties) ? Object.keys(schema.patternProperties) : []
+  return (
+    patterns.some((pattern) => matchesPropertyPattern(pattern, key)) ||
+    (Array.isArray(schema.allOf) &&
+      schema.allOf.some((layer) => isRecord(layer) && matchesBodyPattern(layer, key)))
+  )
+}
+
+function matchesPropertyPattern(pattern: string, key: string): boolean {
+  try {
+    return new RegExp(pattern).test(key)
+  } catch {
+    return false
+  }
 }
 
 function normalizeMixedInput(
