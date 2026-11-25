@@ -33,3 +33,14 @@ the served bytes or manifest. Supporting resources use relative paths and never 
 
 Set `listed: false` for direct-only publication. `skills/get` still retrieves the skill by its full
 `SKILL.md` URI. Set `resources: "dynamic"` only when stable digests cannot be published.
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- skills
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+The runner shares this project's source, clients, and providers across both Elysia versions.

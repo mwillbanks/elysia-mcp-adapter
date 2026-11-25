@@ -15,7 +15,7 @@ import { humanizeOperationName, sanitizeMcpName } from './naming.js'
 import { normalizeOptions } from './options.js'
 import { isUriTemplate, matchUriTemplate, templateName } from './resource-template.js'
 import { shouldExposeRoute } from './route-filters.js'
-import { listRouteOperations, routeFingerprint } from './route-inspector.js'
+import { listRouteOperations, routeFingerprint, routeSchemaSources } from './route-inspector.js'
 import {
   composeExplicitInputSchema,
   composeExplicitOutputSchema,
@@ -58,7 +58,8 @@ export function getMcpRegistry(
   const options = state.pluginOptions ?? (defaultRegistryOptions ??= normalizeOptions())
   // Diagnostic overrides must not replace the live registry snapshot used by change listeners.
   if (overrideOptions && overrideOptions !== options) return buildMcpRegistry(app, overrideOptions)
-  const fingerprint = routeFingerprint(app)
+  const operations = listRouteOperations(app)
+  const fingerprint = routeFingerprint(app, operations)
 
   if (
     state.registryCache &&
@@ -74,7 +75,7 @@ export function getMcpRegistry(
     }
   }
 
-  const registry = buildMcpRegistry(app, options)
+  const registry = buildMcpRegistry(app, options, operations)
   state.registryCache = {
     fingerprint,
     version: state.version,
@@ -87,7 +88,8 @@ export function getMcpRegistry(
 
 function buildMcpRegistry(
   app: AnyElysiaApp,
-  options: NormalizedMcpPluginOptions
+  options: NormalizedMcpPluginOptions,
+  operations = listRouteOperations(app)
 ): McpRegistry & {
   skills: NonNullable<McpRegistry['skills']>
   events: NonNullable<McpRegistry['events']>
@@ -105,7 +107,7 @@ function buildMcpRegistry(
     events: new Map()
   }
   addExplicitDefinitions(state, registry, options)
-  addRouteDefinitions(app, registry, options)
+  addRouteDefinitions(operations, registry, options)
   for (const tool of registry.tools.values()) {
     if (tool.prompt) addPrompt(registry, createCompanionPrompt(tool, tool.prompt, options), options)
   }
@@ -195,11 +197,11 @@ function addExplicitEvents(
 }
 
 function addRouteDefinitions(
-  app: AnyElysiaApp,
+  operations: McpRouteOperation[],
   registry: McpRegistry,
   options: NormalizedMcpPluginOptions
 ): void {
-  for (const operation of listRouteOperations(app)) {
+  for (const operation of operations) {
     if (!shouldExposeRoute(operation, options)) continue
     addRouteDefinition(registry, operation, resolveRouteKind(operation, options), options)
   }
@@ -603,7 +605,9 @@ function stringDetail(operation: McpRouteOperation, key: string): string | undef
 }
 
 function hasRouteInputSchema(operation: McpRouteOperation): boolean {
-  return Boolean(operation.hooks.params || operation.hooks.query || operation.hooks.body)
+  return ['params', 'query', 'body'].some((slot) =>
+    routeSchemaSources(operation, slot).some(Boolean)
+  )
 }
 
 function defaultAnnotationsForMethod(method: string) {

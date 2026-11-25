@@ -77,3 +77,14 @@ Both `callTool()` and generic `request()` create the task before the SDK rejects
 supplying a result schema does not bypass its decoder. Generic requests can read and cancel modern tasks.
 Use the [Tasks example client](/docs/extensions/tasks/examples) for task creation until the SDK supports
 that discriminator. Avoid retrying a rejected creation blindly because the task already exists.
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- core
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+Version-specific source lives in [examples/elysia-2/core](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/elysia-2/core).

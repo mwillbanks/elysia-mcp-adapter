@@ -47,3 +47,14 @@ Production deployments should use a real Redis service with separate worker conn
 queue payloads limited to the durable descriptor and deployment-controlled identity.
 Use the provider's trusted `resolveScheduler` callback to map persisted descriptors to
 application-owned handlers after restart. Never serialize executable callbacks or credentials.
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- tasks
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+Version-specific source lives in [examples/elysia-2/tasks](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/elysia-2/tasks).

@@ -1,6 +1,10 @@
 import { setTaskController } from '../extensions/tasks/index.js'
 import { isRecord } from '../internal.js'
+import { routeSchemaSources } from '../route-inspector.js'
+import { flatInputWrapperKeys, routeInputSchemaForSlot } from '../schema/compose.js'
+import { objectSchemaProperties } from '../schema/normalize.js'
 import type {
+  JsonSchema,
   McpHandlerContext,
   McpInvocationContext,
   McpRouteOperation,
@@ -15,7 +19,7 @@ export function normalizeRouteToolInput(
   options: NormalizedMcpPluginOptions
 ): RouteInvocationInput {
   const value = isRecord(args) ? args : {}
-  if (options.inputMode === 'flatten') return normalizeFlattenedInput(value, operation)
+  if (options.inputMode === 'flatten') return normalizeFlattenedInput(value, operation, options)
   return normalizeStructuredInput(value)
 }
 
@@ -30,19 +34,174 @@ function normalizeStructuredInput(value: Record<string, unknown>): RouteInvocati
 
 function normalizeFlattenedInput(
   value: Record<string, unknown>,
-  operation: McpRouteOperation
+  operation: McpRouteOperation,
+  options: NormalizedMcpPluginOptions
 ): RouteInvocationInput {
+  const parts = {
+    params: routeInputSchemaForSlot(operation, 'params', options),
+    query: routeInputSchemaForSlot(operation, 'query', options),
+    body: routeInputSchemaForSlot(operation, 'body', options)
+  }
+  // An explicit override already declares the advertised constraints.
+  const hasOverride = routeInputSchemaForSlot(operation, 'input', options) !== undefined
+  const wrappers = flatInputWrapperKeys(parts, !hasOverride)
   const routeParams = new Set(extractRouteParamNames(operation.path))
-  const params: Record<string, unknown> = {}
-  const query: Record<string, unknown> = {}
-  for (const [key, item] of Object.entries(value)) {
-    ;(routeParams.has(key) ? params : query)[key] = item
+  const entries = Object.entries(value)
+  const params = readFlatParams(value, routeParams, wrappers.params)
+  const excluded = wrappers.params ? new Set([wrappers.params]) : routeParams
+
+  if (!parts.body && routeSchemaSources(operation, 'body').length === 0) {
+    return normalizeQueryOnlyInput(value, entries, excluded, params, wrappers.query)
   }
-  const normalizedParams = nonEmptyRecord(params)
-  if (operation.hooks.body) {
-    return { params: normalizedParams, body: 'value' in value ? value.value : value }
+  if (!parts.query && routeSchemaSources(operation, 'query').length === 0) {
+    return normalizeBodyOnlyInput(value, params, parts.body, wrappers, routeParams, hasOverride)
   }
-  return { params: normalizedParams, query: nonEmptyRecord(query) }
+  return normalizeMixedInput(value, excluded, params, parts, wrappers)
+}
+
+function readFlatParams(
+  value: Record<string, unknown>,
+  routeParams: Set<string>,
+  wrapper: string | undefined
+): Record<string, unknown> | undefined {
+  const source = wrapper ? value[wrapper] : value
+  if (!isRecord(source)) return undefined
+  return nonEmptyRecord(
+    Object.fromEntries(Object.entries(source).filter(([key]) => routeParams.has(key)))
+  )
+}
+
+function normalizeQueryOnlyInput(
+  value: Record<string, unknown>,
+  entries: Array<[string, unknown]>,
+  excluded: Set<string>,
+  params: Record<string, unknown> | undefined,
+  wrapper: string | undefined
+): RouteInvocationInput {
+  const wrapped = wrapper && value[wrapper]
+  const query = isRecord(wrapped)
+    ? wrapped
+    : Object.fromEntries(entries.filter(([key]) => !excluded.has(key)))
+  return { params, query: nonEmptyRecord(query) }
+}
+
+function normalizeBodyOnlyInput(
+  value: Record<string, unknown>,
+  params: Record<string, unknown> | undefined,
+  bodySchema: JsonSchema | undefined,
+  wrappers: ReturnType<typeof flatInputWrapperKeys>,
+  routeParams: Set<string>,
+  hasOverride: boolean
+): RouteInvocationInput {
+  if (wrappers.body && Object.hasOwn(value, wrappers.body)) {
+    return { params, body: value[wrappers.body] }
+  }
+
+  let body = value
+  if (wrappers.params) {
+    body = Object.fromEntries(Object.entries(value).filter(([key]) => key !== wrappers.params))
+  } else if (shouldPartitionBodyOnlyInput(bodySchema, routeParams, hasOverride)) {
+    const bodyNames = schemaPropertyNames(bodySchema)
+    for (const key of routeParams) {
+      if (matchesBodyPattern(bodySchema, key)) bodyNames.add(key)
+    }
+    body = flattenedBody(value, bodyNames, routeParams)
+  }
+  return { params, body: !bodySchema && Object.hasOwn(body, 'value') ? body.value : body }
+}
+
+function shouldPartitionBodyOnlyInput(
+  schema: JsonSchema | undefined,
+  routeParams: Set<string>,
+  hasOverride: boolean
+): boolean {
+  // Preserve legacy passthrough when the inferred schema does not explicitly close the body.
+  return (
+    schema !== undefined && routeParams.size > 0 && (hasOverride || hasClosedObjectLayer(schema))
+  )
+}
+
+function hasClosedObjectLayer(schema: JsonSchema): boolean {
+  return (
+    schema.additionalProperties === false ||
+    (Array.isArray(schema.allOf) &&
+      schema.allOf.some((layer) => isRecord(layer) && hasClosedObjectLayer(layer)))
+  )
+}
+
+function matchesBodyPattern(schema: JsonSchema | undefined, key: string): boolean {
+  if (!schema) return false
+  const patterns = isRecord(schema.patternProperties) ? Object.keys(schema.patternProperties) : []
+  return (
+    patterns.some((pattern) => matchesPropertyPattern(pattern, key)) ||
+    (Array.isArray(schema.allOf) &&
+      schema.allOf.some((layer) => isRecord(layer) && matchesBodyPattern(layer, key)))
+  )
+}
+
+function matchesPropertyPattern(pattern: string, key: string): boolean {
+  try {
+    return new RegExp(pattern).test(key)
+  } catch {
+    return false
+  }
+}
+
+function normalizeMixedInput(
+  value: Record<string, unknown>,
+  excluded: Set<string>,
+  params: Record<string, unknown> | undefined,
+  parts: { query?: JsonSchema; body?: JsonSchema },
+  wrappers: ReturnType<typeof flatInputWrapperKeys>
+): RouteInvocationInput {
+  const queryNames = wrappers.query ? new Set<string>() : schemaPropertyNames(parts.query)
+  const query = wrappers.query
+    ? mixedWrappedQuery(value, wrappers.query, excluded)
+    : Object.fromEntries(Object.entries(value).filter(([key]) => queryNames.has(key)))
+  const otherSlots = new Set([...excluded, ...queryNames])
+  if (wrappers.query) otherSlots.add(wrappers.query)
+  return {
+    params,
+    query: nonEmptyRecord(query),
+    body: normalizeMixedBody(value, parts.body, otherSlots, wrappers.body)
+  }
+}
+
+function normalizeMixedBody(
+  value: Record<string, unknown>,
+  bodySchema: JsonSchema | undefined,
+  otherSlots: Set<string>,
+  wrapper: string | undefined
+): unknown {
+  if (wrapper) return Object.hasOwn(value, wrapper) ? value[wrapper] : undefined
+  // A named model may not normalize here. Leave validation of the remaining fields to Elysia.
+  if (!bodySchema && !otherSlots.has('value') && Object.hasOwn(value, 'value')) return value.value
+  return flattenedBody(value, schemaPropertyNames(bodySchema), otherSlots)
+}
+
+function mixedWrappedQuery(
+  value: Record<string, unknown>,
+  wrapper: string,
+  excluded: Set<string>
+): Record<string, unknown> {
+  const wrapped = value[wrapper]
+  if (isRecord(wrapped)) return wrapped
+  if (!Object.hasOwn(value, wrapper) || excluded.has(wrapper)) return {}
+  return { [wrapper]: wrapped }
+}
+
+function schemaPropertyNames(schema: JsonSchema | undefined): Set<string> {
+  return new Set(Object.keys(objectSchemaProperties(schema)))
+}
+
+function flattenedBody(
+  value: Record<string, unknown>,
+  bodyNames: Set<string>,
+  otherSlots: Set<string>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !otherSlots.has(key) || bodyNames.has(key))
+  )
 }
 
 function nonEmptyRecord(value: Record<string, unknown>): Record<string, unknown> | undefined {

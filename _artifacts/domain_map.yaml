@@ -7,6 +7,7 @@ skills:
   - slug: elysia-mcp-adapter
     domain: adapter-integration
     tasks:
+      - Resolve installed Elysia versions and migrate route syntax and companion plugins.
       - Select existing Elysia routes and preserve their guards and validation.
       - Register standalone tools, resources, resource templates, and prompts.
       - Configure MCP HTTP transport and enforce authorization.

@@ -2,6 +2,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { RootProvider } from "fumadocs-ui/provider/tanstack";
 import type { ReactNode } from "react";
 import logoUrl from "../../../logo.svg?url";
+import { ElysiaVersionProvider } from "@/components/elysia-version";
 import StaticSearchDialog from "@/components/search";
 import appCss from "@/styles/app.css?url";
 
@@ -40,7 +41,9 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <HeadContent />
       </head>
       <body className="flex min-h-screen flex-col">
-        <RootProvider search={{ SearchDialog: StaticSearchDialog }}>{children}</RootProvider>
+        <ElysiaVersionProvider>
+          <RootProvider search={{ SearchDialog: StaticSearchDialog }}>{children}</RootProvider>
+        </ElysiaVersionProvider>
         <Scripts />
       </body>
     </html>

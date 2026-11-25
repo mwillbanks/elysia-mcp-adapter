@@ -19,6 +19,9 @@ description: Choose the right channel for progress, client input, durable work, 
 Native tools, resource readers, and prompts receive `notify`. Route-backed handlers can get
 the same context with `getMcpInvocationContext(request)`. Ordinary HTTP calls have no MCP context.
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 app.get(
   "/index",
@@ -32,6 +35,22 @@ app.get(
   { mcp: { name: "index" } },
 );
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+app.get("/index", { mcp: { name: "index" } }, ({ request }) => {
+  const notify = getMcpInvocationContext(request)?.notify;
+  notify?.progress(1, { total: 2, message: "Scanning" });
+  notify?.message("Index scan complete", { logger: "indexer" });
+  notify?.progress(2, { total: 2, message: "Done" });
+  return "indexed";
+});
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 Send finite, strictly increasing progress values. Use the progress message for concise,
 user-facing status. A client that does not request a channel still receives the final result.

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Elysia } from 'elysia'
+import { installMcpMacro, registerAdapterRoute } from './elysia-compat.js'
 import {
   buildAdapterProtectedResourceMetadata,
   protectedResourceMetadataPaths
@@ -16,11 +17,27 @@ import { ensureMcpState } from './state.js'
 import { handleMcpHttpRequest } from './transport/json-rpc.js'
 import type { AnyElysiaApp, McpPluginOptions, McpRouteOptions } from './types.js'
 
-export function mcp(options: McpPluginOptions = {}) {
+type McpMacroApp = Elysia & {
+  '~Metadata': Elysia['~Metadata'] & {
+    macro: { mcp?: McpRouteOptions }
+    macroFn: { mcp: (options: McpRouteOptions) => {} }
+  }
+}
+
+interface Elysia2McpPlugin {
+  <T extends AnyElysiaApp>(app: T): T
+  (app: AnyElysiaApp): McpMacroApp
+}
+
+type McpPlugin = '~routes' extends keyof Elysia
+  ? Elysia2McpPlugin
+  : <T extends AnyElysiaApp>(app: T) => any
+
+export function mcp(options: McpPluginOptions = {}): McpPlugin {
   const prepared = normalizeOptions(options)
   const noticeOptions = { ...options.diagnostics?.specificationNotices }
 
-  return function elysiaMcpAdapter<T extends AnyElysiaApp>(app: T) {
+  return function elysiaMcpAdapter(app: AnyElysiaApp): any {
     const reportSpecificationNotice = createSpecificationNoticeReporter(noticeOptions)
     const normalized = {
       ...prepared,
@@ -29,16 +46,14 @@ export function mcp(options: McpPluginOptions = {}) {
     ensureMcpState(app).pluginOptions = normalized
     installMcpMethods(app)
 
-    const withMacro = app.macro({
-      mcp: (_options: McpRouteOptions) => ({})
-    })
-
-    let configured: any = withMacro
+    let configured = installMcpMacro(app)
     const serverCard = normalized.extensions.serverCard
     if (serverCard) {
       const body = JSON.stringify(serverCard.card)
       const etag = `"${createHash('sha256').update(body).digest('hex')}"`
-      configured = configured.get(
+      configured = registerAdapterRoute(
+        configured,
+        'get',
         `${normalized.path}/server-card`,
         ({ request, set }: any) => {
           set.headers['access-control-allow-origin'] = '*'
@@ -61,7 +76,7 @@ export function mcp(options: McpPluginOptions = {}) {
     if (auth) {
       const metadata = buildAdapterProtectedResourceMetadata(auth)
       for (const path of protectedResourceMetadataPaths(auth.resource, auth.rootMetadataAlias)) {
-        configured = configured.get(path, () => metadata, {
+        configured = registerAdapterRoute(configured, 'get', path, () => metadata, {
           mcp: false,
           detail: {
             hide: true,
@@ -75,7 +90,9 @@ export function mcp(options: McpPluginOptions = {}) {
     reportConfiguredSpecificationNotices(normalized, reportSpecificationNotice)
     recoverWebhookSubscriptions(configured as AnyElysiaApp, normalized)
 
-    return configured.all(
+    return registerAdapterRoute(
+      configured,
+      'all',
       normalized.path,
       (context: any) =>
         handleMcpHttpRequest(configured as AnyElysiaApp, context.request, normalized),
@@ -93,7 +110,7 @@ export function mcp(options: McpPluginOptions = {}) {
 }
 
 export function withMcpMethods() {
-  return function elysiaMcpMethods<T extends Elysia<any, any, any, any, any, any, any>>(app: T): T {
+  return function elysiaMcpMethods<T extends AnyElysiaApp>(app: T): T {
     ensureMcpState(app as AnyElysiaApp)
     installMcpMethods(app as AnyElysiaApp)
     return app

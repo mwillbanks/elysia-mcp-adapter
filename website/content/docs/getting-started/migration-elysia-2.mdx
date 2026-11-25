@@ -1,0 +1,226 @@
+---
+title: Migrate to Elysia 2
+description: Upgrade Elysia while retaining the adapter API and verifying MCP behavior.
+icon: ArrowRightLeft
+---
+
+The adapter supports Elysia `^1.4.0` and `^2.0.0-rc.5` through the same package and import path.
+Use Node.js `>=22.18` with either version. The Elysia 2 Bun examples were qualified with Bun `1.4.4`; use that version or later for those examples.
+The Node.js requirement applies to both Elysia versions and raises the previous `20.11` minimum.
+
+Choose **Elysia version** in the navigation to save your default.
+Example tabs can show another version without changing that preference.
+Markdown exports contain both labeled versions.
+
+## Migrate the installed Elysia version
+
+Record the current lockfile and passing tests before upgrading.
+Keep the project on Elysia 1 while running the codemod; it detects the installed version before applying Elysia 2 changes.
+
+## Preview and apply the codemod
+
+Install the pinned migration tool and preview its changes before applying them.
+
+```bash
+bun add --dev --exact @elysia/codemod@2.0.0-rc.0
+bunx @elysia/codemod@2.0.0-rc.0 --check
+```
+
+Review route argument changes, guards, authentication hooks, errors, and warnings.
+After review, run `bunx @elysia/codemod@2.0.0-rc.0` to apply the migration.
+Inspect the full application diff before upgrading Elysia.
+
+## Update dependencies
+
+Pin Elysia `2.0.0-rc.5` after codemod migration so the dependency graph stays reproducible.
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
+```bash
+bun add elysia@1.4.32 @mwillbanks/elysia-mcp-adapter
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```bash
+bun add elysia@2.0.0-rc.5 @mwillbanks/elysia-mcp-adapter
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+Use companion plugins from the matching release line.
+
+| Integration   | Elysia 1                         | Elysia 2                           |
+| ------------- | -------------------------------- | ---------------------------------- |
+| OpenAPI       | `@elysiajs/openapi@1.4.17`       | `@elysia/openapi@2.0.0-rc.1`       |
+| Bearer        | `@elysiajs/bearer@1.4.4`         | `@elysia/bearer@2.0.0-rc.0`        |
+| OpenTelemetry | `@elysiajs/opentelemetry@1.4.11` | `@elysia/opentelemetry@2.0.0-rc.0` |
+
+The Elysia 2 OpenAPI RC also requires a visible `typebox` dependency, which its package does not declare.
+Qualification used `typebox@1.4.7` with Bun's hoisted linker in isolated consumers.
+Install both explicitly when using that RC:
+
+```bash
+bun add @elysia/openapi@2.0.0-rc.1 typebox@1.4.7
+bun install --linker hoisted
+```
+
+Packed consumers passed on Node.js `22.18` with `@elysiajs/node@1.4.5` for Elysia 1 and `@elysia/node@2.0.0-beta.3` for Elysia 2.
+Use the version-matched adapter when calling `listen()` on Node; check its published peer range before choosing a newer release.
+
+See the upstream [Node integration](https://next.elysiajs.com/integrations/node/),
+[OpenAPI plugin](https://next.elysiajs.com/plugins/openapi/), and
+[RC release notes](https://next.elysiajs.com/blog/elysia-20-rc/).
+
+## Node adapter
+
+The quick-start `.listen()` examples use Bun's native server. For Node.js, install and configure the matching adapter:
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
+```bash
+bun add @elysiajs/node@1.4.5
+```
+
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { node } from "@elysiajs/node";
+
+const app = new Elysia({ adapter: node() }).use(mcp()).listen(3000);
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```bash
+bun add @elysia/node@2.0.0-beta.3
+```
+
+```ts
+import { Elysia } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { node } from "@elysia/node";
+
+const app = new Elysia({ adapter: node() }).use(mcp()).listen(3000);
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+## Move route options before handlers
+
+Three-argument route registrations change order.
+Two-argument routes and the adapter's fluent MCP methods use the same call form.
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
+```ts
+import { Elysia, t } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(mcp()).get("/users/:id", ({ params }) => ({ id: params.id }), {
+  params: t.Object({ id: t.String() }),
+  detail: { operationId: "users.get" },
+  mcp: { annotations: { readOnlyHint: true } },
+});
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+import { Elysia, t } from "elysia";
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+
+const app = new Elysia().use(mcp()).get(
+  "/users/:id",
+  {
+    params: t.Object({ id: t.String() }),
+    detail: { operationId: "users.get" },
+    mcp: { annotations: { readOnlyHint: true } },
+  },
+  ({ params }) => ({ id: params.id }),
+);
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+The adapter invokes route-backed tools, resources, and prompts through `app.handle(new Request(...))`.
+Verify the backing route's HTTP response and MCP result after migration.
+
+## Review lifecycle and schema behavior
+
+Elysia 2 changes schema precedence for guards and groups.
+Use `schema: "merge"` on guards or groups when inherited and route schemas must both apply.
+Inspect advertised MCP inputs and outputs, including schemas introduced by macros.
+Explicit `mcp.inputSchema`, `mcp.outputSchema`, and `mapJsonSchema` remain available.
+
+Early Elysia 1.4 releases without macro introspection, including `1.4.0`, conservatively retain inherited `mcp: false` when a descendant opts in.
+Use `1.4.32` or `2.0.0-rc.5` for local override precedence.
+
+The qualified Elysia 2 fixture returned plain strings without a `Content-Type` header.
+Set an explicit response MIME type for route-backed text when your runtime omits it.
+For example, set `set.headers["content-type"] = "text/plain; charset=utf-8"` before returning text.
+
+Review `resolve` to `derive` changes, the renamed `plugin` scope, and the typed two-argument `onError` API.
+The RC retains lifecycle names with the `on` prefix.
+Check returned and thrown errors, status mapping, and `application/problem+json` responses.
+For file schemas, configure a file-type detector where your app previously relied on Elysia's bundled detector.
+
+Follow the upstream [migration notes](https://next.elysiajs.com/blog/elysia-20/) alongside the
+[RC corrections](https://next.elysiajs.com/blog/elysia-20-rc/).
+
+## Verify MCP and extensions
+
+1. Compare `server/discover` and classic `initialize` results with the baseline.
+2. Compare tools, resources, resource templates, prompts, and advertised JSON Schemas.
+3. Call a route-backed operation with valid input, invalid input, valid credentials, and denied credentials.
+4. Verify `mcp: false`, hidden routes, documentation routes, and explicit route filters.
+5. Exercise the extensions your app enables, including Apps UI resources and host calls, durable Tasks, Skills, and authorization.
+6. Check enabled Events, Interceptors, Server Variants, annotations, server cards, and subscriptions.
+7. Run application type checks, tests, and HTTP integration checks with matching companion plugins.
+
+Use the [extension inventory](/docs/extensions/specification-inventory) to retain your selected MCP extension revisions.
+
+## Run the example projects
+
+The Elysia 1 projects run through their existing commands.
+The Elysia 2 runner stages the projects in an isolated workspace with the packed adapter and pinned RC.
+Clients, providers, UI assets, and assertions are shared across versions. The Tasks subprocess worker is replaced by its Elysia 2 overlay.
+
+The Tasks smoke check requires a reachable Redis service at `redis://127.0.0.1:6379`; set `REDIS_URL` when using another address. Tasks tests can use `TASKS_TEST_REDIS_URL` for an existing service. Otherwise, they start a local `redis-server` when available, or on Linux use a locally present Docker image selected by `TASKS_TEST_REDIS_IMAGE`.
+
+```bash
+bun run examples:elysia2
+bun run examples:elysia2 -- core
+bun run examples:elysia2 -- tasks
+```
+
+Browse [Core](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/core),
+[Apps Vanilla](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-vanilla),
+[Apps React](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/apps-react),
+[Authorization](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/auth),
+[Tasks](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/tasks),
+[Skills](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/skills),
+[Events](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/events), and
+[Experimental Extensions](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/experimental).
+Version-specific source lives under [examples/elysia-2](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/elysia-2).
+
+## JIT and AOT
+
+Start qualification with Elysia 2's default JIT execution.
+Elysia 2's build-time AOT compiler is a separate application build configuration.
+Run discovery, schema, and authorization checks against the generated artifact before deploying an AOT build.
+Keep the adapter installed in the app so explicit registrations and extension providers execute at runtime.
+
+The packed Bun AOT fixture on `2.0.0-rc.5` retained hidden-route exclusions and correctly denied or permitted protected-route requests.
+This qualifies those discovery and authorization paths; verify your own generated application and enabled extensions.
+
+See [Elysia AOT](https://next.elysiajs.com/patterns/aot/) for the build plugin and runtime targets.

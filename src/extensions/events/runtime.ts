@@ -1,5 +1,5 @@
 import { DEFAULT_PROTOCOL_VERSION } from '../../constants.js'
-import { getMcpRegistry } from '../../registry.js'
+import { ensureMcpState } from '../../state.js'
 import { decodeCursor, encodeCursor } from '../../transport/core.js'
 import { createSseCapacity } from '../../transport/sse-capacity.js'
 import type { AnyElysiaApp, McpInvocationContext, NormalizedMcpPluginOptions } from '../../types.js'
@@ -77,7 +77,7 @@ export async function listEvents(
     const offset = config.pagination
       ? decodeCursor(params.cursor, 'events/list', params, context, options, config.pagination)
       : 0
-    const local = [...(getMcpRegistry(app, options).events?.values() ?? [])]
+    const local = [...ensureMcpState(app).explicitEvents.values()]
     const visibleLocal = local
       .map(({ definition }) => definition)
       .filter((definition) => hasScopes(definition.authorization, context))
@@ -1917,7 +1917,7 @@ async function resolveEventSource(
   context: McpInvocationContext,
   options: NormalizedMcpPluginOptions
 ): Promise<EventSource> {
-  const local = getMcpRegistry(app, options).events?.get(name)
+  const local = ensureMcpState(app).explicitEvents.get(name)
   if (local) return { definition: local.definition, registration: local }
   const definition = await eventOptions(options).provider?.get(name, context)
   if (!definition) throw new McpEventProtocolError(-32023, 'NotFound', { kind: 'event' })

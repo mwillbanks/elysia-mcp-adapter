@@ -1,8 +1,8 @@
 # Adapter skill scope
 
-Use a single integration skill to route readers to one of four references.
-The skill covers existing routes, standalone primitives, transport and
-authorization, and extension version selection. The references combine public
+Use a single integration skill to route readers to one of five references.
+The skill covers Elysia compatibility and migration, existing routes,
+standalone primitives, transport and authorization, and extension version selection. The references combine public
 configuration with checks consumers can perform against their mounted endpoint.
 
 The README and website pages listed in the skill frontmatter are canonical.

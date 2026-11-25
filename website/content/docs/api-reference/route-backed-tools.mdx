@@ -27,6 +27,9 @@ type McpRouteOptions =
     };
 ```
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 app.post("/reports", createReport, {
   body: t.Object({ range: t.String() }),
@@ -38,7 +41,30 @@ app.post("/reports", createReport, {
 });
 ```
 
-`false` and `{ expose: false }` remove a route from MCP discovery. `inputSchema` and `outputSchema` override inferred Elysia schemas only for MCP.
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+app.post(
+  "/reports",
+  {
+    body: t.Object({ range: t.String() }),
+    detail: { operationId: "reports.create" },
+    mcp: {
+      expose: true,
+      annotations: { destructiveHint: false },
+    },
+  },
+  createReport,
+);
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+`false` and `{ expose: false }` remove a route from MCP discovery.
+Early Elysia 1.4 releases without macro introspection, including `1.4.0`, conservatively retain inherited `mcp: false` when a descendant opts in.
+Use `1.4.32` or `2.0.0-rc.5` for local override precedence. `inputSchema` and `outputSchema` override inferred Elysia schemas only for MCP.
 
 ## Route matching
 

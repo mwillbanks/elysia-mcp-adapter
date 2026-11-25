@@ -4,7 +4,7 @@ description: Tested Better Auth OAuth and enterprise SSO integrations with Bun, 
 ---
 
 The repository's [Authorization examples](https://github.com/mwillbanks/elysia-mcp-adapter/tree/main/examples/auth)
-use Better Auth `1.7.7`, Bun SQLite, Elysia, and the adapter's public package entry point.
+use Better Auth `1.7.21`, Bun SQLite, Elysia, and the adapter's public package entry point.
 
 ```bash
 bun run examples:setup
@@ -41,3 +41,14 @@ This demonstrates the resource-server boundary and enterprise SSO integration; i
 claim that Better Auth or the adapter performs the MCP ID-JAG exchange. A production external
 authorization server must implement that exchange and JWT bearer grant. The example never uses the
 deprecated Better Auth OIDC Provider plugin.
+
+## Elysia versions
+
+The existing project commands use Elysia 1. Run the same checks with the packed adapter and Elysia 2 RC:
+
+```bash
+bun run examples:elysia2 -- auth
+```
+
+See the [migration guide](/docs/getting-started/migration-elysia-2) for dependency pins and route syntax.
+The runner shares this project's source, clients, and providers across both Elysia versions.

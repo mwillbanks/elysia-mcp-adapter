@@ -1,7 +1,9 @@
 import type { Elysia } from 'elysia'
 
+type RequestHandler = Pick<Elysia, 'handle'>
+
 export async function request(
-  app: Elysia,
+  app: RequestHandler,
   method: string,
   params: Record<string, unknown> = {},
   id: string | number = 1
@@ -46,7 +48,7 @@ export async function request(
 }
 
 export async function jsonRequest(
-  app: Elysia,
+  app: RequestHandler,
   method: string,
   params: Record<string, unknown> = {}
 ): Promise<any> {

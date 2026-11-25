@@ -6,13 +6,33 @@ icon: Zap
 
 ## Install
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```npm
-npm install @mwillbanks/elysia-mcp-adapter elysia
+npm install @mwillbanks/elysia-mcp-adapter elysia@1.4.32
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```npm
+npm install @mwillbanks/elysia-mcp-adapter elysia@2.0.0-rc.5
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+Use Node.js >=22.18 with either version. The Elysia 2 Bun examples were qualified with Bun 1.4.4; use that version or later. Save your default with the navigation’s **Elysia version** selector.
 
 The `npm` code-block language automatically presents equivalent npm, pnpm, Yarn, and Bun commands.
 
+The `.listen(3000)` examples below use Bun's native server. For Node.js, install the version-matched Elysia adapter and use `new Elysia({ adapter: node() })`; see the [Node adapter setup](/docs/getting-started/migration-elysia-2#node-adapter).
+
 ## Create a route-backed tool
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
 
 ```ts
 import { mcp } from "@mwillbanks/elysia-mcp-adapter";
@@ -41,6 +61,44 @@ const app = new Elysia()
   })
   .listen(3000);
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+import { mcp } from "@mwillbanks/elysia-mcp-adapter";
+import { Elysia, t } from "elysia";
+
+const app = new Elysia()
+  .use(
+    mcp({
+      server: {
+        name: "users-api",
+        version: "1.0.0",
+        title: "Users API",
+      },
+    }),
+  )
+  .get(
+    "/users/:id",
+    {
+      params: t.Object({ id: t.String() }),
+      response: t.Object({
+        id: t.String(),
+        displayName: t.String(),
+      }),
+      detail: {
+        operationId: "users.get",
+        summary: "Get a user",
+      },
+    },
+    ({ params }) => ({ id: params.id, displayName: "Ada" }),
+  )
+  .listen(3000);
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 The route is discoverable as the `users.get` tool because `detail.operationId` supplies a stable name. Its input uses the default envelope shape:
 
@@ -74,6 +132,9 @@ The adapter constructs `GET /users/user_123`, calls `app.handle()` with the inte
 
 Use route-level `mcp` metadata when you want to override discovery:
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```ts
 .get('/orders/:id', getOrder, {
   params: t.Object({ id: t.String() }),
@@ -89,5 +150,27 @@ Use route-level `mcp` metadata when you want to override discovery:
   }
 })
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```ts
+.get('/orders/:id', {
+  params: t.Object({ id: t.String() }),
+  mcp: {
+    expose: true,
+    name: 'orders.get',
+    title: 'Get an order',
+    description: 'Fetch an order by identifier.',
+    annotations: {
+      readOnlyHint: true,
+      idempotentHint: true
+    }
+  }
+}, getOrder)
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
 
 Continue with [Installation](/docs/getting-started/installation) for runtime requirements or [Route-backed Tools](/docs/core-concepts/route-backed-tools) for discovery, naming, schemas, and inputs.

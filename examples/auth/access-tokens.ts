@@ -28,6 +28,7 @@ interface AccessTokenPolicy {
   issuer: string
   resource: string
   invalidTokenMessage: string
+  jwksFetch: Parameters<typeof verifyJwsAccessToken>[1]['jwksFetch']
   acceptArrayScopes?: boolean
   includeGrantType?: boolean
 }
@@ -37,7 +38,8 @@ type AccessTokenPayload = Awaited<ReturnType<typeof verifyJwsAccessToken>>
 export function exampleAccessTokenVerifier(policy: AccessTokenPolicy) {
   return async (token: string): Promise<McpAuthPrincipal> => {
     const payload = await verifyJwsAccessToken(token, {
-      jwksFetch: `${policy.issuer}/jwks`,
+      jwksFetch: policy.jwksFetch,
+      jwksCacheKey: policy,
       verifyOptions: { issuer: policy.issuer, audience: policy.resource }
     })
     if (payload['https://example.local/token-kind'] !== 'access_token' || !payload.exp)

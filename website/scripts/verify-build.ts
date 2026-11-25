@@ -26,6 +26,7 @@ const experimentalPages = experimentalExtensions.flatMap((extension) => [
 ]);
 const integrationPages = [
   "core-concepts/modern-core",
+  "getting-started/migration-elysia-2",
   "api-reference/plugin",
   "api-reference/extensions",
   "extensions/specification-inventory",
@@ -54,6 +55,16 @@ const overviewHtml = required("docs/extensions/index.html");
 const overviewMarkdown = required("docs/extensions.md");
 const llms = required("llms.txt");
 const llmsFull = required("llms-full.txt");
+const migrationMarkdown = required("docs/getting-started/migration-elysia-2.md");
+const quickStartMarkdown = required("docs/getting-started/quick-start.md");
+for (const content of [migrationMarkdown, quickStartMarkdown, llmsFull]) {
+  for (const label of ["#### Elysia 1", "#### Elysia 2"]) {
+    if (!content.includes(label)) throw new Error(`Missing versioned export: ${label}`);
+  }
+  if (content.includes("<ElysiaVersions>") || content.includes("<ElysiaVersion ")) {
+    throw new Error("Machine-readable exports must not contain version-tab components");
+  }
+}
 
 for (const title of [
   "Tasks overview",

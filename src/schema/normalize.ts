@@ -1,4 +1,5 @@
 import { JSON_SCHEMA_EMPTY_OBJECT } from '../constants.js'
+import { isRecord } from '../internal.js'
 import type {
   JsonSchema,
   McpRouteKind,
@@ -62,12 +63,11 @@ function cloneArray(value: readonly unknown[]): unknown[] {
 }
 
 function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const key of Object.keys(value)) {
-    const cloned = cloneJsonSchema(value[key])
-    if (cloned !== undefined) result[key] = cloned
-  }
-  return result
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [key, cloneJsonSchema(item)])
+      .filter(([, item]) => item !== undefined)
+  )
 }
 
 export function emptyObjectSchema(): JsonSchema {
@@ -75,17 +75,87 @@ export function emptyObjectSchema(): JsonSchema {
 }
 
 export function schemaRequiredKeys(schema: JsonSchema | undefined): string[] {
-  const required = schema?.required
-  return Array.isArray(required)
-    ? required.filter((value): value is string => typeof value === 'string')
+  const required = Array.isArray(schema?.required)
+    ? schema.required.filter((value): value is string => typeof value === 'string')
     : []
+  for (const [, child] of allOfSchemas(schema)) required.push(...schemaRequiredKeys(child))
+  return [...new Set(required)]
 }
 
-export function objectSchemaProperties(schema: JsonSchema | undefined): Record<string, unknown> {
-  const properties = schema?.properties
-  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
-    return properties as Record<string, unknown>
+export function objectSchemaProperties(
+  schema: JsonSchema | undefined,
+  referencePath?: string
+): Record<string, unknown> {
+  const result = ownSchemaProperties(schema, referencePath)
+  for (const [index, child] of allOfSchemas(schema)) {
+    const childPath = referencePath && `${referencePath}/allOf/${index}`
+    for (const [key, property] of Object.entries(objectSchemaProperties(child, childPath))) {
+      Object.defineProperty(result, key, {
+        value: Object.hasOwn(result, key)
+          ? mergeProjectedProperty(result[key], property)
+          : property,
+        enumerable: true,
+        configurable: true,
+        writable: true
+      })
+    }
   }
+  return result
+}
 
-  return {}
+function mergeProjectedProperty(earlier: unknown, later: unknown): JsonSchema {
+  const merged: JsonSchema = { allOf: [earlier, later] }
+  // Direct route declarations precede inherited layers. Fill each annotation independently.
+  for (const key of ['title', 'description'] as const) {
+    const annotation =
+      schemaPropertyAnnotation(earlier, key) ?? schemaPropertyAnnotation(later, key)
+    if (annotation !== undefined) merged[key] = annotation
+  }
+  return merged
+}
+
+export function schemaPropertyAnnotation(
+  schema: unknown,
+  key: 'title' | 'description'
+): string | undefined {
+  if (!isRecord(schema)) return undefined
+  if (typeof schema[key] === 'string') return schema[key]
+  for (const [, layer] of allOfSchemas(schema)) {
+    const annotation = schemaPropertyAnnotation(layer, key)
+    if (annotation !== undefined) return annotation
+  }
+  return undefined
+}
+
+function ownSchemaProperties(
+  schema: JsonSchema | undefined,
+  referencePath: string | undefined
+): Record<string, unknown> {
+  const properties = schema?.properties
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
+  if (!referencePath) return { ...(properties as Record<string, unknown>) }
+  return Object.fromEntries(
+    Object.keys(properties).map((key) => {
+      const pointer = encodeURIComponent(key.replaceAll('~', '~0').replaceAll('/', '~1'))
+      return [key, { $ref: `${referencePath}/properties/${pointer}` }]
+    })
+  )
+}
+
+function allOfSchemas(schema: JsonSchema | undefined): Array<[number, JsonSchema]> {
+  if (!Array.isArray(schema?.allOf)) return []
+  return Array.from(schema.allOf.entries()).filter(
+    (entry): entry is [number, JsonSchema] =>
+      entry[1] !== null && typeof entry[1] === 'object' && !Array.isArray(entry[1])
+  )
+}
+
+export function needsSchemaReferenceScope(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false
+  return (
+    ('$id' in value && typeof value.$id === 'string') ||
+    ('$ref' in value && typeof value.$ref === 'string') ||
+    ('$dynamicRef' in value && typeof value.$dynamicRef === 'string') ||
+    Object.values(value).some(needsSchemaReferenceScope)
+  )
 }

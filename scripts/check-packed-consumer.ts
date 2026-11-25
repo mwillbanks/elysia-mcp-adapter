@@ -1,25 +1,42 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { verifyPackedIntent } from './check-packed-intent'
+import { verifyPackedIntent } from './check-packed-intent.js'
+import {
+  aotBuildSource,
+  aotConsumerSource,
+  benchmarkSource,
+  buildCompatibilitySource
+} from './elysia-compat-consumer.js'
+import { runBun as run } from './run-bun.js'
 
 const workspace = resolve(import.meta.dir, '..')
+const qualifiedPeers = ['1.4.0', '1.4.32', '2.0.0-rc.5'] as const
+type QualifiedPeer = (typeof qualifiedPeers)[number]
 const temporary = mkdtempSync(join(tmpdir(), 'elysia-mcp-packed-'))
 
 async function main(): Promise<void> {
   try {
-    await verifyStaticNodeCompatibility()
+    const elysia = selectedPeer(process.argv.slice(2).filter((entry) => entry !== '--'))
     await verifyNoGitPrepare()
     await run(['pm', 'pack', '--destination', temporary], workspace)
+    await verifyStaticNodeCompatibility()
     const archive = readdirSync(temporary).find((name) => name.endsWith('.tgz'))
     if (!archive) throw new Error('Bun pack did not create an archive')
     const packageArchive = join(temporary, archive)
     await verifyPackedIntent(packageArchive)
-    await verifyConsumer(packageArchive, '7.0.2', true)
-    await verifyConsumer(packageArchive, '5.8.3', false)
+    await verifyConsumer(packageArchive, elysia)
   } finally {
     rmSync(temporary, { recursive: true, force: true })
   }
+}
+
+function selectedPeer(requested: string[]): QualifiedPeer {
+  if (requested.length === 0) return '1.4.32'
+  const peer = qualifiedPeers.find((version) => version === requested[0])
+  if (!peer || requested.length !== 1)
+    throw new Error(`Choose one Elysia version from ${qualifiedPeers.join(', ')}`)
+  return peer
 }
 
 async function verifyNoGitPrepare(): Promise<void> {
@@ -49,8 +66,8 @@ async function verifyStaticNodeCompatibility(): Promise<void> {
   const manifest = (await Bun.file(join(workspace, 'package.json')).json()) as {
     engines?: { node?: string }
   }
-  if (manifest.engines?.node !== '>=20.11')
-    throw new Error('The published Node.js compatibility floor must remain >=20.11')
+  if (manifest.engines?.node !== '>=22.18')
+    throw new Error('The published Node.js compatibility floor must be >=22.18')
   for (const path of new Bun.Glob('dist/**/*.js').scanSync(workspace)) {
     const source = await Bun.file(join(workspace, path)).text()
     assertCompatibleRuntime(source, path)
@@ -62,12 +79,56 @@ function assertCompatibleRuntime(source: string, path: string): void {
     throw new Error(`Published runtime contains a Bun-only API reference: ${path}`)
 }
 
-async function verifyConsumer(
+const v1Companions = {
+  '@elysiajs/openapi': '1.4.17',
+  '@elysiajs/bearer': '1.4.4',
+  '@elysiajs/opentelemetry': '1.4.11',
+  '@elysiajs/node': '1.4.5',
+  '@opentelemetry/sdk-trace-node': '2.8.0'
+}
+
+const v2Companions = {
+  '@elysia/openapi': '2.0.0-rc.1',
+  '@elysia/bearer': '2.0.0-rc.0',
+  '@elysia/opentelemetry': '2.0.0-rc.0',
+  '@elysia/node': '2.0.0-beta.3',
+  '@opentelemetry/sdk-trace-node': '2.8.0',
+  typebox: '1.4.7',
+  zod: '4.6.7'
+}
+
+const compatibilityPeers = {
+  '1.4.0': { companions: {}, scope: '@elysiajs', version: '1' },
+  '1.4.32': { companions: v1Companions, scope: '@elysiajs', version: '1' },
+  '2.0.0-rc.5': { companions: v2Companions, scope: '@elysia', version: '2' }
+} as const
+
+async function verifyConsumer(archive: string, elysia: QualifiedPeer): Promise<void> {
+  const directory = join(temporary, `elysia-${elysia}`)
+  const { companions, scope, version } = compatibilityPeers[elysia]
+  await stageConsumer(directory, archive, elysia, companions)
+  const peerFloor = elysia === '1.4.0'
+  if (!peerFloor) {
+    await Bun.write(
+      join(directory, 'compatibility.ts'),
+      buildCompatibilitySource(version === '2', scope)
+    )
+    await stageDocSnippets(directory, version)
+  }
+  await run(['install', '--ignore-scripts', '--linker', 'hoisted'], directory)
+  await run(['--bun', 'node_modules/typescript/bin/tsc', '--noEmit'], directory)
+  await run(['consumer.ts'], directory)
+  if (peerFloor) return
+  if (version === '2') await verifyReleaseCandidate(directory)
+  await verifyIntegrations(directory)
+}
+
+async function stageConsumer(
+  directory: string,
   archive: string,
-  typescript: string,
-  execute: boolean
+  elysia: QualifiedPeer,
+  companions: Record<string, string>
 ): Promise<void> {
-  const directory = join(temporary, `typescript-${typescript}`)
   mkdirSync(directory)
   await Bun.write(
     join(directory, 'package.json'),
@@ -77,9 +138,15 @@ async function verifyConsumer(
         type: 'module',
         dependencies: {
           '@mwillbanks/elysia-mcp-adapter': archive,
-          elysia: '1.4.30'
+          elysia,
+          ...companions
         },
-        devDependencies: { '@types/bun': '1.4.3', '@types/node': '26.6.5', typescript }
+        devDependencies: {
+          '@types/bun': '1.4.3',
+          '@types/node': '24.13.2',
+          '@sinclair/typebox': '0.34.52',
+          typescript: '7.0.2'
+        }
       },
       null,
       2
@@ -92,36 +159,126 @@ async function verifyConsumer(
         module: 'NodeNext',
         moduleResolution: 'NodeNext',
         strict: true,
-        skipLibCheck: true
+        skipLibCheck: true,
+        types: ['node', 'bun']
       }
     })
   )
-  await Bun.write(join(directory, 'consumer.ts'), consumerSource)
-  await run(['install'], directory)
-  await run(['--bun', 'node_modules/typescript/bin/tsc', '--noEmit'], directory)
-  if (execute) await run(['consumer.ts'], directory)
+  const floorProbe = elysia === '1.4.0' ? peerFloorSource : ''
+  await Bun.write(join(directory, 'consumer.ts'), consumerSource + floorProbe)
 }
 
-async function run(arguments_: string[], cwd: string): Promise<void> {
-  const child = Bun.spawn([process.execPath, ...arguments_], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { ...process.env, HUSKY: '0' }
-  })
-  const timeout = setTimeout(() => child.kill(), 60_000)
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited
-  ]).finally(() => clearTimeout(timeout))
-  if (exitCode !== 0)
-    throw new Error(
-      `Bun ${arguments_.join(' ')} failed (${exitCode})\n${stdout.trim()}\n${stderr.trim()}`
-    )
+async function verifyIntegrations(directory: string): Promise<void> {
+  await run(['compatibility.ts'], directory)
+  if (process.env.NODE_ENV === 'production' && process.env.ELYSIA_COMPAT_BENCHMARK) {
+    await Bun.write(join(directory, 'benchmark.ts'), benchmarkSource)
+    console.log(await run(['benchmark.ts'], directory))
+  }
 }
+
+async function verifyReleaseCandidate(directory: string): Promise<void> {
+  await verifyDpop(directory)
+  await verifyAot(directory)
+}
+
+async function verifyDpop(directory: string): Promise<void> {
+  const test = 'dpop-proof.test.ts'
+  const adapter = '@mwillbanks/elysia-mcp-adapter'
+  const source = await Bun.file(join(workspace, 'test', test)).text()
+  await Bun.write(
+    join(directory, test),
+    source
+      .replace("'../src/index.js'", `'${adapter}'`)
+      .replace(
+        "'../src/extensions/auth/dpop.js'",
+        `'./node_modules/${adapter}/dist/extensions/auth/dpop.js'`
+      )
+  )
+  await run(['test', '--bail', `./${test}`], directory)
+}
+
+async function verifyAot(directory: string): Promise<void> {
+  await Bun.write(join(directory, 'aot-consumer.ts'), aotConsumerSource)
+  await Bun.write(join(directory, 'aot-build.ts'), aotBuildSource)
+  await run(['aot-build.ts'], directory)
+  await run(['aot-dist/aot-consumer.js'], directory)
+}
+
+async function stageDocSnippets(directory: string, version: '1' | '2'): Promise<void> {
+  const docs = join(workspace, 'website/content/docs')
+  const verifiedPages = {
+    'quick-start': 'getting-started',
+    'migration-elysia-2': 'getting-started',
+    'route-backed-tools': 'core-concepts',
+    transportation: 'core-concepts'
+  }
+  for (const [page, section] of Object.entries(verifiedPages)) {
+    const markdown = await Bun.file(join(docs, section, `${page}.mdx`)).text()
+    const panes = markdown.matchAll(/<ElysiaVersion value="([12])">([\s\S]*?)<\/ElysiaVersion>/gu)
+    const snippets = Array.from(panes)
+      .filter((pane) => pane[1] === version)
+      .flatMap((pane) =>
+        Array.from(pane[2]!.matchAll(/\x60\x60\x60ts\n([\s\S]*?)\n\x60\x60\x60/gu))
+      )
+      .map((match) => match[1]!)
+      .filter((code) => code.startsWith('import '))
+    if (snippets.length === 0)
+      throw new Error(`Missing Elysia ${version} TypeScript example in ${page}`)
+    for (const [index, snippet] of snippets.entries()) {
+      await Bun.write(join(directory, `docs-${page}-${index}.ts`), snippet)
+    }
+  }
+}
+
+const peerFloorSource = String.raw`
+const floorShared = { mcp: false as const, afterHandle() {} }
+const floor = new Elysia()
+  .use(mcp())
+  .get('/visible', () => 'yes')
+  .get('/hidden', () => 'no', {
+    mcp: false,
+    afterHandle() {}
+  })
+  .guard({ mcp: false }, (group) => group.get('/guarded', () => 'no', {
+    mcp: { name: 'guard-opt-in' }
+  }))
+  .get('/floor-copy-source', () => 'no', floorShared)
+  .get('/floor-copy-visible', () => 'yes', {
+    ...floorShared, mcp: { name: 'floor-copy-visible' }
+  })
+  .get('/floor-copy-inherited', () => 'no', { ...floorShared })
+const floorPrototype = Object.create(floorShared, {
+  mcp: {
+    value: { name: 'floor-prototype-visible' },
+    enumerable: true, writable: true, configurable: true
+  }
+})
+floor.get('/floor-prototype-visible', () => 'yes', floorPrototype)
+floor.get('/floor-prototype-inherited', () => 'no', Object.create(floorShared))
+const floorPlugin = new Elysia().use(mcp({ path: '/floor-plugin-mcp' }))
+const floorPluginShared = { mcp: false as const }
+floorPlugin.get('/floor-plugin-source', () => 'no', floorPluginShared)
+floorPlugin.get('/floor-plugin-hidden', () => 'no', { ...floorPluginShared })
+floorPlugin.get('/floor-plugin-visible', () => 'yes', {
+  ...floorPluginShared, mcp: { name: 'floor-plugin-visible' }
+})
+floor.use(Promise.resolve(floorPlugin))
+await floor.modules
+const floorList = await floor.handle(new Request('http://localhost/mcp', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' })
+}))
+const floorTools = (await floorList.json()).result.tools
+const floorNames = floorTools.map((tool: { name: string }) => tool.name).sort()
+if (JSON.stringify(floorNames) !== JSON.stringify([
+  'floor-copy-visible', 'floor-plugin-visible', 'floor-prototype-visible', 'get.visible'
+]))
+  throw new Error('Elysia 1.4.0 route visibility mismatch: ' + JSON.stringify(floorTools))
+`
 
 const consumerSource = String.raw`
+import { createHash } from 'node:crypto'
 import {
   MCP_EVENTS_CAPABILITY,
   MCP_SERVER_CARD_REVISION,
@@ -224,7 +381,7 @@ if (poll.status !== 200 || polled.result?.resultType !== 'complete' || !Array.is
 const response = await app.handle(modernRequest('skills/list'))
 const listed = await response.json() as { result?: { skills?: McpSkill[] } }
 const skill = listed.result?.skills?.[0]
-const expectedDigest = 'sha256:' + new Bun.CryptoHasher('sha256').update(skillBytes).digest('hex')
+const expectedDigest = 'sha256:' + createHash('sha256').update(skillBytes).digest('hex')
 if (!skill || !Array.isArray(skill.resources) || skill.resources[0]?.digest !== expectedDigest) {
   throw new Error('Packaged skill manifest integrity failed')
 }

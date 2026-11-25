@@ -4,8 +4,10 @@ import {
 } from '@mwillbanks/elysia-mcp-adapter'
 import type { Elysia } from 'elysia'
 
+type RequestHandler = Pick<Elysia, 'handle'>
+
 export async function legacyRpc(
-  app: Elysia,
+  app: RequestHandler,
   method: string,
   params: Record<string, unknown>,
   sessionId?: string,
@@ -32,7 +34,7 @@ export async function legacyRpc(
   return { response, body: (await response.json()) as any }
 }
 
-export async function modernRpc(app: Elysia, method: string, params = {}) {
+export async function modernRpc(app: RequestHandler, method: string, params = {}) {
   const named = params as { name?: unknown; uri?: unknown }
   const name =
     method === 'tools/call' ? named.name : method === 'resources/read' ? named.uri : undefined

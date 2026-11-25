@@ -35,6 +35,7 @@ export async function createOAuthExample({
   const verifyForMcp = exampleAccessTokenVerifier({
     issuer: OAUTH_BASE_URL,
     resource: MCP_RESOURCE,
+    jwksFetch: () => auth.api.getJwks(),
     invalidTokenMessage: 'Bearer value is not an access token',
     acceptArrayScopes: true,
     includeGrantType: true

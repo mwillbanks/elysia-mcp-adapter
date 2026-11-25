@@ -9,6 +9,8 @@ const addFormats = (addFormatsImport as any).default ?? addFormatsImport
 
 function createCompiler() {
   const compiler = new Ajv2020({
+    // Schema identifiers are scoped to each validator, including standalone schemas.
+    addUsedSchema: false,
     allErrors: true,
     strict: false,
     allowUnionTypes: true

@@ -19,6 +19,20 @@ function page(title: string, url: string, markdown: string): LLMPage {
 }
 
 describe("LLM documentation rendering", () => {
+  test("retains both Elysia examples in page and full exports", async () => {
+    const source = page(
+      "Versions",
+      "/docs/versions",
+      '<ElysiaVersions>\n<ElysiaVersion value="1">\n\nold syntax\n\n</ElysiaVersion>\n<ElysiaVersion value="2">\n\nnew syntax\n\n</ElysiaVersion>\n</ElysiaVersions>',
+    );
+    for (const rendered of [await getLLMText(source, "/"), await getLLMFullText([source], "/")]) {
+      expect(rendered).toContain("#### Elysia 1");
+      expect(rendered).toContain("#### Elysia 2");
+      expect(rendered).toContain("old syntax");
+      expect(rendered).toContain("new syntax");
+    }
+  });
+
   test("adds a deployment base path to canonical and Markdown URLs", async () => {
     const rendered = await getLLMText(
       page("Quick Start", "/docs/getting-started/quick-start", "[API](/docs/reference/types)"),

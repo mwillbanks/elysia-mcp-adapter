@@ -6,16 +6,31 @@ icon: PackagePlus
 
 ## Requirements
 
-- Elysia `>=1.4.0`
-- Node.js `>=20.11` or Bun `>=1.1`
+- Elysia `^1.4.0 || ^2.0.0-rc.5`
+- Node.js `>=22.18` or Bun `>=1.1`
 - TypeScript `>=5.8` for TypeScript projects
 - Native ESM
 
 ## Install the adapter
 
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
 ```npm
-npm install @mwillbanks/elysia-mcp-adapter elysia
+npm install @mwillbanks/elysia-mcp-adapter elysia@1.4.32
 ```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```npm
+npm install @mwillbanks/elysia-mcp-adapter elysia@2.0.0-rc.5
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+Node.js 22.18 replaces the previous 20.11 minimum for both Elysia versions. See the [Elysia 2 migration guide](/docs/getting-started/migration-elysia-2).
 
 `elysia` is a peer dependency. The adapter does not bring another application framework or a full MCP framework into your runtime.
 
@@ -45,16 +60,58 @@ See the [extension guides](/docs/extensions) for revision selectors and host res
 
 Install only the integrations your application uses:
 
-```npm
-npm install @elysia/openapi
-```
+<ElysiaVersions>
+<ElysiaVersion value="1">
 
 ```npm
-npm install @elysiajs/bearer
+npm install @elysiajs/openapi@1.4.17
 ```
 
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
 ```npm
-npm install @elysiajs/opentelemetry
+npm install @elysia/openapi@2.0.0-rc.1 typebox@1.4.7
 ```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
+```npm
+npm install @elysiajs/bearer@1.4.4
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```npm
+npm install @elysia/bearer@2.0.0-rc.0
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+<ElysiaVersions>
+<ElysiaVersion value="1">
+
+```npm
+npm install @elysiajs/opentelemetry@1.4.11
+```
+
+</ElysiaVersion>
+<ElysiaVersion value="2">
+
+```npm
+npm install @elysia/opentelemetry@2.0.0-rc.0
+```
+
+</ElysiaVersion>
+</ElysiaVersions>
+
+The Elysia 2 OpenAPI RC requires a visible `typebox` dependency that its package does not declare.
+For isolated Bun consumers, qualification used `bun install --linker hoisted`.
 
 OpenAPI route metadata and schemas are reused by the adapter. Bearer authentication hooks and OpenTelemetry instrumentation remain part of the same Elysia lifecycle. See [Route-backed Tools](/docs/core-concepts/route-backed-tools), [Security](/docs/core-concepts/security), and [Transportation](/docs/core-concepts/transportation) for complete examples.

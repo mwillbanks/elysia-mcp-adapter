@@ -1,5 +1,31 @@
 # Durable Tasks examples
 
+## Elysia versions
+
+The existing project runs with Elysia `1.4.32`. [Elysia 1 servers and worker](./subprocess/) and [Elysia 2 worker](../elysia-2/tasks/subprocess/worker.ts) show each route syntax.
+
+Run the Elysia 1 project from the repository root:
+
+```sh
+bun run examples:setup
+bun run build
+bun run --cwd examples/tasks build
+bun run --cwd examples/tasks typecheck
+bun run --cwd examples/tasks test
+bun run --cwd examples/tasks smoke
+```
+
+Run the same project with Elysia `2.0.0-rc.5`:
+
+```sh
+bun run examples:elysia2 -- tasks
+```
+
+The runner packs the adapter, stages shared sources with the Elysia 2 overlays in a temporary workspace,
+and runs build, type checks, tests, and smoke checks. It removes the workspace after completion.
+Use `--archive /absolute/path/adapter.tgz` to reuse an existing adapter archive.
+See the [Elysia 2 examples guide](../elysia-2/README.md) for requirements and migration details.
+
 This independent Bun package demonstrates two production-shaped implementations of the adapter's
 `TaskProvider` contract. Both store only the serial-safe execution descriptor and keep the injected
 execution scheduler ephemeral.

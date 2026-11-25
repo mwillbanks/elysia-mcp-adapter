@@ -1,4 +1,3 @@
-import type { DefinitionBase, EphemeralType, MetadataBase, RouteBase, SingletonBase } from 'elysia'
 import { mcp, withMcpMethods } from './plugin.js'
 import type { McpToolOptions } from './types.js'
 
@@ -133,42 +132,7 @@ export type {
 export { mcp, withMcpMethods }
 
 declare module 'elysia' {
-  interface Elysia<
-    in out BasePath extends string = '',
-    in out Singleton extends SingletonBase = {
-      decorator: {}
-      store: {}
-      derive: {}
-      resolve: {}
-    },
-    in out Definitions extends DefinitionBase = {
-      typebox: {}
-      error: {}
-    },
-    in out Metadata extends MetadataBase = {
-      schema: {}
-      standaloneSchema: {}
-      macro: {}
-      macroFn: {}
-      parser: {}
-      response: {}
-    },
-    in out Routes extends RouteBase = {},
-    in out Ephemeral extends EphemeralType = {
-      derive: {}
-      resolve: {}
-      schema: {}
-      standaloneSchema: {}
-      response: {}
-    },
-    in out Volatile extends EphemeralType = {
-      derive: {}
-      resolve: {}
-      schema: {}
-      standaloneSchema: {}
-      response: {}
-    }
-  > {
+  interface Elysia {
     mcpTool<Input = unknown>(
       name: string,
       handler: import('./types.js').McpToolHandler<Input>,

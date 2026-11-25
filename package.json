@@ -59,10 +59,12 @@
     "fallow": "bun --bun ./node_modules/fallow/bin/fallow --no-cache --fail-on-issues && bun --bun ./node_modules/fallow/bin/fallow --root website --no-cache --fail-on-issues",
     "fallow:health": "bun --bun ./node_modules/fallow/bin/fallow health --no-cache --fail-on-issues",
     "examples:setup": "bun link && bun install",
-    "examples:build": "bun --bun run --cwd examples/tasks build && bun --bun run --cwd examples/auth build && bun --bun run --cwd examples/apps-vanilla build && bun --bun run --cwd examples/apps-react build && bun --bun run --cwd examples/core build && bun --bun run --cwd examples/skills build && bun --bun run --cwd examples/experimental build && bun --bun run --cwd examples/events build",
-    "examples:typecheck": "bun --bun run --cwd examples/tasks typecheck && bun --bun run --cwd examples/auth typecheck && bun --bun run --cwd examples/apps-vanilla typecheck && bun --bun run --cwd examples/apps-react typecheck && bun --bun run --cwd examples/core typecheck && bun --bun run --cwd examples/skills typecheck && bun --bun run --cwd examples/experimental typecheck && bun --bun run --cwd examples/events typecheck",
-    "examples:test": "bun --bun run examples:build && bun --bun run --cwd examples/tasks test && bun --bun run --cwd examples/auth test && bun --bun run --cwd examples/apps-vanilla test && bun --bun run --cwd examples/apps-react test && bun --bun run --cwd examples/core test && bun --bun run --cwd examples/skills test && bun --bun run --cwd examples/experimental test && bun --bun run --cwd examples/events test",
-    "examples:smoke": "bun --bun run --cwd examples/tasks smoke && bun --bun run --cwd examples/auth smoke && bun --bun run --cwd examples/apps-vanilla smoke && bun --bun run --cwd examples/apps-react smoke && bun --bun run --cwd examples/core smoke && bun --bun run --cwd examples/skills smoke && bun --bun run --cwd examples/experimental smoke && bun --bun run --cwd examples/events smoke",
+    "examples:elysia2": "bun scripts/check-elysia2-examples.ts",
+    "examples:check": "bun scripts/example-workspaces.ts",
+    "examples:build": "bun scripts/example-workspaces.ts build",
+    "examples:typecheck": "bun scripts/example-workspaces.ts typecheck",
+    "examples:test": "bun --bun run examples:build && bun scripts/example-workspaces.ts test",
+    "examples:smoke": "bun scripts/example-workspaces.ts smoke",
     "extensions:check-drift": "bun scripts/check-extension-drift.ts",
     "intent:check": "intent maintainer check",
     "prepack": "bun --bun run build",
@@ -76,7 +78,7 @@
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
-    "elysia": ">=1.4.0"
+    "elysia": "^1.4.0 || ^2.0.0-rc.5"
   },
   "peerDependenciesMeta": {
     "@elysiajs/openapi": {
@@ -102,6 +104,6 @@
   },
   "engines": {
     "bun": ">=1.1",
-    "node": ">=20.11"
+    "node": ">=22.18"
   }
 }

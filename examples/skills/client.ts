@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { Elysia } from 'elysia'
 
-async function rpc(app: Elysia, method: string, params: Record<string, unknown> = {}) {
+type RequestHandler = Pick<Elysia, 'handle'>
+
+async function rpc(app: RequestHandler, method: string, params: Record<string, unknown> = {}) {
   const uri = typeof params.uri === 'string' ? params.uri : undefined
   const response = await app.handle(
     new Request('http://localhost/mcp', {
@@ -34,7 +36,7 @@ async function rpc(app: Elysia, method: string, params: Record<string, unknown> 
   return (await response.json()) as any
 }
 
-export async function verifyPublishedSkill(app: Elysia): Promise<void> {
+export async function verifyPublishedSkill(app: RequestHandler): Promise<void> {
   await verifyCapabilities(app)
   const entries = await collectSkills(app)
   if (
@@ -63,7 +65,7 @@ export async function verifyPublishedSkill(app: Elysia): Promise<void> {
   await verifyDirectLookup(app)
 }
 
-async function verifyCapabilities(app: Elysia): Promise<void> {
+async function verifyCapabilities(app: RequestHandler): Promise<void> {
   const discovery = await rpc(app, 'server/discover')
   const skillsCapability =
     discovery.result.capabilities.extensions?.['io.modelcontextprotocol/skills']
@@ -82,7 +84,7 @@ interface SkillEntry {
   resources?: ManifestResource[]
 }
 
-async function collectSkills(app: Elysia): Promise<SkillEntry[]> {
+async function collectSkills(app: RequestHandler): Promise<SkillEntry[]> {
   const entries: SkillEntry[] = []
   let cursor: string | undefined
   let pages = 0
@@ -96,7 +98,7 @@ async function collectSkills(app: Elysia): Promise<SkillEntry[]> {
   return entries
 }
 
-async function verifyResource(app: Elysia, resource: ManifestResource): Promise<number> {
+async function verifyResource(app: RequestHandler, resource: ManifestResource): Promise<number> {
   const read = await rpc(app, 'resources/read', { uri: resource.uri })
   const content = read.result.contents[0]
   const bytes =
@@ -110,7 +112,7 @@ async function verifyResource(app: Elysia, resource: ManifestResource): Promise<
   return bytes.byteLength
 }
 
-async function verifyDirectLookup(app: Elysia): Promise<void> {
+async function verifyDirectLookup(app: RequestHandler): Promise<void> {
   const direct = await rpc(app, 'skills/get', { uri: 'skill://direct-lookup/SKILL.md' })
   if (direct.result.skill.frontmatter.name !== 'direct-lookup') {
     throw new Error('Direct skill lookup failed')

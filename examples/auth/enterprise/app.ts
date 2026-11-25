@@ -91,6 +91,7 @@ export async function createEnterpriseExample(options: EnterpriseExampleOptions 
   const verifyForMcp = exampleAccessTokenVerifier({
     issuer: ENTERPRISE_BASE_URL,
     resource: ENTERPRISE_RESOURCE,
+    jwksFetch: () => auth.api.getJwks(),
     invalidTokenMessage: 'SAML assertions, ID tokens, and ID-JAGs are not MCP access tokens'
   })
 

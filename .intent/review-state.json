@@ -3,84 +3,93 @@
   "baseline": "32721f89f69c642946a6ec0e37f57f95dd8e8351",
   "items": {
     "skill:skills/elysia-mcp-adapter/SKILL.md": {
-      "fingerprint": "159ff7ec0624d68c291ebfb7551910da372fbc7841267fae6ae4a02ab70c74b8",
+      "fingerprint": "46c04f4973ed9fda9c43ab71e884f6e8aa0fcb079069ee05d9eefaa23bcf75b5",
       "snapshot": {
-        "README.md": "b815b900532943bae7f39ca64ce83f59622cc06f930e86dd9651a17e5e097a5b",
-        "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
+        "README.md": "fe77f2339141ee44612f5b9719d034e60ab00a2669525fe4786d89c6c848e0a3",
+        "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "484dc1ba8abafb9de177a5f76ebdb248e3fad5961fbb6b17d2393372acb42f36",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
-        "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
+        "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
         "skills/elysia-mcp-adapter/references/transport-authorization.md": "591bb2d1a79487ce9b625db530cb6eba0a7b325c7e3627246c1fd3f1938f03d5",
-        "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
+        "website/content/docs/api-reference/route-backed-tools.mdx": "898ed1c8800fa05afc76bed8599da3c0a254e998a05d47990ff22c1a02e9e02b",
         "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
-        "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
+        "website/content/docs/core-concepts/security.mdx": "c5bbbf9c939cf6b11fb26171429da36b3dbd5b84648e725374d1e586cc4e26f7",
         "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
-        "website/content/docs/core-concepts/transportation.mdx": "27d481007e9a44ee6abff9ff06049c56f0d01a9b83a6abd844138b736b15e2f0",
+        "website/content/docs/core-concepts/transportation.mdx": "8849f7b3f526f402cbe4c754be63a6438d4a94e3475dcdc033b08481135129ff",
         "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
         "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
         "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
-        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6"
+        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6",
+        "website/content/docs/getting-started/migration-elysia-2.mdx": "8c8c94fb6a640f9e9d2bc0153ff986cbbf5afd6bf5d15b646d4957f1f1aeb35d"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "updated",
-      "reason": "Updated packaged guidance for headerless classic transport and the accepted Events heartbeat grant.",
+      "reason": "Updated the bundled migration guidance for codemod order, guard schema merging, and the qualified runtimes.",
       "evidence": [
-        "skills/elysia-mcp-adapter/references/transport-authorization.md",
-        "skills/elysia-mcp-adapter/references/extensions.md",
-        "test/classic-transport.test.ts",
-        "test/events.test.ts"
+        "README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md",
+        "website/content/docs/getting-started/migration-elysia-2.mdx"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "29aa045495826277eeac0e8c06b578c71ef9fef2334ad39727679f55a02e62ab",
+      "fingerprint": "cad2d4540c260893d4febc767cdb772ccb6dc378b604fc5ab3a14a83d7745da8",
       "snapshot": {
-        "README.md": "b815b900532943bae7f39ca64ce83f59622cc06f930e86dd9651a17e5e097a5b",
-        "_artifacts/domain_map.yaml": "45c2fa7634565fad530e15249b232ca2ad862fc4e88d2c4de900d8902de6e6da",
-        "_artifacts/skill_spec.md": "8c00fc5c68344afed276f4167cbd21824abbe75e28650bbffa44476651fa6363",
-        "_artifacts/skill_tree.yaml": "8d3eb0600977eb16f6bb026b7c014bdbe1f1f9e4aeeaf828135e66d010bf9997",
-        "skills/elysia-mcp-adapter/SKILL.md": "42cde7ef943f7adb20204676471b1a2cfc89641471aa0d7479511bb3a5115285",
+        "README.md": "fe77f2339141ee44612f5b9719d034e60ab00a2669525fe4786d89c6c848e0a3",
+        "_artifacts/domain_map.yaml": "dbb5cdc3591471f1173fc450bedeafb9eea1970c2a23c6b868506b5ad41bfb8a",
+        "_artifacts/skill_spec.md": "f1327a2223272e832fdfe658f08ff5aedd9002031f079ab995b6924ea939791b",
+        "_artifacts/skill_tree.yaml": "2ebe6442fb00754e6c8957457befa0f9a6bcd4314c9ebb50fe58570ffc4bc90e",
+        "skills/elysia-mcp-adapter/SKILL.md": "20db1edd6df8267bb0957a5390283b91e743800f1e6db9429460182fe3745a2d",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md": "484dc1ba8abafb9de177a5f76ebdb248e3fad5961fbb6b17d2393372acb42f36",
         "skills/elysia-mcp-adapter/references/extensions.md": "cd649ba9611dda7b71a14dd9100dcc71a94775d55e8a36c7d8d842d140db9852",
-        "skills/elysia-mcp-adapter/references/route-exposure.md": "82057e39c4f24bb9e66e53c6ae86eee218a0fedb6f502c269039a193ef1dff49",
+        "skills/elysia-mcp-adapter/references/route-exposure.md": "78187ac7dfe8eda0ca799b2bc910f129c58a4124e287c74277e2db4103d57a3f",
         "skills/elysia-mcp-adapter/references/standalone-primitives.md": "34e459510623a98fa6c259acd71c22672aced9962bb025cd2bc9c39d450ff785",
         "skills/elysia-mcp-adapter/references/transport-authorization.md": "591bb2d1a79487ce9b625db530cb6eba0a7b325c7e3627246c1fd3f1938f03d5",
-        "website/content/docs/api-reference/route-backed-tools.mdx": "a3071ce11fb750d4abae561f83d299144b01049275ea1e518ce242dfe1638a02",
+        "website/content/docs/api-reference/route-backed-tools.mdx": "898ed1c8800fa05afc76bed8599da3c0a254e998a05d47990ff22c1a02e9e02b",
         "website/content/docs/api-reference/standalone-primitives.mdx": "386ee8839e0bf9adc4ba7e2c7b3e6dfaf143469a95854a4fa5b60e9f41f11d27",
-        "website/content/docs/core-concepts/security.mdx": "033bb73fade764a8836a3da3029ba82c56c5c61c86525ecaea910021667f36f6",
+        "website/content/docs/core-concepts/security.mdx": "c5bbbf9c939cf6b11fb26171429da36b3dbd5b84648e725374d1e586cc4e26f7",
         "website/content/docs/core-concepts/specification-notices.mdx": "f2b4cc4bd45baca28299aeee06bc6447dec33debbf7a496d59b6f7175d50f766",
-        "website/content/docs/core-concepts/transportation.mdx": "27d481007e9a44ee6abff9ff06049c56f0d01a9b83a6abd844138b736b15e2f0",
+        "website/content/docs/core-concepts/transportation.mdx": "8849f7b3f526f402cbe4c754be63a6438d4a94e3475dcdc033b08481135129ff",
         "website/content/docs/extensions/authorization/configuration.mdx": "03b0a31096b2f2240f5029c03765c9fb6132dfca4a3de23b46e4b42e9ffdab36",
         "website/content/docs/extensions/index.mdx": "783a05abb575f6c7911460b05b3f96e8806b374c7b40a36fd3bda8d5ba6420a2",
         "website/content/docs/extensions/specification-inventory.mdx": "1740ebcd117ecbc118fd64edf5f94d011f3835afd14d302fa73fa13151995bf2",
-        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6"
+        "website/content/docs/extensions/versioning.mdx": "6d482dbe9ce7faee550b5ea8f447f38b51e264f5e91dfbc187085feddf85cdc6",
+        "website/content/docs/getting-started/migration-elysia-2.mdx": "8c8c94fb6a640f9e9d2bc0153ff986cbbf5afd6bf5d15b646d4957f1f1aeb35d"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
       "outcome": "no-change",
-      "reason": "The existing guidance structure and canonical source assignments cover the revised transport and extension contracts.",
+      "reason": "Reviewed migration and examples changes against the skill plan. Existing planning records continue to describe the same scope.",
       "evidence": [
-        "_artifacts/skill_spec.md",
-        "skills/elysia-mcp-adapter/references/transport-authorization.md",
-        "skills/elysia-mcp-adapter/references/extensions.md"
+        "README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md",
+        "website/content/docs/getting-started/migration-elysia-2.mdx"
       ]
     },
     "source:examples/events/README.md": {
-      "fingerprint": "3c757f139712a32a0404ed922463bd0ac16b7744e956c06cbb5f2a574ab87a01",
+      "fingerprint": "16f6a2787086f055efa142c87c868f4bf1fe58ea944cacf854733f7a67f2fbca",
       "snapshot": {
-        "examples/events/README.md": "3698ebd2aa1c0477db52d2171d6cb73ceb4fbcafaae87eedc0525a4e9cfd222a"
+        "examples/events/README.md": "1f7972406a84d980f8c3f0e90fc7d58e38aa06a512039601148c1f698b6fc252"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
       "outcome": "updated",
-      "reason": "Updated the Events example guidance for revision migration and the negotiated heartbeat interval.",
-      "evidence": ["src/extensions/events/runtime.ts", "examples/events/server.test.ts"]
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/events/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
     },
     "source:examples/tasks/README.md": {
-      "fingerprint": "c6cddfa551d353b9b3e961acd727e6fe1693895baa6d5fe942f1cd0cd7ad9159",
+      "fingerprint": "6047a04106ab244152f5a408366d8d7e915d0f1ab7cfb9d48737e8a76fa98a62",
       "snapshot": {
-        "examples/tasks/README.md": "c232b3cece5f6406197dcf76d468686ca39931c6d290789555267ef8c81b62e0"
+        "examples/tasks/README.md": "0dbdcdc30ff7646665e27817b5030e2f9a2c269ff1dc9f7aa3f0ba932e03d708"
       },
-      "head": "6af18e74b9860ed58406c020ea083bc2235f0510",
-      "outcome": "no-change",
-      "reason": "The example README describes which Redis fixture the tests use. Adapter guidance and public setup are unaffected.",
-      "evidence": ["examples/tasks/test-support.ts", ".github/workflows/ci.yml"]
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/tasks/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
     },
     "source:website/content/docs/core-concepts/language-preference.mdx": {
       "fingerprint": "436a2dde15941394af4fb18dce0e667d167001b4e849533b004d36d7ab2cb734",
@@ -105,15 +114,16 @@
       ]
     },
     "source:website/content/docs/extensions/apps/examples.mdx": {
-      "fingerprint": "46cad16e8b9aedb70d40c585209cdf18308c23600dc0af6934d8374361ba9e86",
+      "fingerprint": "a426cf2ded7d9e09373810e86f580553428dd7b2b50eba70f0c0eefb24a558a7",
       "snapshot": {
-        "website/content/docs/extensions/apps/examples.mdx": "212a8cc2c34fd3f2ed86ae8dfcfca07e02ed4002ced1bf8bb67a0d5f8e6926f4"
+        "website/content/docs/extensions/apps/examples.mdx": "015cd650518ab4f9f6fd1ed2ee8a381b14abe6209fdc909b88587f5615f7dcdc"
       },
-      "head": "6e1299f66cbfb162bbba6a261e984d0ffee871a3",
-      "outcome": "no-change",
-      "reason": "The updated browser examples concern Apps View SDK integration. The skill's server guidance covers selecting the applicable contract.",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
       "evidence": [
-        "Checked the versioned SDK examples and origin-bound host handshake descriptions."
+        "website/content/docs/extensions/apps/examples.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
       ]
     },
     "source:website/content/docs/extensions/authorization/dpop.mdx": {
@@ -212,16 +222,14 @@
       ]
     },
     "source:examples/auth/README.md": {
-      "fingerprint": "eb0036e207166fc722db0389fe479982799a94bd0e3632c56be731f6e23207ac",
+      "fingerprint": "dd4c2cffed0d71fd1d8d0162e109fee865c749649a7b15a23844b07a2c124cc9",
       "snapshot": {
-        "examples/auth/README.md": "1884b70b0aacdaf1d45ac6b84224f9f2925b757402d70a608019533d8e166f21"
+        "examples/auth/README.md": "3c5d054017fe6cfad7d43dff3d9e4461e14ee103ab577e22231ecd5f4a3aad86"
       },
-      "head": "f7e5a3828c011e41cad5e9535e9d7e027769b8eb",
+      "head": "01b8181413c3aa27e3ce2b389b3cbd73d2f1e998",
       "outcome": "no-change",
-      "reason": "The guide now matches the approved authorization profiles or approved Beta baseline. Existing package guidance applies.",
-      "evidence": [
-        "Compared the changed guide with the public extension support catalog and canonical extension index."
-      ]
+      "reason": "Reviewed the authorization fixture and corrected the documented Better Auth pin to match the examples. Issuer, audience, token verification, MCP behavior, and the Intent integration guidance are unchanged.",
+      "evidence": ["Changed: examples/auth/README.md at 01b8181413c3aa27e3ce2b389b3cbd73d2f1e998"]
     },
     "source:website/content/docs/extensions/experimental/server-card.mdx": {
       "fingerprint": "195bf967efa0cd1219ef03eaa28b49eb97a08fcbc16bb6bc356a80504bddca49",
@@ -234,54 +242,57 @@
       "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:examples/core/README.md": {
-      "fingerprint": "d8579991c4c0c3938f44aebe33c1412b3a38524d7c8d36ccc70971cd0cae0796",
+      "fingerprint": "e1334757c5086b5d91080150272dd49e5e8d99578efbc282877d5418581639e4",
       "snapshot": {
-        "examples/core/README.md": "36a7980d8755f2f443ea16566f9fac486b676609178b6971c241115df74b83ce"
+        "examples/core/README.md": "6a8b354ee564a1d7e01a4094e7bbb3342786ea1420881235b6a698f7cad41417"
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
       "evidence": [
-        "source:examples/core/README.md",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
+        "examples/core/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
       ]
     },
     "source:website/content/docs/core-concepts/modern-core.mdx": {
-      "fingerprint": "76c1e250bd8d39e90c5381d637c683e2de92e8111c7a6a4c0d8f909b0077c5e6",
+      "fingerprint": "b8fb3086724c3b971a5e268d05cdde55e72b2009cb10f8e0d2694cd9f68d6f4a",
       "snapshot": {
-        "website/content/docs/core-concepts/modern-core.mdx": "2debb42dfd51c3d3c3db3749a6f560c71e3a2eb8a2c1f17c73d10b24cf3fdf1b"
+        "website/content/docs/core-concepts/modern-core.mdx": "c812dc3de8feb48c1b9801e902030e325211b34902c8362d760213803cb62a56"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
       "outcome": "updated",
-      "reason": "Reviewed modern Core schema and route composition guidance against the shipped schema and protocol tests.",
-      "evidence": ["test/core-modern.test.ts", "test/classic-transport.test.ts"]
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/core-concepts/modern-core.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
     },
     "source:website/content/docs/extensions/tasks/examples.mdx": {
-      "fingerprint": "27506255461aaea92e21c62769fe838ef5ecd289b8cf3b4638b0796225112a91",
+      "fingerprint": "2af0fae169db84d611d50bd4c86d42dd0e33c63f1d06a2a7ce5230a30ee24304",
       "snapshot": {
-        "website/content/docs/extensions/tasks/examples.mdx": "27de7433fc3cfddae2c98d6d0c3804c926e84ce6a8fbd6691f9ef6224b8105b9"
+        "website/content/docs/extensions/tasks/examples.mdx": "9a07ce09dfe477b6acce91e5be640dc5bee9aa08b458d46845125c28815c80ea"
       },
-      "head": "10b1950b94a72dff92bf176e6bdd3845c503b90e",
-      "outcome": "no-change",
-      "reason": "Reviewed SDK compatibility notes, language mirroring and webhook DNS limits against the adapter tests. Existing skill guidance covers extension selection and routes consumers to canonical documentation.",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
       "evidence": [
-        "source:website/content/docs/extensions/tasks/examples.mdx",
-        "test/client-interoperability.test.ts",
-        "test/language-http.test.ts",
-        "test/events-network.test.ts"
+        "website/content/docs/extensions/tasks/examples.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
       ]
     },
     "source:website/content/docs/core-concepts/route-backed-tools.mdx": {
-      "fingerprint": "c740763e2264b9ac356247da60f4901de4bb3f1a887e425ebe2c79a6bffb15ae",
+      "fingerprint": "ca669f87ab2815c6b7ab50ccb98ce4ab591d4d9aa7bbf0b207d6aa3552c1ffc8",
       "snapshot": {
-        "website/content/docs/core-concepts/route-backed-tools.mdx": "0531cb1a6a8c2462b68cf389c6e734a682939ecc9e7a0f42a9ad3a5e4af3da95"
+        "website/content/docs/core-concepts/route-backed-tools.mdx": "ca5168759e570f1c60d13f65218541d869a6347d93afeaa462969060fcae524f"
       },
-      "head": "c7ec4325a2c220ad4910fed434cfc2266ea7aa78",
-      "outcome": "updated",
-      "reason": "Clarified shared constraints and branch-specific constraints while preserving the immutable upstream schema fixture.",
-      "evidence": ["test/fixtures/core-2026-07-28.schema.json", "test/core-modern.test.ts"]
+      "head": "a4e9eedd60972a5ff5b34833809e0295e3181aaa",
+      "outcome": "no-change",
+      "reason": "The route exposure skill already directs agents to follow the advertised schema. The guide explains how wrapped slot keys are assigned.",
+      "evidence": [
+        "website/content/docs/core-concepts/route-backed-tools.mdx",
+        "src/schema/compose.ts",
+        "test/schema-layers.test.ts"
+      ]
     },
     "source:website/content/docs/extensions/experimental/action-metadata/configuration.mdx": {
       "fingerprint": "ac6a8808fd3078fb9e86ef72f2507408a112691b313170a0f7b2ae7fa471b249",
@@ -354,14 +365,17 @@
       "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/events/examples.mdx": {
-      "fingerprint": "451a9db7c6cd383bee0ee0eabe9d5980d3bcdebac27798acd2908130e30c4d2a",
+      "fingerprint": "5b3615e2ca687a7e890f147045d4d45ba525b6f153b773f97572ea9e6f1eabe7",
       "snapshot": {
-        "website/content/docs/extensions/experimental/events/examples.mdx": "1e54a72f50db42c9bbe2937db27f6a61251a53917411b817af4f8575cd3997fc"
+        "website/content/docs/extensions/experimental/events/examples.mdx": "9ecc4c46b13b325cab89c1a0eb352c3101e7bc1d126b46822eceb97e359140dc"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
       "outcome": "updated",
-      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
-      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/extensions/experimental/events/examples.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
     },
     "source:website/content/docs/extensions/experimental/events/index.mdx": {
       "fingerprint": "e40e66892cedd7597186e1812a733348e4bef28d48983795b7a1c92205a80cce",
@@ -404,14 +418,17 @@
       "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
     },
     "source:website/content/docs/extensions/experimental/interceptors/examples.mdx": {
-      "fingerprint": "d92886e8ddaf7c53d58f8c32743403006d553ac46d5ccd11a1bfb1c7b66b5f67",
+      "fingerprint": "461b8a79a8208ca9f343e08dd7d82e0f329fa49635515c846e34a994892c96c2",
       "snapshot": {
-        "website/content/docs/extensions/experimental/interceptors/examples.mdx": "6e060f806a669124cbd74a26a4a68e2ff51d99b2f046aae97e4a7f694c19cd7f"
+        "website/content/docs/extensions/experimental/interceptors/examples.mdx": "07efbdf90ca76d24a0b73f6100ccddf71fe25104024ce150c8ed28cfb573c95b"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
       "outcome": "updated",
-      "reason": "Reviewed the extension guides for opt-in behavior, protocol era, preserved routes, and consistency with the shipped contracts.",
-      "evidence": ["website/src/lib/extension-docs.test.ts", "website/scripts/verify-build.ts"]
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/extensions/experimental/interceptors/examples.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
     },
     "source:website/content/docs/extensions/experimental/interceptors/index.mdx": {
       "fingerprint": "bf43956d6a6e3c3413364c5675dbd0a311e6ff4b9158accaec9663b6bc989581",
@@ -571,17 +588,16 @@
       ]
     },
     "source:website/scripts/verify-build.ts": {
-      "fingerprint": "0309966ba3a10ba16c05a21a20956fd379ebca8738ddcee1e814480f61ee4100",
+      "fingerprint": "66d3b8004cf3686362cdd1e9b58d64b33260971ad140fd06309f8e4dd9e1db9c",
       "snapshot": {
-        "website/scripts/verify-build.ts": "728ab491e1b67385d65f28951cfdda51a57918b356cb63b89faf725f8ac4d2df"
+        "website/scripts/verify-build.ts": "a003f6b4816670b3d691bdc20dc65ad17b48489daee336335ababc1db2762b18"
       },
-      "head": "4c79ea79239cec064b7bb22be82cb746f1e0cbdc",
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
       "outcome": "updated",
-      "reason": "Reviewed the classified surface and documentation artifact coverage for both deployment paths.",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
       "evidence": [
-        "website/content/docs/index.mdx",
-        "website/src/lib/extension-docs.test.ts",
-        "website/scripts/verify-build.ts"
+        "website/scripts/verify-build.ts",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
       ]
     },
     "source:website/vite.config.ts": {
@@ -596,6 +612,195 @@
         "website/content/docs/index.mdx",
         "website/src/lib/extension-docs.test.ts",
         "website/scripts/verify-build.ts"
+      ]
+    },
+    "source:.fallowrc.json": {
+      "fingerprint": "0bc550fb253a39b26a1bd848f2152ba9a135506b5f2d44e5f49b6bb4f6b55e6f",
+      "snapshot": {
+        ".fallowrc.json": "d881ff0f32572cf485f631f6e5b9683bb4cf41c6c99d1bd47ba7ca123fc3f3a4"
+      },
+      "head": "136b075475debe40091e04e128696eb983e84409",
+      "outcome": "no-change",
+      "reason": "The analysis entries identify the local timeout regression and Windows process launcher.",
+      "evidence": [
+        ".fallowrc.json",
+        "AGENTS.md",
+        "scripts/check-run-bun-timeout.ts",
+        "scripts/run-bun-windows.ts"
+      ]
+    },
+    "source:examples/apps-react/README.md": {
+      "fingerprint": "b0a77368d9b524d37dbb3a40bd5210b3537189a4452fa41596e9b862d0435912",
+      "snapshot": {
+        "examples/apps-react/README.md": "2cb29c56339bf7ebcc1d74f20978d9f511af6e6152963f335168191e17cbbb1f"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/apps-react/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:examples/apps-vanilla/README.md": {
+      "fingerprint": "7ae1161533252fc246fc73789ac9f999f1935bd6e985d65dadc6c21f5bbaaa2a",
+      "snapshot": {
+        "examples/apps-vanilla/README.md": "f0aa4c199ada366ba1ab8475fd667de630238a534034a08e83994180c90e4fe7"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/apps-vanilla/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:examples/elysia-2/README.md": {
+      "fingerprint": "a37323f0d09d8c814e1c1f30c92a26519b73e74421ad2d6a41b3fca799e843b8",
+      "snapshot": {
+        "examples/elysia-2/README.md": "dd117bf65da386a44b3eedb245de10284ac9dfe61ecbf854d8dddda5fa4e64f4"
+      },
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
+      "outcome": "updated",
+      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
+      "evidence": ["examples/elysia-2/README.md"]
+    },
+    "source:examples/experimental/README.md": {
+      "fingerprint": "527a895cc8463047211bd9057ccbb3451467bea5e08dbd888f3debc7f2cf341a",
+      "snapshot": {
+        "examples/experimental/README.md": "3b7110e3fa1c905f21a481f87d13bd2c36078d1e001dd52557713f8f1b7e61ec"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/experimental/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:examples/skills/README.md": {
+      "fingerprint": "cc53b572977238a1ac9293650bc6ad67227677cb35e37e3801bad8d7d0d59caf",
+      "snapshot": {
+        "examples/skills/README.md": "78bbd0d1a749e8a21cfad716093b7d2c4cb8f31c9d98d795611f26a3a020c3de"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed Elysia 1 commands, pinned RC isolated runner, source links, shared assets, and Node floor against the migration reference.",
+      "evidence": [
+        "examples/skills/README.md",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:release-please-config.json": {
+      "fingerprint": "c862a9ad7e8cc56dbbd7340059a1ec4f6e4eea6788b0587c537a35b3c4b9bee6",
+      "snapshot": {
+        "release-please-config.json": "bd0eb35595bd760efea338dedd0d49b4f86f8d89a366b92547a6fc3bc7dd2b6a"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Release Please now updates the annotated skill library_version with the package version.",
+      "evidence": ["release-please-config.json", "skills/elysia-mcp-adapter/SKILL.md"]
+    },
+    "source:website/content/docs/core-concepts/messaging.mdx": {
+      "fingerprint": "5098ae1bea9ac1ba707e65369364d26c836df0616024bec2441fecfd528fa355",
+      "snapshot": {
+        "website/content/docs/core-concepts/messaging.mdx": "830dd7598e03412a7dd31110a25999685eacb28afcdb4999fb835f798eed5066"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/core-concepts/messaging.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:website/content/docs/core-concepts/resources-and-prompts.mdx": {
+      "fingerprint": "c30c39e04de0664ba1020e6f7f9d64effb9fde1643fa66e093d731c230049999",
+      "snapshot": {
+        "website/content/docs/core-concepts/resources-and-prompts.mdx": "730b4c9e15d645ca9e11d489d0dd7605ca01473e9daeaefcfb83a3be278a01d0"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/core-concepts/resources-and-prompts.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:website/content/docs/extensions/authorization/examples.mdx": {
+      "fingerprint": "03bd0037673f85451dfc06ec73b892dd1a24535eea0e448069c573813dcd957c",
+      "snapshot": {
+        "website/content/docs/extensions/authorization/examples.mdx": "7cceee73c8d3a252772b444d893ab74e85953ee2193e41a6cd5ce3245a140e58"
+      },
+      "head": "01b8181413c3aa27e3ce2b389b3cbd73d2f1e998",
+      "outcome": "no-change",
+      "reason": "Reviewed the authorization fixture and corrected the documented Better Auth pin to match the examples. Issuer, audience, token verification, MCP behavior, and the Intent integration guidance are unchanged.",
+      "evidence": [
+        "Changed: website/content/docs/extensions/authorization/examples.mdx at 01b8181413c3aa27e3ce2b389b3cbd73d2f1e998"
+      ]
+    },
+    "source:website/content/docs/extensions/skills/quick-start.mdx": {
+      "fingerprint": "fc5d53a9946581737118637f35cc73491fa6e06f1542eed09422aac48eb842dc",
+      "snapshot": {
+        "website/content/docs/extensions/skills/quick-start.mdx": "2e39e82432a20748f936a67bec8712261cac931203ee634d76664111bcb84ee3"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/extensions/skills/quick-start.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:website/content/docs/getting-started/installation.mdx": {
+      "fingerprint": "022aee06ac728b25ea7c7a87e3923705ec6c620ec2233c2453541dfd6c5c083d",
+      "snapshot": {
+        "website/content/docs/getting-started/installation.mdx": "cbd34e8d2f953c7011ad735b04281c55c65280bf7e9776b7a625ea631d1ed06b"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Documented qualified Bun AOT discovery and authorization scope, early Elysia 1.4 fail-closed exclusion precedence, explicit MIME handling, and the Elysia 2 OpenAPI undeclared typebox dependency.",
+      "evidence": [
+        "website/content/docs/getting-started/migration-elysia-2.mdx",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md",
+        "website/content/docs/getting-started/installation.mdx"
+      ]
+    },
+    "source:website/content/docs/getting-started/meta.json": {
+      "fingerprint": "0d7d3966d5d9275c0734e689eaf3b29aebc7b42ff65b762326338c67d091efa6",
+      "snapshot": {
+        "website/content/docs/getting-started/meta.json": "68110965f9a8c8f3cc64bb6bd5e9d1e80a23a76cbf253c8cec3d9415eb07a1df"
+      },
+      "head": "734c983600c0cdb6f7616ccc7028a769d072b11d",
+      "outcome": "updated",
+      "reason": "Reviewed version-specific route order, dependency pins, shared MCP semantics, example commands, and export coverage; migration reference covers consumer decisions.",
+      "evidence": [
+        "website/content/docs/getting-started/meta.json",
+        "skills/elysia-mcp-adapter/references/elysia-migration.md"
+      ]
+    },
+    "source:website/content/docs/getting-started/quick-start.mdx": {
+      "fingerprint": "bfb7495f8674f4062aa82b9004f236f25bd41df7e48b51941b1a6b61e1cd924e",
+      "snapshot": {
+        "website/content/docs/getting-started/quick-start.mdx": "c786faa8fc7b26a7a62fff1fb83bdd85ac42bab9c808d3c907bf3dcdb31fabfc"
+      },
+      "head": "35bf4ae9db681049d76a44c97be5058b844e78cf",
+      "outcome": "updated",
+      "reason": "Verified the version-specific documentation against the runnable examples and matching adapter setup.",
+      "evidence": ["website/content/docs/getting-started/quick-start.mdx"]
+    },
+    "source:website/content/docs/api-reference/plugin.mdx": {
+      "fingerprint": "11161c7dfbbc3ca28a5b9d14ec5cbb8eab9ec99785ee3ab8da4ea7229622928d",
+      "snapshot": {
+        "website/content/docs/api-reference/plugin.mdx": "734b8327fbd2891b924c8ddf9e3dea700497ccec528e5121a3963282dd241294"
+      },
+      "head": "12a89bc8e33dbcf00d02b3ef6303d39a80a0249a",
+      "outcome": "updated",
+      "reason": "Verified the callback inference contract against the plugin types and the packed consumer assertions.",
+      "evidence": [
+        "website/content/docs/api-reference/plugin.mdx",
+        "src/plugin.ts",
+        "scripts/elysia-compat-consumer.ts"
       ]
     }
   }
